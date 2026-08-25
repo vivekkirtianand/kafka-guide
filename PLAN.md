@@ -18,6 +18,36 @@ does not yet contain the explanatory lesson prose to actually teach them. Don't 
 | Activity: simulate broker failure and leader election | ✅ Done | [LeaderElectionDemo.tsx](src/components/demos/LeaderElectionDemo.tsx) — pre-existing, reworked (see Fixes below). |
 | Activity: predict before reveal | ✅ Done | Folded into RecordFlowDemo rather than built as a separate standalone activity. |
 
+## Module 2 — Local cluster laboratory
+
+Unlike Module 1, this module's content isn't a React page — it's the actual local-cluster
+deliverable README.md scopes as separate from the Next.js app: a reproducible three-broker
+Kafka cluster and observability stack, built at [local-cluster-lab/](local-cluster-lab/).
+The in-app `/modules/local-cluster-lab` page is untouched and still renders "planned."
+
+| Item | Status | Notes |
+|---|---|---|
+| Three Kafka brokers in KRaft mode | ✅ Done | [docker-compose.yml](local-cluster-lab/docker-compose.yml) — `apache/kafka:4.0.0`, each node both broker and controller (3-node KRaft quorum, no ZooKeeper, matching the app's Kafka 4.0/KRaft default in [ClusterContext.tsx](src/lib/context/ClusterContext.tsx)). |
+| Kafka CLI tools | ✅ Done | No extra install — used via `docker exec` into any broker container, documented per-activity in [local-cluster-lab/README.md](local-cluster-lab/README.md). |
+| Kafka UI | ✅ Done | `provectuslabs/kafka-ui` at `localhost:8080`; verified `/api/clusters` reports `status: online`, `brokerCount: 3`. |
+| Metrics: Prometheus + Grafana | ✅ Done | `danielqsj/kafka-exporter` (no JMX agent needed) → Prometheus (`localhost:9090`) → Grafana (`localhost:3001`, anonymous access), with a pre-provisioned "Kafka lab overview" dashboard (broker count, under-replicated partitions, consumer lag, per-topic throughput, ISR table). |
+| Optional Schema Registry and Kafka Connect | ✅ Done | `confluentinc/cp-schema-registry` + `cp-kafka-connect`, gated behind `docker compose --profile extras up -d` so the base lab stays light. |
+| Activity: create and inspect topics | ✅ Done | Verified live — created a 3-partition/RF-3 topic, `--describe` showed replicas spread across all three brokers. |
+| Activity: produce with and without keys | ✅ Done | Verified live — keyed records consumed with `print.key=true` confirmed same-key-same-partition placement. |
+| Activity: observe partition placement | ✅ Done | Verified live via `--describe` output (leader/replicas/ISR columns), same data Kafka UI's topic view surfaces. |
+| Activity: stop and restart brokers | ✅ Done | Verified live — stopped the current partition leader, watched a follower get elected and the stopped broker drop from ISR; restarted it and confirmed it rejoined ISR without reclaiming leadership. |
+| Activity: inspect consumer offsets | ✅ Done | Verified live via `kafka-consumer-groups.sh --describe`, including reset-and-replay with `--reset-offsets --to-earliest`. |
+| Activity: change topic-level configuration safely | ✅ Done | Verified live — dynamic `retention.ms` override applied and removed via `kafka-configs.sh --alter`, no restart needed. |
+
+**Fix during build:** the brokers' healthcheck originally ran `kafka-broker-api-versions.sh`
+against the container's own `EXTERNAL` listener, which advertises the host-facing
+`localhost:2909x` address — unreachable from inside the container, so every check failed.
+Switched to the internal `BROKER` listener; that in turn revealed the JVM-per-check admin
+client was too CPU-heavy running three-wide on an ordinary laptop (consistently timed out
+under load even though the broker was healthy). Replaced with a plain `nc -z` TCP check on
+the broker's socket — cheap and sufficient for liveness — after which the whole stack (7
+containers) came up healthy end-to-end within about a minute.
+
 ## Test infrastructure
 
 | Item | Status | Notes |
@@ -59,10 +89,11 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 | Item | Status | Notes |
 |---|---|---|
-| Modules 2–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
+| Modules 3–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
+| Module 2 in-app page | ⭕ Planned | Still renders the generic "planned" placeholder — its content is the local cluster lab below, which lives outside the Next.js app rather than on this page. |
 | 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
 | 14 production runbooks | ⭕ Planned | Titles/categories scoped; content not written. |
-| Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ⭕ Planned | Explicitly out of scope for this Next.js app per README — a separate deliverable. |
+| Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ✅ Done | Built at [local-cluster-lab/](local-cluster-lab/) — explicitly out of scope for the Next.js app per README, a separate deliverable. See Module 2 section below for what was built and verified. |
 
 ## Verification
 

@@ -64,7 +64,10 @@ src/
   the plan, searchable.
 - Modules 2–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
   clues, categories) but their content/interactivity is not yet written — they render a
-  "planned" state so the whole app is navigable today.
+  "planned" state so the whole app is navigable today. Module 2's *content* now exists
+  (see local cluster lab below), but the in-app module page itself still renders
+  "planned," since that content lives outside the Next.js app rather than on the page.
 - The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
-  containers) described in the plan is a separate, non-web deliverable (e.g. a
-  `docker-compose.yml`) — not part of this Next.js app.
+  containers) described in the plan is a separate, non-web deliverable — not part of this
+  Next.js app. It's built out at [`local-cluster-lab/`](local-cluster-lab/) (its own
+  `docker-compose.yml` and README) with a walkthrough for all six Module 2 activities.

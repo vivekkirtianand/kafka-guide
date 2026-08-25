@@ -1,0 +1,217 @@
+name: kafka-guide-lab
+
+x-kafka-common: &kafka-common
+  image: apache/kafka:4.0.0
+  restart: unless-stopped
+  environment: &kafka-common-env
+    KAFKA_PROCESS_ROLES: broker,controller
+    KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,BROKER:PLAINTEXT,EXTERNAL:PLAINTEXT
+    KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+    KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+    # Fixed cluster ID so every broker forms the same KRaft cluster on first boot
+    # (`kafka-storage.sh random-uuid` output, pinned rather than regenerated per run).
+    CLUSTER_ID: KXbFySbCTd6kAyYrbLGrkA
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    KAFKA_MIN_INSYNC_REPLICAS: 2
+    KAFKA_NUM_PARTITIONS: 3
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+  healthcheck:
+    # A plain TCP check on the internal BROKER listener, not a JVM-based admin-client
+    # probe: with three brokers plus a fresh JVM per check every interval, CPU
+    # contention on an ordinary laptop made kafka-broker-api-versions.sh time out even
+    # though the broker itself was healthy. nc -z is cheap and sufficient for "is this
+    # broker's socket accepting connections."
+    test: ["CMD-SHELL", "nc -z localhost 9092"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
+  networks:
+    - kafka-lab
+
+services:
+  kafka-1:
+    <<: *kafka-common
+    hostname: kafka-1
+    container_name: kafka-lab-kafka-1
+    ports:
+      - "29092:9092"
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: BROKER://kafka-1:19092,CONTROLLER://kafka-1:9093,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-1:19092,EXTERNAL://localhost:29092
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+
+  kafka-2:
+    <<: *kafka-common
+    hostname: kafka-2
+    container_name: kafka-lab-kafka-2
+    ports:
+      - "29093:9092"
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: BROKER://kafka-2:19092,CONTROLLER://kafka-2:9093,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-2:19092,EXTERNAL://localhost:29093
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+
+  kafka-3:
+    <<: *kafka-common
+    hostname: kafka-3
+    container_name: kafka-lab-kafka-3
+    ports:
+      - "29094:9092"
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: 3
+      KAFKA_LISTENERS: BROKER://kafka-3:19092,CONTROLLER://kafka-3:9093,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka-3:19092,EXTERNAL://localhost:29094
+    volumes:
+      - kafka-3-data:/var/lib/kafka/data
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-lab-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    networks:
+      - kafka-lab
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-lab-kafka-exporter
+    restart: unless-stopped
+    command:
+      - --kafka.server=kafka-1:19092
+      - --kafka.server=kafka-2:19092
+      - --kafka.server=kafka-3:19092
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    ports:
+      - "9308:9308"
+    networks:
+      - kafka-lab
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: kafka-lab-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - kafka-lab
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: kafka-lab-grafana
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - kafka-lab
+
+  # Optional: enable with `docker compose --profile extras up -d`
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.7.1
+    container_name: kafka-lab-schema-registry
+    restart: unless-stopped
+    profiles: ["extras"]
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    networks:
+      - kafka-lab
+
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.7.1
+    container_name: kafka-lab-kafka-connect
+    restart: unless-stopped
+    profiles: ["extras"]
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092
+      CONNECT_GROUP_ID: kafka-lab-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
+    networks:
+      - kafka-lab
+
+networks:
+  kafka-lab:
+    name: kafka-guide-lab
+
+volumes:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
+  prometheus-data:
+  grafana-data:
