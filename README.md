@@ -1,0 +1,61 @@
+# Kafka, Operationally
+
+An interactive Kafka guide for developers, platform engineers, and SREs — built from the
+guide plan: concepts, hands-on labs, configuration experiments, failure simulations, and
+troubleshooting playbooks.
+
+## Stack
+
+- Next.js 16 (App Router) + TypeScript
+- Tailwind CSS v4 (CSS-first config, see `src/app/globals.css` for design tokens)
+- `next/font/google`: Fraunces (display), Inter (body), JetBrains Mono (data/config)
+
+## Getting started
+
+```bash
+npm install
+npm run dev
+```
+
+Open http://localhost:3000. The first `dev`/`build` run needs network access to fetch the
+Google Fonts used (`fonts.googleapis.com`) — after that they're cached locally by Next.js.
+
+## Project structure
+
+```
+src/
+  app/
+    page.tsx                        Dashboard / home
+    modules/                        Module index + dynamic module pages (7 modules from the plan)
+    config-explorer/                Filterable configuration reference
+    troubleshooting/                Symptom → evidence → cause → resolution catalog
+    runbooks/                       Production operations runbook index
+    incident-simulator/             Incident list + interactive diagnosis pages
+  components/
+    Sidebar.tsx, TopBar.tsx         App shell (nav + persistent version/deployment context)
+    LogStrip.tsx                    Signature append-only-log motif (used in the top bar)
+    demos/
+      LeaderElectionDemo.tsx        Module 1 interactive activity (broker failure + leader election)
+      IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
+  lib/
+    types.ts                        Shared content types
+    data/                           Seed content for modules, configs, incidents, troubleshooting, runbooks
+    context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
+```
+
+## What's scaffolded vs. what's next
+
+- **Module 1 (Kafka mental model)** is fully built out, including one working interactive
+  activity (leader election simulator), as the pattern to repeat for modules 2–7.
+- **The incident simulator's "slow broker" incident** is fully built out (reveal clues,
+  pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
+- **Config explorer** ships with 12 real settings across producer/consumer/broker/topic
+  scope, filterable by scope and goal, seeded from the plan's configuration priorities.
+- **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
+  the plan, searchable.
+- Modules 2–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
+  clues, categories) but their content/interactivity is not yet written — they render a
+  "planned" state so the whole app is navigable today.
+- The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
+  containers) described in the plan is a separate, non-web deliverable (e.g. a
+  `docker-compose.yml`) — not part of this Next.js app.

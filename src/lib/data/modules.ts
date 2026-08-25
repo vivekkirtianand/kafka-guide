@@ -1,0 +1,170 @@
+import { Module } from "@/lib/types";
+
+export const modules: Module[] = [
+  {
+    slug: "mental-model",
+    index: 1,
+    title: "Kafka mental model",
+    summary:
+      "The append-only log, brokers, partitions, replicas, and the ordering and delivery guarantees everything else is built on.",
+    topics: [
+      "Kafka's append-only log",
+      "Brokers, topics, partitions, replicas",
+      "Leaders, followers, ISR, and controllers",
+      "Producers, consumers, offsets, and consumer groups",
+      "Ordering guarantees",
+      "At-most-once, at-least-once, and exactly-once processing",
+    ],
+    activities: [
+      "Animate a record moving from producer to partition replicas and consumer",
+      "Change partition counts and observe ordering",
+      "Simulate broker failure and leader election",
+      "Predict what happens before revealing the result",
+    ],
+    status: "available",
+  },
+  {
+    slug: "local-cluster-lab",
+    index: 2,
+    title: "Local cluster laboratory",
+    summary:
+      "A reproducible three-broker KRaft cluster with CLI tools, a Kafka UI, and Prometheus/Grafana for hands-on labs.",
+    topics: [
+      "Three Kafka brokers in KRaft mode",
+      "Kafka CLI tools",
+      "A simple producer and consumer",
+      "Kafka UI",
+      "Metrics collection with Prometheus and Grafana",
+      "Optional Schema Registry and Kafka Connect",
+    ],
+    activities: [
+      "Create and inspect topics",
+      "Produce records with and without keys",
+      "Observe partition placement",
+      "Stop and restart brokers",
+      "Inspect consumer offsets",
+      "Change topic-level configuration safely",
+    ],
+    status: "planned",
+  },
+  {
+    slug: "producer-configuration",
+    index: 3,
+    title: "Producer configuration",
+    summary:
+      "Configuration organized by goal — durability, batching, backpressure, latency, ordering, and transactions.",
+    topics: [
+      "Prevent acknowledged data loss (acks, enable.idempotence, retries)",
+      "Improve batching (batch.size, linger.ms)",
+      "Control memory and backpressure (buffer.memory, max.block.ms)",
+      "Handle large records (max.request.size)",
+      "Bound request latency (request.timeout.ms, delivery.timeout.ms)",
+      "Preserve ordering during retries",
+      "Use transactions (transactional.id, transaction timeouts)",
+    ],
+    activities: [
+      "Compare acks=0, acks=1, and acks=all",
+      "Introduce latency and measure batching and throughput",
+      "Kill the partition leader during production",
+      "Fill the producer buffer",
+      "Send duplicates with and without idempotence",
+      "Trigger record-size and delivery-timeout failures",
+    ],
+    status: "planned",
+  },
+  {
+    slug: "consumer-configuration",
+    index: 4,
+    title: "Consumer configuration",
+    summary:
+      "Consumer groups, partition assignment, offset commits, rebalances, and poison-message handling.",
+    topics: [
+      "Consumer groups and partition assignment",
+      "Polling and heartbeats",
+      "Offset commits",
+      "Rebalance behavior",
+      "Static membership",
+      "Cooperative assignment",
+      "Poison messages and retry strategies",
+    ],
+    activities: [
+      "Make processing exceed max.poll.interval.ms",
+      "Add and remove consumer instances",
+      "Compare automatic and manual commits",
+      "Crash a consumer before and after committing",
+      "Reset offsets and replay data",
+      "Process a poison message using retry and dead-letter topics",
+    ],
+    status: "planned",
+  },
+  {
+    slug: "broker-topic-configuration",
+    index: 5,
+    title: "Broker and topic configuration",
+    summary:
+      "Replication, retention, compaction, request limits, quotas, and listener/security configuration.",
+    topics: [
+      "Replication and durability",
+      "Retention and compaction",
+      "Segment management",
+      "Request and record-size limits",
+      "Network and I/O threads",
+      "Quotas",
+      "Controller and KRaft settings",
+      "Listener configuration",
+      "Security",
+      "Rack awareness",
+      "Automatic topic creation and defaults",
+    ],
+    activities: [],
+    status: "planned",
+  },
+  {
+    slug: "observability",
+    index: 6,
+    title: "Observability",
+    summary: "Moving from symptom to evidence across lag, ISR, latency, disk, network, and GC signals.",
+    topics: [
+      "Consumer lag and lag growth rate",
+      "Under-replicated and offline partitions",
+      "ISR changes",
+      "Request latency and request queues",
+      "Produce and fetch error rates",
+      "Disk usage and disk latency",
+      "Network saturation",
+      "Controller health",
+      "JVM memory and garbage collection",
+      "Rebalance frequency",
+      "Log-cleaner performance",
+    ],
+    activities: [
+      "Present an unlabeled dashboard and identify the bottleneck: producer, broker, consumer, disk, network, or downstream processing",
+    ],
+    status: "planned",
+  },
+  {
+    slug: "troubleshooting-scenarios",
+    index: 7,
+    title: "Troubleshooting scenarios",
+    summary:
+      "A searchable symptom → evidence → cause → resolution catalog covering the most common Kafka incidents.",
+    topics: [
+      "Consumer lag",
+      "Frequent consumer rebalances",
+      "NOT_ENOUGH_REPLICAS",
+      "Under-replicated partitions",
+      "Timeout errors",
+      "Disk usage growth",
+      "Large-message failures",
+      "Hot partitions",
+      "Data loss, duplicates, and out-of-order records",
+      "Connectivity and authentication",
+    ],
+    activities: [],
+    status: "planned",
+  },
+];
+
+export function getModule(slug: string): Module | undefined {
+  return modules.find((m) => m.slug === slug);
+}

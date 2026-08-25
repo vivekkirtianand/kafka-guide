@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+:root {
+  /* Control-room palette: deep charcoal-navy, amber signal, teal stream accent */
+  --bg: #12151b;
+  --bg-elevated: #1b1f29;
+  --bg-inset: #0d0f14;
+  --border: #2a2f3b;
+  --border-soft: #232734;
+  --text: #e7e9ee;
+  --text-muted: #9ba1af;
+  --text-faint: #6b7180;
+  --accent: #e8a33d;
+  --accent-soft: #e8a33d1f;
+  --stream: #4fa8ac;
+  --stream-soft: #4fa8ac1f;
+  --danger: #d9584b;
+  --danger-soft: #d9584b1f;
+  --success: #6fae7c;
+  --success-soft: #6fae7c1f;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-inset: var(--bg-inset);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-stream: var(--stream);
+  --color-stream-soft: var(--stream-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jbmono);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Visible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
