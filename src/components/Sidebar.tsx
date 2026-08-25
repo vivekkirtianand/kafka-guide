@@ -60,12 +60,26 @@ function Nav({ pathname, onNavigate }: { pathname: string; onNavigate?: () => vo
 }
 
 const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+// Keep in sync with Tailwind's `lg` breakpoint — the drawer/backdrop are `lg:hidden`,
+// so once this matches they'd be invisible while the modal state (inert, scroll lock,
+// trapped focus) stayed active if we didn't close on the crossing.
+const DESKTOP_QUERY = "(min-width: 1024px)";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    function handleChange(e: MediaQueryListEvent | MediaQueryList) {
+      if (e.matches) setOpen(false);
+    }
+    handleChange(mql);
+    mql.addEventListener("change", handleChange);
+    return () => mql.removeEventListener("change", handleChange);
+  }, []);
 
   useEffect(() => {
     if (!open) return;

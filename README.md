@@ -12,6 +12,10 @@ troubleshooting playbooks.
 
 ## Getting started
 
+Requires Node `^22.22.2 || ^24.15.0 || >=26.0.0` (the floor is set by `jsdom`, a test
+dependency; see `package.json`'s `engines` field). `.nvmrc` pins the exact version this repo
+is tested against — run `nvm use` if you use nvm.
+
 ```bash
 npm install
 npm run dev
