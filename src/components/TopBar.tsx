@@ -1,7 +1,7 @@
 "use client";
 
 import { useCluster, KAFKA_VERSIONS, DEPLOYMENT_LABELS, KafkaVersion } from "@/lib/context/ClusterContext";
-import { DeploymentType } from "@/lib/types";
+import { DeploymentType, availableDeployments } from "@/lib/types";
 import LogStrip from "./LogStrip";
 
 export default function TopBar() {
@@ -34,9 +34,9 @@ export default function TopBar() {
             onChange={(e) => setDeployment(e.target.value as DeploymentType)}
             className="rounded border border-border bg-bg-elevated px-2 py-1 text-text outline-none hover:border-accent/60"
           >
-            {Object.entries(DEPLOYMENT_LABELS).map(([value, label]) => (
+            {availableDeployments(version).map((value) => (
               <option key={value} value={value}>
-                {label}
+                {DEPLOYMENT_LABELS[value]}
               </option>
             ))}
           </select>

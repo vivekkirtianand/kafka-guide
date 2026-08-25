@@ -1,6 +1,22 @@
 export type DeploymentType = "kraft" | "zookeeper" | "managed";
 
+export const KAFKA_VERSIONS = ["4.0", "3.9", "3.7", "3.5"] as const;
+export type KafkaVersion = (typeof KAFKA_VERSIONS)[number];
+
+// Kafka 4.0 removed ZooKeeper mode (KIP-833) — only KRaft and managed services remain valid.
+export function availableDeployments(version: KafkaVersion): DeploymentType[] {
+  if (version === "4.0") return ["kraft", "managed"];
+  return ["kraft", "zookeeper", "managed"];
+}
+
 export type RiskLevel = "safe" | "caution" | "high-risk";
+
+// How a config change actually takes effect — these are different mechanisms, not degrees of one "dynamic" axis.
+export type ChangeMechanism =
+  | "dynamic-cluster" // kafka-configs.sh --alter against brokers/cluster-wide defaults, no restart
+  | "topic-alter" // kafka-configs.sh --alter against a topic, no restart
+  | "recreate-client" // producer/consumer configs: only take effect for a newly constructed client
+  | "broker-restart"; // static broker config, requires a process restart
 
 export interface Module {
   slug: string;
@@ -18,7 +34,9 @@ export interface ConfigEntry {
   goal: string;
   controls: string;
   defaultValue: string;
-  dynamic: boolean;
+  // Only set when the default differs for that version; falls back to defaultValue otherwise.
+  defaultValueByVersion?: Partial<Record<KafkaVersion, string>>;
+  changeMechanism: ChangeMechanism;
   riskOfChange: RiskLevel;
   managedAvailability: "full" | "limited" | "unavailable";
   whenToChange: string;
@@ -26,6 +44,10 @@ export interface ConfigEntry {
   reliabilityImpact: string;
   relatedConfigs: string[];
   failureModes: string[];
+}
+
+export function getDefaultValue(entry: ConfigEntry, version: KafkaVersion): string {
+  return entry.defaultValueByVersion?.[version] ?? entry.defaultValue;
 }
 
 export interface Incident {

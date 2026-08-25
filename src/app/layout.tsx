@@ -35,9 +35,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full">
         <ClusterProvider>
-          <div className="flex min-h-screen">
+          <div className="flex min-h-screen flex-col lg:flex-row">
             <Sidebar />
-            <div className="flex min-h-screen flex-1 flex-col">
+            <div id="app-content" className="flex min-h-screen flex-1 flex-col">
               <TopBar />
               <main className="flex-1 px-6 py-10 sm:px-10">{children}</main>
             </div>
