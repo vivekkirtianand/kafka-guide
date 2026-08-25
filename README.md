@@ -12,6 +12,10 @@ troubleshooting playbooks.
 
 ## Getting started
 
+Requires Node `^22.22.2 || ^24.15.0 || >=26.0.0` (the floor is set by `jsdom`, a test
+dependency; see `package.json`'s `engines` field). `.nvmrc` pins the exact version this repo
+is tested against — run `nvm use` if you use nvm.
+
 ```bash
 npm install
 npm run dev
@@ -35,7 +39,9 @@ src/
     Sidebar.tsx, TopBar.tsx         App shell (nav + persistent version/deployment context)
     LogStrip.tsx                    Signature append-only-log motif (used in the top bar)
     demos/
-      LeaderElectionDemo.tsx        Module 1 interactive activity (broker failure + leader election)
+      RecordFlowDemo.tsx            Module 1 activity: producer → partition → consumer, predict-before-reveal
+      PartitionOrderingDemo.tsx     Module 1 activity: partition count vs. ordering guarantees
+      LeaderElectionDemo.tsx        Module 1 activity: broker failure, catch-up, and leader election
       IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
   lib/
     types.ts                        Shared content types
@@ -45,8 +51,11 @@ src/
 
 ## What's scaffolded vs. what's next
 
-- **Module 1 (Kafka mental model)** is fully built out, including one working interactive
-  activity (leader election simulator), as the pattern to repeat for modules 2–7.
+- **Module 1 (Kafka mental model)**'s four planned interactive activities are all built
+  (producer → partition → consumer flow, partition-count/ordering, broker failure/leader
+  election), as the pattern to repeat for modules 2–7. The topic list itself is still just
+  a bullet outline, though — the explanatory lesson content for each topic hasn't been
+  written yet. See [PLAN.md](PLAN.md) for the detailed status.
 - **The incident simulator's "slow broker" incident** is fully built out (reveal clues,
   pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
 - **Config explorer** ships with 12 real settings across producer/consumer/broker/topic

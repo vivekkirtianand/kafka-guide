@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { configs, configGoals, configScopes } from "@/lib/data/configs";
-import { ConfigEntry, RiskLevel } from "@/lib/types";
+import { ChangeMechanism, ConfigEntry, DeploymentType, KafkaVersion, RiskLevel, getDefaultValue } from "@/lib/types";
+import { useCluster } from "@/lib/context/ClusterContext";
 import Badge from "./Badge";
 
 const RISK_TONE: Record<RiskLevel, "success" | "accent" | "danger"> = {
@@ -11,7 +12,15 @@ const RISK_TONE: Record<RiskLevel, "success" | "accent" | "danger"> = {
   "high-risk": "danger",
 };
 
+const MECHANISM_LABEL: Record<ChangeMechanism, string> = {
+  "dynamic-cluster": "dynamic · cluster-wide",
+  "topic-alter": "dynamic · per-topic",
+  "recreate-client": "recreate client",
+  "broker-restart": "broker restart",
+};
+
 export default function ConfigExplorer() {
+  const { version, deployment } = useCluster();
   const [scope, setScope] = useState<string>("all");
   const [goal, setGoal] = useState<string>("all");
   const [query, setQuery] = useState("");
@@ -64,11 +73,20 @@ export default function ConfigExplorer() {
         </span>
       </div>
 
+      {deployment === "managed" && (
+        <div className="mb-4 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 font-mono text-[11px] text-accent">
+          Viewing as managed service: configs marked limited or unavailable below aren&apos;t exposed the same way
+          as on a self-managed cluster.
+        </div>
+      )}
+
       <div className="flex flex-col gap-2">
         {filtered.map((c) => (
           <ConfigRow
             key={c.key}
             entry={c}
+            version={version}
+            deployment={deployment}
             open={expanded === c.key}
             onToggle={() => setExpanded(expanded === c.key ? null : c.key)}
           />
@@ -83,14 +101,33 @@ export default function ConfigExplorer() {
   );
 }
 
-function ConfigRow({ entry, open, onToggle }: { entry: ConfigEntry; open: boolean; onToggle: () => void }) {
+function ConfigRow({
+  entry,
+  version,
+  deployment,
+  open,
+  onToggle,
+}: {
+  entry: ConfigEntry;
+  version: KafkaVersion;
+  deployment: DeploymentType;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const limitedOnManaged = deployment === "managed" && entry.managedAvailability !== "full";
+
   return (
     <div className="rounded-lg border border-border bg-bg-elevated">
       <button onClick={onToggle} className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left">
         <span className="font-mono text-sm text-text">{entry.key}</span>
         <Badge tone="stream">{entry.scope}</Badge>
         <Badge tone={RISK_TONE[entry.riskOfChange]}>{entry.riskOfChange}</Badge>
-        <Badge tone="neutral">{entry.dynamic ? "dynamic" : "restart required"}</Badge>
+        <Badge tone="neutral">{MECHANISM_LABEL[entry.changeMechanism]}</Badge>
+        {limitedOnManaged && (
+          <Badge tone={entry.managedAvailability === "unavailable" ? "danger" : "accent"}>
+            {entry.managedAvailability} on managed
+          </Badge>
+        )}
         <span className="ml-auto font-mono text-[11px] text-text-faint">{open ? "−" : "+"}</span>
       </button>
 
@@ -99,10 +136,12 @@ function ConfigRow({ entry, open, onToggle }: { entry: ConfigEntry; open: boolea
           <p className="text-sm text-text-muted">{entry.controls}</p>
 
           <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Default">
-              <code className="font-mono text-xs text-text">{entry.defaultValue}</code>
+            <Field label={`Default (Kafka ${version})`}>
+              <code className="font-mono text-xs text-text">{getDefaultValue(entry, version)}</code>
             </Field>
-            <Field label="Managed-service availability">{entry.managedAvailability}</Field>
+            <Field label="Managed-service availability">
+              <span className={limitedOnManaged ? "text-accent" : undefined}>{entry.managedAvailability}</span>
+            </Field>
             <Field label="When to change it">{entry.whenToChange}</Field>
             <Field label="Related configurations">{entry.relatedConfigs.join(", ")}</Field>
             <Field label="Performance impact">{entry.performanceImpact}</Field>

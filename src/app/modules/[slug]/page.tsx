@@ -4,6 +4,8 @@ import { modules, getModule } from "@/lib/data/modules";
 import SectionHeading from "@/components/SectionHeading";
 import Badge from "@/components/Badge";
 import LeaderElectionDemo from "@/components/demos/LeaderElectionDemo";
+import RecordFlowDemo from "@/components/demos/RecordFlowDemo";
+import PartitionOrderingDemo from "@/components/demos/PartitionOrderingDemo";
 
 export function generateStaticParams() {
   return modules.map((m) => ({ slug: m.slug }));
@@ -53,7 +55,9 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
       </div>
 
       {mod.slug === "mental-model" && (
-        <div className="mt-10">
+        <div className="mt-10 flex flex-col gap-8">
+          <RecordFlowDemo />
+          <PartitionOrderingDemo />
           <LeaderElectionDemo />
         </div>
       )}
