@@ -62,9 +62,12 @@ src/
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
 - **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
   the plan, searchable.
-- Modules 2–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
+- Modules 3–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
   clues, categories) but their content/interactivity is not yet written — they render a
-  "planned" state so the whole app is navigable today.
+  "planned" state so the whole app is navigable today. Module 2's page is the exception: it
+  links out to the local cluster lab below instead of showing that placeholder, since the
+  content itself lives outside the Next.js app.
 - The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
-  containers) described in the plan is a separate, non-web deliverable (e.g. a
-  `docker-compose.yml`) — not part of this Next.js app.
+  containers) described in the plan is a separate, non-web deliverable — not part of this
+  Next.js app. It's built out at [`local-cluster-lab/`](local-cluster-lab/) (its own
+  `docker-compose.yml` and README) with a walkthrough for all six Module 2 activities.

@@ -1,0 +1,78 @@
+{
+  "title": "Kafka lab overview",
+  "uid": "kafka-lab-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Brokers reporting",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "kafka_brokers", "legendFormat": "brokers" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Under-replicated partitions",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(kafka_topic_partition_under_replicated_partition)",
+          "legendFormat": "under-replicated"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Consumer group lag by group",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag)",
+          "legendFormat": "{{consumergroup}} / {{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Partition write rate (records/sec)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset[1m]))",
+          "legendFormat": "{{topic}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "In-sync replicas vs total replicas per partition",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "kafka_topic_partition_in_sync_replica",
+          "legendFormat": "ISR count",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "kafka_topic_partition_replicas",
+          "legendFormat": "Total replicas",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        }
+      ]
+    }
+  ]
+}
