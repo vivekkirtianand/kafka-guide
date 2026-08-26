@@ -23,7 +23,12 @@ does not yet contain the explanatory lesson prose to actually teach them. Don't 
 Unlike Module 1, this module's content isn't a React page — it's the actual local-cluster
 deliverable README.md scopes as separate from the Next.js app: a reproducible three-broker
 Kafka cluster and observability stack, built at [local-cluster-lab/](local-cluster-lab/).
-The in-app `/modules/local-cluster-lab` page is untouched and still renders "planned."
+The in-app `/modules/local-cluster-lab` page ([page.tsx](src/app/modules/%5Bslug%5D/page.tsx))
+no longer shows the generic "planned" placeholder — it renders a "lab built" badge and links
+out to the `local-cluster-lab/` folder on GitHub. `status: "planned"` in
+[modules.ts](src/lib/data/modules.ts) is unchanged, though, so the module index card still
+shows a "planned" badge — that field means "has an interactive React demo embedded in this
+app," which this module intentionally doesn't.
 
 | Item | Status | Notes |
 |---|---|---|
@@ -102,7 +107,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 | Item | Status | Notes |
 |---|---|---|
 | Modules 3–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
-| Module 2 in-app page | ⭕ Planned | Still renders the generic "planned" placeholder — its content is the local cluster lab below, which lives outside the Next.js app rather than on this page. |
+| Module 2 in-app page | ✅ Done | Renders a "lab built" badge and a link out to `local-cluster-lab/` on GitHub instead of the generic "planned" placeholder. The module index card still shows "planned" — `status` in modules.ts means "has an embedded React demo," which this module doesn't have by design. |
 | 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
 | 14 production runbooks | ⭕ Planned | Titles/categories scoped; content not written. |
 | Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ✅ Done | Built at [local-cluster-lab/](local-cluster-lab/) — explicitly out of scope for the Next.js app per README, a separate deliverable. See Module 2 section below for what was built and verified. |

@@ -62,7 +62,27 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         </div>
       )}
 
-      {mod.status === "planned" && (
+      {mod.slug === "local-cluster-lab" && (
+        <div className="mt-10 rounded-lg border border-border bg-bg-elevated p-5 text-sm text-text-muted">
+          <Badge tone="success">lab built</Badge>
+          <p className="mt-3">
+            This module&apos;s content isn&apos;t a page in this app — it&apos;s a real, reproducible
+            Docker Compose lab: a three-broker Kafka cluster in KRaft mode, a web UI, and
+            Prometheus/Grafana for metrics, with a walkthrough for every activity listed above.
+          </p>
+          <a
+            href="https://github.com/vivekkirtianand/kafka-guide/tree/main/local-cluster-lab"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-2 text-accent hover:underline"
+          >
+            Open the local cluster lab
+            <span aria-hidden>→</span>
+          </a>
+        </div>
+      )}
+
+      {mod.status === "planned" && mod.slug !== "local-cluster-lab" && (
         <div className="mt-10 rounded-lg border border-dashed border-border bg-bg-elevated p-5 text-sm text-text-muted">
           <Badge tone="neutral">planned</Badge>
           <p className="mt-3">
