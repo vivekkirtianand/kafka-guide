@@ -66,6 +66,30 @@ just patched from the description):
 | Three Grafana panels overstated what their queries showed | ✅ Done | "Under-replicated partitions" used `count()` over a comparison that returns empty (renders "No data") when the cluster is healthy — switched to `sum(kafka_topic_partition_under_replicated_partition)`, the exporter's own purpose-built gauge (confirmed present via `/metrics`), which returns `0` cleanly. "Partition current offset (write rate proxy)" plotted a cumulative counter as if it were a rate — wrapped in `rate(...[1m])` and retitled "Partition write rate (records/sec)" to match what it now actually computes. "ISR vs total replicas" table only queried ISR count — added `kafka_topic_partition_replicas` as a second target so both columns render. All three queries re-run directly against a live Prometheus instance to confirm correct output. |
 | No CI coverage for the new deliverable | ✅ Done | Added a `verify-local-cluster-lab` job to [ci.yml](.github/workflows/ci.yml): `docker compose config --quiet` for both the base and `--profile extras` compose graphs, plus `jq empty` on the dashboard JSON. All three commands re-run locally and pass. |
 
+## Module 3 — Producer configuration
+
+Unlike Module 1 and 2, this module is "fully" done in the sense flagged as a gap
+everywhere else in this file: all 7 topics have real lesson prose, not just a bullet
+outline, in addition to the 4 interactive activities below. `Module.topicNarrative`
+(new, optional field on `Module` in [types.ts](src/lib/types.ts)) carries this content,
+rendered by [page.tsx](src/app/modules/%5Bslug%5D/page.tsx) as full prose sections when
+present, falling back to the old bullet-outline layout otherwise — Modules 1 and 4–7
+are unaffected and still render as bullets.
+
+| Item | Status | Notes |
+|---|---|---|
+| Topic narrative (all 7 topics) | ✅ Done | Written directly into `modules.ts`'s `producer-configuration` entry; verified rendering in-browser against the real page, not just the data. |
+| New config entries (8) | ✅ Done | [configs.ts](src/lib/data/configs.ts) gained `retries`, `buffer.memory`, `max.block.ms`, `max.request.size`, `request.timeout.ms`, `delivery.timeout.ms`, `max.in.flight.requests.per.connection`, `transactional.id`, `transaction.timeout.ms` — closing gaps that existing entries' `relatedConfigs` already referenced but didn't define. Verified in Config Explorer: 21/21 entries render, new goal categories populate the filter automatically, expanding `transactional.id` shows all fields correctly cross-referenced. |
+| Activity: compare acks=0/1/all + kill the partition leader during production | ✅ Done | [AcksDurabilityDemo.tsx](src/components/demos/AcksDurabilityDemo.tsx) — one demo covers both activities, since the interesting behavior only shows up when a leader crash is combined with an acks setting. Verified live: acks=1 + crash → "acknowledged — data lost"; acks=all + crash → "not acknowledged — safe to retry" (no false promise made); acks=0/1 without a crash → "acknowledged — data safe." |
+| Activity: introduce latency and measure batching/throughput | ✅ Done | [BatchingThroughputDemo.tsx](src/components/demos/BatchingThroughputDemo.tsx) — a fixed 10-record arrival sequence, linger.ms/batch.size pickers, batches computed deterministically (flush on size or linger, whichever first). Verified live: default (linger=5, size=5) → 4 requests, 3.4ms avg added latency; linger=0 → 10 requests (no batching); linger=100 → 2 requests but one record waits 82ms for the batch to fill. |
+| Activity: fill the producer buffer + trigger record-size/delivery-timeout failures | ✅ Done | [BufferAndTimeoutDemo.tsx](src/components/demos/BufferAndTimeoutDemo.tsx) — one demo, three scenario tabs (buffer/oversize/timeout), since all three are producer-side limits with the same shape (synchronous rejection vs. blocking vs. delayed timeout). Verified live: 6th produce into a 5-slot buffer blocks send(); draining while blocked resolves it immediately; waiting past max.block.ms throws; an oversized record is rejected synchronously regardless of buffer state; 4 retry attempts (4×30000ms) exhaust the 120000ms delivery.timeout.ms budget exactly. |
+| Activity: send duplicates with and without idempotence | ✅ Done | [IdempotenceDemo.tsx](src/components/demos/IdempotenceDemo.tsx) — single-partition log, toggle + retry-the-last-send button. Verified live: idempotent retry is discarded (log stays at 1 entry); non-idempotent retry is appended as a genuine duplicate (same seq, new offset). |
+
+**Tests**: 24 new tests across the four demo test files (49 total in the suite, up from
+25), following Module 1's pattern — `data-testid` for structural containers, exact-string
+assertions on log/outcome text, one test per distinct behavior branch. All passing, plus
+`typecheck`, `lint`, and `next build` clean.
+
 ## Test infrastructure
 
 | Item | Status | Notes |
@@ -107,7 +131,9 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 | Item | Status | Notes |
 |---|---|---|
-| Modules 3–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
+| Modules 4–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
+| Module 3 (Producer configuration) | ✅ Done | Full topic narrative + 4 interactive activities. See the Module 3 section above. |
+| Module 1's topic narrative content | ⭕ Planned | Still a bullet outline, unlike Module 3 — see the Module 1 section above. |
 | Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
 | 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
 | 14 production runbooks | ⭕ Planned | Titles/categories scoped; content not written. |

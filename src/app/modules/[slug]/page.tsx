@@ -6,6 +6,10 @@ import Badge from "@/components/Badge";
 import LeaderElectionDemo from "@/components/demos/LeaderElectionDemo";
 import RecordFlowDemo from "@/components/demos/RecordFlowDemo";
 import PartitionOrderingDemo from "@/components/demos/PartitionOrderingDemo";
+import AcksDurabilityDemo from "@/components/demos/AcksDurabilityDemo";
+import BatchingThroughputDemo from "@/components/demos/BatchingThroughputDemo";
+import BufferAndTimeoutDemo from "@/components/demos/BufferAndTimeoutDemo";
+import IdempotenceDemo from "@/components/demos/IdempotenceDemo";
 
 export function generateStaticParams() {
   return modules.map((m) => ({ slug: m.slug }));
@@ -26,39 +30,82 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         description={mod.summary}
       />
 
-      <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
-        <div>
-          <h2 className="mb-3 font-display text-lg text-text">Topics</h2>
-          <ul className="flex flex-col gap-2">
-            {mod.topics.map((t) => (
-              <li key={t} className="flex gap-2 text-sm leading-relaxed text-text-muted">
-                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent" />
-                {t}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {mod.activities.length > 0 && (
+      {mod.topicNarrative ? (
+        <div className="flex flex-col gap-8">
           <div>
-            <h2 className="mb-3 font-display text-lg text-text">Interactive activities</h2>
+            <h2 className="mb-4 font-display text-lg text-text">Topics</h2>
+            <div className="flex flex-col gap-6">
+              {mod.topics.map((t) => (
+                <div key={t}>
+                  <h3 className="mb-2 font-display text-base text-text">{t}</h3>
+                  {mod.topicNarrative?.[t]?.split("\n\n").map((para, i) => (
+                    <p key={i} className="mb-2 text-sm leading-relaxed text-text-muted last:mb-0">
+                      {para}
+                    </p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {mod.activities.length > 0 && (
+            <div>
+              <h2 className="mb-3 font-display text-lg text-text">Interactive activities</h2>
+              <ul className="flex flex-col gap-2">
+                {mod.activities.map((a) => (
+                  <li key={a} className="flex gap-2 text-sm leading-relaxed text-text-muted">
+                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-stream" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
+          <div>
+            <h2 className="mb-3 font-display text-lg text-text">Topics</h2>
             <ul className="flex flex-col gap-2">
-              {mod.activities.map((a) => (
-                <li key={a} className="flex gap-2 text-sm leading-relaxed text-text-muted">
-                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-stream" />
-                  {a}
+              {mod.topics.map((t) => (
+                <li key={t} className="flex gap-2 text-sm leading-relaxed text-text-muted">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent" />
+                  {t}
                 </li>
               ))}
             </ul>
           </div>
-        )}
-      </div>
+
+          {mod.activities.length > 0 && (
+            <div>
+              <h2 className="mb-3 font-display text-lg text-text">Interactive activities</h2>
+              <ul className="flex flex-col gap-2">
+                {mod.activities.map((a) => (
+                  <li key={a} className="flex gap-2 text-sm leading-relaxed text-text-muted">
+                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-stream" />
+                    {a}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {mod.slug === "mental-model" && (
         <div className="mt-10 flex flex-col gap-8">
           <RecordFlowDemo />
           <PartitionOrderingDemo />
           <LeaderElectionDemo />
+        </div>
+      )}
+
+      {mod.slug === "producer-configuration" && (
+        <div className="mt-10 flex flex-col gap-8">
+          <AcksDurabilityDemo />
+          <BatchingThroughputDemo />
+          <BufferAndTimeoutDemo />
+          <IdempotenceDemo />
         </div>
       )}
 
