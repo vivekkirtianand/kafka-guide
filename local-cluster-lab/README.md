@@ -7,8 +7,11 @@ project — it has no dependency on the Next.js app in the repo root and isn't s
 
 ## What's in the cluster
 
-- **`kafka-1` / `kafka-2` / `kafka-3`** — three [Apache Kafka 4.0](https://kafka.apache.org/)
+- **`kafka-1` / `kafka-2` / `kafka-3`** — three [Apache Kafka 4.0.2](https://kafka.apache.org/)
   brokers, each also acting as a KRaft controller (no ZooKeeper — Kafka 4.0 removed it).
+  Pinned to 4.0.2, not 4.0.0/4.0.1: those are affected by
+  [CVE-2026-35554](https://kafka.apache.org/community/cve-list/), a producer buffer-pool
+  race that can silently corrupt or misroute records.
   Reachable from the host at `localhost:29092`, `localhost:29093`, `localhost:29094`.
   Default topic settings: 3 partitions, replication factor 3, `min.insync.replicas=2`.
 - **Kafka UI** ([provectuslabs/kafka-ui](https://github.com/provectus/kafka-ui)) —
@@ -193,9 +196,9 @@ docker compose --profile extras up -d
 ## Metrics and dashboards
 
 The Grafana dashboard reads from kafka-exporter via Prometheus — no JMX setup needed. It
-covers broker count, under-replicated partitions, per-topic partition throughput, and
-consumer group lag. Open Grafana (anonymous access, no login needed) and the dashboard is
-provisioned under Dashboards → "Kafka lab overview". Prometheus's own UI
+covers broker count, under-replicated partitions, per-topic write rate, consumer group lag,
+and an ISR-vs-total-replicas table. Open Grafana (anonymous access, no login needed) and the
+dashboard is provisioned under Dashboards → "Kafka lab overview". Prometheus's own UI
 (http://localhost:9090) is useful for ad hoc queries against raw `kafka_*` metrics.
 
 ## Cleaning up
@@ -216,3 +219,11 @@ docker compose down -v     # also remove data volumes (fresh cluster next time)
   auto-creation would hide.
 - Ports `29092`–`29094` (not the usual `9092`) are used for the host-facing listener so the
   lab doesn't collide with a Kafka broker you might already have running locally.
+- Every published port is bound to `127.0.0.1` explicitly (`"127.0.0.1:PORT:PORT"`, not
+  bare `"PORT:PORT"`). None of these services authenticate — Kafka Connect, Schema
+  Registry, Kafka UI's dynamic config, and Grafana's anonymous-admin access are all
+  meant for local-only use, and Docker Compose binds to every network interface by
+  default if you omit the host IP.
+- All images are pinned (version tag, or a digest for kafka-ui, which hasn't cut a
+  tagged release since April 2024) rather than `latest`, so `docker compose up` pulls
+  the same software every time instead of whatever shipped since this was last run.

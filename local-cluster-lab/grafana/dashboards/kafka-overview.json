@@ -23,7 +23,7 @@
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
       "targets": [
         {
-          "expr": "count(kafka_topic_partition_in_sync_replica < on(topic, partition) kafka_topic_partition_replicas)",
+          "expr": "sum(kafka_topic_partition_under_replicated_partition)",
           "legendFormat": "under-replicated"
         }
       ]
@@ -42,12 +42,12 @@
     },
     {
       "id": 4,
-      "title": "Partition current offset (write rate proxy)",
+      "title": "Partition write rate (records/sec)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "sum by (topic) (kafka_topic_partition_current_offset)",
+          "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset[1m]))",
           "legendFormat": "{{topic}}"
         }
       ]
@@ -60,9 +60,17 @@
       "targets": [
         {
           "expr": "kafka_topic_partition_in_sync_replica",
-          "legendFormat": "{{topic}}-{{partition}} ISR",
+          "legendFormat": "ISR count",
           "format": "table",
-          "instant": true
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "kafka_topic_partition_replicas",
+          "legendFormat": "Total replicas",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
         }
       ]
     }

@@ -1,7 +1,9 @@
 name: kafka-guide-lab
 
 x-kafka-common: &kafka-common
-  image: apache/kafka:4.0.0
+  # 4.0.0/4.0.1 are affected by CVE-2026-35554 (producer buffer-pool race that can
+  # silently corrupt or misroute records); 4.0.2 has the fix.
+  image: apache/kafka:4.0.2
   restart: unless-stopped
   environment: &kafka-common-env
     KAFKA_PROCESS_ROLES: broker,controller
@@ -9,6 +11,11 @@ x-kafka-common: &kafka-common
     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,BROKER:PLAINTEXT,EXTERNAL:PLAINTEXT
     KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
     KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+    # Without this, log.dirs is left unset and Kafka falls back to its own built-in
+    # default (/tmp/kafka-logs), which is NOT the /var/lib/kafka/data path the named
+    # volume below mounts — so data would silently live in the container's writable
+    # layer and be lost on `docker compose down` despite the volume existing.
+    KAFKA_LOG_DIRS: /var/lib/kafka/data
     # Fixed cluster ID so every broker forms the same KRaft cluster on first boot
     # (`kafka-storage.sh random-uuid` output, pinned rather than regenerated per run).
     CLUSTER_ID: KXbFySbCTd6kAyYrbLGrkA
@@ -40,7 +47,7 @@ services:
     hostname: kafka-1
     container_name: kafka-lab-kafka-1
     ports:
-      - "29092:9092"
+      - "127.0.0.1:29092:9092"
     environment:
       <<: *kafka-common-env
       KAFKA_NODE_ID: 1
@@ -54,7 +61,7 @@ services:
     hostname: kafka-2
     container_name: kafka-lab-kafka-2
     ports:
-      - "29093:9092"
+      - "127.0.0.1:29093:9092"
     environment:
       <<: *kafka-common-env
       KAFKA_NODE_ID: 2
@@ -68,7 +75,7 @@ services:
     hostname: kafka-3
     container_name: kafka-lab-kafka-3
     ports:
-      - "29094:9092"
+      - "127.0.0.1:29094:9092"
     environment:
       <<: *kafka-common-env
       KAFKA_NODE_ID: 3
@@ -78,7 +85,10 @@ services:
       - kafka-3-data:/var/lib/kafka/data
 
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    # kafka-ui hasn't cut a tagged release since v0.7.2 (Apr 2024) — upstream ships
+    # continuously to `latest` with no newer semver tag, so pin by digest instead for
+    # reproducibility. Re-verified working against this lab as of 2026-08-25.
+    image: provectuslabs/kafka-ui@sha256:8f2ff02d64b0a7a2b71b6b3b3148b85f66d00ec20ad40c30bdcd415d46d31818
     container_name: kafka-lab-kafka-ui
     restart: unless-stopped
     depends_on:
@@ -89,7 +99,7 @@ services:
       kafka-3:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092
@@ -98,7 +108,7 @@ services:
       - kafka-lab
 
   kafka-exporter:
-    image: danielqsj/kafka-exporter:latest
+    image: danielqsj/kafka-exporter:v1.9.0
     container_name: kafka-lab-kafka-exporter
     restart: unless-stopped
     command:
@@ -113,24 +123,24 @@ services:
       kafka-3:
         condition: service_healthy
     ports:
-      - "9308:9308"
+      - "127.0.0.1:9308:9308"
     networks:
       - kafka-lab
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.14.0
     container_name: kafka-lab-prometheus
     restart: unless-stopped
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks:
       - kafka-lab
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.1.4
     container_name: kafka-lab-grafana
     restart: unless-stopped
     environment:
@@ -142,7 +152,7 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     depends_on:
       - prometheus
     networks:
@@ -162,7 +172,7 @@ services:
       kafka-3:
         condition: service_healthy
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092
@@ -185,7 +195,7 @@ services:
       schema-registry:
         condition: service_started
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"
     environment:
       CONNECT_BOOTSTRAP_SERVERS: kafka-1:19092,kafka-2:19092,kafka-3:19092
       CONNECT_GROUP_ID: kafka-lab-connect
