@@ -25,10 +25,11 @@ deliverable README.md scopes as separate from the Next.js app: a reproducible th
 Kafka cluster and observability stack, built at [local-cluster-lab/](local-cluster-lab/).
 The in-app `/modules/local-cluster-lab` page ([page.tsx](src/app/modules/%5Bslug%5D/page.tsx))
 no longer shows the generic "planned" placeholder — it renders a "lab built" badge and links
-out to the `local-cluster-lab/` folder on GitHub. `status: "planned"` in
-[modules.ts](src/lib/data/modules.ts) is unchanged, though, so the module index card still
-shows a "planned" badge — that field means "has an interactive React demo embedded in this
-app," which this module intentionally doesn't.
+out to the `local-cluster-lab/` folder on GitHub. `Module.status` in
+[types.ts](src/lib/types.ts) gained a third value, `"external"` (built, but as content
+outside this app rather than an embedded React demo), so the module index card
+([ModuleCard.tsx](src/components/ModuleCard.tsx)) also shows a distinct "lab built" badge
+instead of grouping this module in with the still-actually-unbuilt "planned" ones.
 
 | Item | Status | Notes |
 |---|---|---|
@@ -107,7 +108,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 | Item | Status | Notes |
 |---|---|---|
 | Modules 3–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
-| Module 2 in-app page | ✅ Done | Renders a "lab built" badge and a link out to `local-cluster-lab/` on GitHub instead of the generic "planned" placeholder. The module index card still shows "planned" — `status` in modules.ts means "has an embedded React demo," which this module doesn't have by design. |
+| Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
 | 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
 | 14 production runbooks | ⭕ Planned | Titles/categories scoped; content not written. |
 | Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ✅ Done | Built at [local-cluster-lab/](local-cluster-lab/) — explicitly out of scope for the Next.js app per README, a separate deliverable. See Module 2 section below for what was built and verified. |

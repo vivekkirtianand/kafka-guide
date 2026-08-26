@@ -62,7 +62,7 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         </div>
       )}
 
-      {mod.slug === "local-cluster-lab" && (
+      {mod.status === "external" && (
         <div className="mt-10 rounded-lg border border-border bg-bg-elevated p-5 text-sm text-text-muted">
           <Badge tone="success">lab built</Badge>
           <p className="mt-3">
@@ -82,7 +82,7 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         </div>
       )}
 
-      {mod.status === "planned" && mod.slug !== "local-cluster-lab" && (
+      {mod.status === "planned" && (
         <div className="mt-10 rounded-lg border border-dashed border-border bg-bg-elevated p-5 text-sm text-text-muted">
           <Badge tone="neutral">planned</Badge>
           <p className="mt-3">

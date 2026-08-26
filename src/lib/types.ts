@@ -25,7 +25,9 @@ export interface Module {
   summary: string;
   topics: string[];
   activities: string[];
-  status: "available" | "planned";
+  // "external" = built, but as content outside this app (e.g. the local cluster lab)
+  // rather than an embedded React demo.
+  status: "available" | "planned" | "external";
 }
 
 export interface ConfigEntry {

@@ -45,7 +45,7 @@ export const modules: Module[] = [
       "Inspect consumer offsets",
       "Change topic-level configuration safely",
     ],
-    status: "planned",
+    status: "external",
   },
   {
     slug: "producer-configuration",

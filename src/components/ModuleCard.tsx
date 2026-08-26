@@ -11,8 +11,8 @@ export default function ModuleCard({ module }: { module: Module }) {
       <div>
         <div className="mb-3 flex items-center justify-between">
           <span className="font-mono text-xs text-text-faint">{String(module.index).padStart(2, "0")}</span>
-          <Badge tone={module.status === "available" ? "success" : "neutral"}>
-            {module.status === "available" ? "available" : "planned"}
+          <Badge tone={module.status === "planned" ? "neutral" : "success"}>
+            {module.status === "planned" ? "planned" : module.status === "external" ? "lab built" : "available"}
           </Badge>
         </div>
         <h3 className="font-display text-lg text-text group-hover:text-accent">{module.title}</h3>
