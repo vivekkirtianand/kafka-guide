@@ -84,9 +84,13 @@ export default function BatchingThroughputDemo() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — real batch.size is measured in bytes, not record count, and real timing depends on
-        actual production rate rather than this fixed arrival sequence. What carries over: a batch flushes when
-        it&apos;s full or when linger.ms elapses since its first record, whichever happens first.
+        Simplified for teaching — real batch.size is measured in bytes, not record count; real timing depends on
+        actual production rate rather than this fixed arrival sequence; and a single produce request can carry
+        batches for multiple partitions bound for the same broker, so batches and requests aren&apos;t the same
+        thing (this demo shows one partition, so treat the numbers below as simulated batch flushes, not requests).
+        linger.ms=0 disables <em>waiting</em> for more records, not batching itself — records that already arrived
+        together can still batch; what carries over is that a batch flushes when it&apos;s full or when linger.ms
+        elapses since its first record, whichever happens first.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -146,15 +150,15 @@ export default function BatchingThroughputDemo() {
               ))}
             </div>
             <span className="font-mono text-[11px] text-text-faint">
-              {b.records.length} record{b.records.length === 1 ? "" : "s"} · sent at t={b.flushTime}ms
+              {b.records.length} record{b.records.length === 1 ? "" : "s"} · flushed at t={b.flushTime}ms
             </span>
           </div>
         ))}
       </div>
 
       <div className="mt-5 rounded-md border border-border-soft bg-bg-inset p-3 font-mono text-[11px] leading-relaxed text-text">
-        {batches.length} request{batches.length === 1 ? "" : "s"} sent for {ARRIVALS.length} records (vs.{" "}
-        {ARRIVALS.length} requests with no batching) · average time from arrival to send: {avgLatency.toFixed(1)}ms
+        {batches.length} simulated batch flush{batches.length === 1 ? "" : "es"} for {ARRIVALS.length} records ·
+        average time from arrival to flush: {avgLatency.toFixed(1)}ms
       </div>
     </div>
   );

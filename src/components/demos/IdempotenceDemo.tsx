@@ -4,41 +4,88 @@ import { useState } from "react";
 
 interface LogEntry {
   offset: number;
-  seq: number;
+  // Sequence numbers are part of the idempotent-producer protocol itself — a
+  // non-idempotent send never has one, not just an unused one.
+  seq: number | null;
+}
+
+interface Pending {
+  seq: number | null;
+  // Set once the user picks "ack lost in transit": the write already reached the
+  // broker (it's in `entries`), but the producer doesn't know that yet and must
+  // decide whether to retry.
+  ambiguous: boolean;
 }
 
 export default function IdempotenceDemo() {
   const [idempotent, setIdempotent] = useState(true);
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [nextSeq, setNextSeq] = useState(0);
+  const [pending, setPending] = useState<Pending | null>(null);
   const [log, setLog] = useState<string[]>(["waiting to produce a record."]);
 
   function pushLog(line: string) {
     setLog((l) => [line, ...l].slice(0, 6));
   }
 
+  // enable.idempotence is set when a producer is constructed — it can't be flipped on a
+  // live producer. Toggling it here simulates recreating the producer entirely (a new
+  // producer ID from the broker, sequence numbers back to zero), so nothing about the
+  // prior session carries over.
+  function toggleIdempotent() {
+    setIdempotent((v) => !v);
+    setEntries([]);
+    setNextSeq(0);
+    setPending(null);
+    setLog(["producer recreated with the new setting — waiting to produce a record."]);
+  }
+
   function send() {
-    const seq = nextSeq;
-    setEntries((e) => [...e, { offset: e.length, seq }]);
-    setNextSeq(seq + 1);
-    pushLog(`record sent (seq=${seq}), ack received.`);
+    if (pending) return;
+    const seq = idempotent ? nextSeq : null;
+    setPending({ seq, ambiguous: false });
+    pushLog(seq !== null ? `record sent (seq=${seq}) — outcome not yet known.` : "record sent — outcome not yet known.");
+  }
+
+  function ackReceived() {
+    if (!pending || pending.ambiguous) return;
+    setEntries((e) => [...e, { offset: e.length, seq: pending.seq }]);
+    if (pending.seq !== null) setNextSeq(pending.seq + 1);
+    setPending(null);
+    pushLog(pending.seq !== null ? `ack received for seq=${pending.seq} — write confirmed.` : "ack received — write confirmed.");
+  }
+
+  function ackLost() {
+    if (!pending || pending.ambiguous) return;
+    // Ground truth: the write actually reached the broker. Only the acknowledgment
+    // failed to make it back — the producer has no way to tell that from a plain retry.
+    setEntries((e) => [...e, { offset: e.length, seq: pending.seq }]);
+    setPending({ ...pending, ambiguous: true });
+    pushLog(
+      pending.seq !== null
+        ? `ack lost in transit for seq=${pending.seq} — the write actually reached the broker, but the producer doesn't know that. It must decide whether to retry.`
+        : "ack lost in transit — the write actually reached the broker, but the producer doesn't know that. It must decide whether to retry.",
+    );
   }
 
   function retry() {
-    if (entries.length === 0) return;
-    const seq = nextSeq - 1;
-    if (idempotent) {
-      pushLog(`ack lost in transit, producer retries seq=${seq} — broker already has this sequence number, discarded as a duplicate.`);
+    if (!pending || !pending.ambiguous) return;
+    if (pending.seq !== null) {
+      setNextSeq(pending.seq + 1);
+      setPending(null);
+      pushLog(`retry with seq=${pending.seq} arrives — broker already has this sequence number for this producer, discarded as a duplicate. Outcome now confirmed safe.`);
       return;
     }
-    setEntries((e) => [...e, { offset: e.length, seq }]);
-    pushLog(`ack lost in transit, producer retries seq=${seq} — no idempotence, so the broker has no way to detect this is a retry. Appended again.`);
+    setEntries((e) => [...e, { offset: e.length, seq: null }]);
+    setPending(null);
+    pushLog("retry arrives — without a sequence-number protocol, the broker can't tell this apart from a new record. Appended again as a duplicate.");
   }
 
   function reset() {
     setIdempotent(true);
     setEntries([]);
     setNextSeq(0);
+    setPending(null);
     setLog(["waiting to produce a record."]);
   }
 
@@ -57,14 +104,17 @@ export default function IdempotenceDemo() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — real idempotence tracks a producer ID and per-partition sequence number issued by
-        the broker, not a plain incrementing counter. What carries over: a retry after a lost ack carries the same
-        sequence number as the original send, which is exactly what lets the broker recognize it as a duplicate.
+        Simplified for teaching — real idempotence has the producer request a producer ID from the broker once, then
+        the producer itself attaches an incrementing per-partition sequence number to each batch it sends (the
+        broker issues the producer ID, not the sequence number). Toggling the setting below simulates recreating
+        the producer entirely, since enable.idempotence is fixed at construction time. What carries over: the broker
+        can only recognize a retry as a duplicate because it carries the same sequence number as the original send —
+        which requires idempotence to exist in the first place.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
-          onClick={() => setIdempotent((v) => !v)}
+          onClick={toggleIdempotent}
           className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
             idempotent
               ? "border-success/50 bg-success-soft text-success"
@@ -75,17 +125,37 @@ export default function IdempotenceDemo() {
         </button>
         <button
           onClick={send}
-          className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-stream/50 hover:text-stream"
+          disabled={pending !== null}
+          className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-stream/50 hover:text-stream disabled:cursor-default disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-muted"
         >
           produce record →
         </button>
-        <button
-          onClick={retry}
-          disabled={entries.length === 0}
-          className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-danger/50 hover:text-danger disabled:cursor-default disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-muted sm:ml-auto"
-        >
-          ack lost, producer retries →
-        </button>
+
+        {pending && !pending.ambiguous && (
+          <>
+            <button
+              onClick={ackReceived}
+              className="rounded border border-success/50 bg-success-soft px-3 py-1.5 font-mono text-[11px] text-success hover:border-success"
+            >
+              ack received normally →
+            </button>
+            <button
+              onClick={ackLost}
+              className="rounded border border-danger/50 bg-danger-soft px-3 py-1.5 font-mono text-[11px] text-danger hover:border-danger sm:ml-auto"
+            >
+              ack lost in transit →
+            </button>
+          </>
+        )}
+
+        {pending?.ambiguous && (
+          <button
+            onClick={retry}
+            className="rounded border border-danger/50 bg-danger-soft px-3 py-1.5 font-mono text-[11px] text-danger hover:border-danger sm:ml-auto"
+          >
+            producer retries →
+          </button>
+        )}
       </div>
 
       <div data-testid="partition-log" className="rounded-md border border-border-soft bg-bg-inset p-3">
@@ -94,7 +164,8 @@ export default function IdempotenceDemo() {
           {entries.length === 0 && <span className="font-mono text-[11px] text-text-faint">(empty)</span>}
           {entries.map((e, i) => (
             <div key={i} className="rounded bg-bg-elevated px-2 py-1 font-mono text-[11px] text-text-muted">
-              offset {e.offset} · seq={e.seq}
+              offset {e.offset}
+              {e.seq !== null ? ` · seq=${e.seq}` : ""}
             </div>
           ))}
         </div>

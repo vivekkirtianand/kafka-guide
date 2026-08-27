@@ -27,16 +27,19 @@ describe("AcksDurabilityDemo", () => {
     expect(within(brokerCard(3)).getByText("has record")).toBeInTheDocument();
   });
 
-  it("acks=all with the leader crashing before replication: no acknowledgment is ever sent", async () => {
+  it("acks=all with the leader crashing after replicating: outcome is ambiguous even though the record survived", async () => {
     const user = userEvent.setup();
     render(<AcksDurabilityDemo />);
 
     await user.click(screen.getByRole("button", { name: /crash leader/i }));
     await user.click(screen.getByRole("button", { name: "produce record →" }));
 
-    expect(screen.getByText("not acknowledged — safe to retry")).toBeInTheDocument();
-    expect(brokerCard(1)).toHaveTextContent("crashed");
-    expect(within(brokerCard(2)).getByText("no record")).toBeInTheDocument();
+    expect(screen.getByText("not acknowledged — outcome unknown")).toBeInTheDocument();
+    // ground truth: the record actually made it to both followers, even though the
+    // producer has no way to know that from the timeout alone
+    expect(within(brokerCard(2)).getByText("has record")).toBeInTheDocument();
+    expect(within(brokerCard(3)).getByText("has record")).toBeInTheDocument();
+    expect(screen.getByText(/enable.idempotence=true is what makes that retry safe/)).toBeInTheDocument();
   });
 
   it("acks=1 with no crash: record is acknowledged and still replicates normally", async () => {
@@ -63,7 +66,18 @@ describe("AcksDurabilityDemo", () => {
     ).toBeInTheDocument();
   });
 
-  it("acks=0 with the leader crashing before replication: acknowledged data loss with no way to know", async () => {
+  it("acks=0 with no crash: no acknowledgment is ever requested, even when nothing fails", async () => {
+    const user = userEvent.setup();
+    render(<AcksDurabilityDemo />);
+
+    await user.click(screen.getByRole("button", { name: "acks=0" }));
+    await user.click(screen.getByRole("button", { name: "produce record →" }));
+
+    expect(screen.getByText("acknowledgment not requested — delivery unknown")).toBeInTheDocument();
+    expect(screen.queryByText(/^acknowledged/)).not.toBeInTheDocument();
+  });
+
+  it("acks=0 with the leader crashing: the producer never knows anything was lost", async () => {
     const user = userEvent.setup();
     render(<AcksDurabilityDemo />);
 
@@ -71,8 +85,8 @@ describe("AcksDurabilityDemo", () => {
     await user.click(screen.getByRole("button", { name: /crash leader/i }));
     await user.click(screen.getByRole("button", { name: "produce record →" }));
 
-    expect(screen.getByText("acknowledged — data lost")).toBeInTheDocument();
-    expect(screen.getByText(/the application has no way to know/)).toBeInTheDocument();
+    expect(screen.getByText("producer considered sent — record lost")).toBeInTheDocument();
+    expect(screen.getByText(/it never asked in the first place/)).toBeInTheDocument();
   });
 
   it("resets to the initial state", async () => {
@@ -87,7 +101,6 @@ describe("AcksDurabilityDemo", () => {
     expect(screen.getByRole("button", { name: "acks=all" })).toHaveClass("border-accent/50");
     expect(brokerCard(1)).toHaveTextContent("alive");
     expect(screen.queryByText("acknowledged — data lost")).not.toBeInTheDocument();
-    expect(screen.queryByText("acknowledged — data safe")).not.toBeInTheDocument();
     expect(screen.getByText("waiting to produce a record.")).toBeInTheDocument();
   });
 });

@@ -18,13 +18,23 @@ const INITIAL: Broker[] = [
   { id: 3, role: "follower", alive: true, hasRecord: false },
 ];
 
-type Outcome = { acked: boolean; dataSafe: boolean | null } | null;
+// Every acks setting produces one of these outcomes, kept separate from whether the
+// record actually survived — "acknowledged" and "safe" are two different questions.
+type OutcomeKind = "safe-acked" | "safe-unrequested" | "lost-acked" | "lost-unrequested" | "unknown-ambiguous";
+
+const OUTCOME_BADGE: Record<OutcomeKind, { tone: "success" | "danger" | "neutral"; label: string }> = {
+  "safe-acked": { tone: "success", label: "acknowledged — data safe" },
+  "safe-unrequested": { tone: "neutral", label: "acknowledgment not requested — delivery unknown" },
+  "lost-acked": { tone: "danger", label: "acknowledged — data lost" },
+  "lost-unrequested": { tone: "danger", label: "producer considered sent — record lost" },
+  "unknown-ambiguous": { tone: "neutral", label: "not acknowledged — outcome unknown" },
+};
 
 export default function AcksDurabilityDemo() {
   const [acks, setAcks] = useState<Acks>("all");
   const [crashLeader, setCrashLeader] = useState(false);
   const [brokers, setBrokers] = useState<Broker[]>(INITIAL);
-  const [lastOutcome, setLastOutcome] = useState<Outcome>(null);
+  const [outcome, setOutcome] = useState<OutcomeKind | null>(null);
   const [log, setLog] = useState<string[]>(["waiting to produce a record."]);
 
   function pushLog(line: string) {
@@ -36,52 +46,52 @@ export default function AcksDurabilityDemo() {
     // acks/crash-timing interaction, not leader election (see the leader election demo
     // in Module 1 for that).
     let next: Broker[] = INITIAL.map((b) => (b.role === "leader" ? { ...b, hasRecord: true } : b));
-
-    let acked: boolean;
-    let dataSafe: boolean | null;
+    let kind: OutcomeKind;
     let line: string;
 
     if (acks === "all") {
       if (crashLeader) {
-        next = next.map((b) => (b.role === "leader" ? { ...b, alive: false } : b));
-        acked = false;
-        dataSafe = null;
+        // The leader replicates to the ISR — the record genuinely survives — but crashes
+        // before its acknowledgment reaches the producer. From the producer's side this
+        // is indistinguishable from "never replicated at all": it just sees a timeout.
+        next = next.map((b) => (b.role === "leader" ? { ...b, alive: false } : { ...b, hasRecord: true }));
+        kind = "unknown-ambiguous";
         line =
-          "acks=all: leader appended the record, then crashed before replicating. No acknowledgment was ever sent — the producer times out and can safely retry. Nothing was lost that the application was told was safe.";
+          "acks=all: leader replicated to both followers, then crashed before its acknowledgment reached the producer. The record actually survived — a new leader elected from the followers will have it — but the producer can't tell that from a timeout alone. Retrying is the only reasonable move; enable.idempotence=true is what makes that retry safe, whether or not the original write turns out to have already landed.";
       } else {
         next = next.map((b) => (b.role === "follower" ? { ...b, hasRecord: true } : b));
-        acked = true;
-        dataSafe = true;
+        kind = "safe-acked";
         line = "acks=all: leader replicated to both followers, then acknowledged. The record is durable against any single broker failure.";
       }
     } else if (acks === 1) {
-      acked = true;
       if (crashLeader) {
         next = next.map((b) => (b.role === "leader" ? { ...b, alive: false } : b));
-        dataSafe = false;
+        kind = "lost-acked";
         line =
           "acks=1: leader acknowledged immediately after its own append, then crashed before replicating. A follower without this record can now be elected leader — the record is gone despite being acknowledged.";
       } else {
         next = next.map((b) => (b.role === "follower" ? { ...b, hasRecord: true } : b));
-        dataSafe = true;
+        kind = "safe-acked";
         line = "acks=1: leader acknowledged after its own append, then replicated normally to both followers.";
       }
     } else {
-      acked = true;
+      // acks=0: the producer never requests an acknowledgment at all — it considers the
+      // record sent the moment it hands it to the network and gets back offset=-1. There
+      // is no "acknowledged" outcome to have here, safe or otherwise.
       if (crashLeader) {
         next = next.map((b) => (b.role === "leader" ? { ...b, alive: false } : b));
-        dataSafe = false;
+        kind = "lost-unrequested";
         line =
-          "acks=0: the producer never waited for any response — it already considers this record sent. The leader crashed before replicating, so the record is gone and the application has no way to know.";
+          "acks=0: the producer never asked for an acknowledgment and already moved on. The leader crashed before replicating, so the record is gone — and the producer has no way to know, because it never asked in the first place.";
       } else {
         next = next.map((b) => (b.role === "follower" ? { ...b, hasRecord: true } : b));
-        dataSafe = true;
-        line = "acks=0: the producer never waited for any response. Nothing failed this time, so the record made it through — but the application never confirmed that.";
+        kind = "safe-unrequested";
+        line = "acks=0: the producer never asked for an acknowledgment. Nothing failed this time, so the record made it through — but the application never confirmed that, and couldn't have.";
       }
     }
 
     setBrokers(next);
-    setLastOutcome({ acked, dataSafe });
+    setOutcome(kind);
     pushLog(line);
   }
 
@@ -89,7 +99,7 @@ export default function AcksDurabilityDemo() {
     setAcks("all");
     setCrashLeader(false);
     setBrokers(INITIAL);
-    setLastOutcome(null);
+    setOutcome(null);
     setLog(["waiting to produce a record."]);
   }
 
@@ -109,8 +119,8 @@ export default function AcksDurabilityDemo() {
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — real replication and leader election involve the controller and ISR bookkeeping,
-        not a single-step crash. What carries over: exactly when the leader fails relative to replication and
-        acknowledgment is what determines whether an acked record can still be lost.
+        not a single-step crash. What carries over: a produce request that never completes is genuinely ambiguous —
+        the record may have landed anyway — and only acks=0 has no acknowledgment to lose in the first place.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -138,7 +148,7 @@ export default function AcksDurabilityDemo() {
               : "border-border-soft bg-bg-inset text-text-muted hover:border-danger/40"
           }`}
         >
-          {crashLeader ? "leader will crash before replicating ✓" : "crash leader before it can replicate"}
+          {crashLeader ? "leader will crash mid-produce ✓" : "crash leader mid-produce"}
         </button>
 
         <button
@@ -149,15 +159,9 @@ export default function AcksDurabilityDemo() {
         </button>
       </div>
 
-      {lastOutcome && (
+      {outcome && (
         <div className="mb-4">
-          <Badge tone={lastOutcome.dataSafe === true ? "success" : lastOutcome.dataSafe === false ? "danger" : "neutral"}>
-            {lastOutcome.dataSafe === true
-              ? "acknowledged — data safe"
-              : lastOutcome.dataSafe === false
-                ? "acknowledged — data lost"
-                : "not acknowledged — safe to retry"}
-          </Badge>
+          <Badge tone={OUTCOME_BADGE[outcome].tone}>{OUTCOME_BADGE[outcome].label}</Badge>
         </div>
       )}
 

@@ -223,16 +223,22 @@ export const configs: ConfigEntry[] = [
     key: "transaction.timeout.ms",
     scope: "producer",
     goal: "Use transactions",
-    controls: "Maximum time the transaction coordinator waits for a transaction to be committed or aborted before proactively aborting it.",
+    controls:
+      "Maximum time the transaction coordinator waits, after the first partition is added to a transaction, for it to be committed or aborted before proactively aborting it.",
     defaultValue: "60000",
     changeMechanism: "recreate-client",
-    riskOfChange: "safe",
+    riskOfChange: "caution",
     managedAvailability: "full",
-    whenToChange: "Raise only if the producer's own processing between beginTransaction() and commit legitimately takes longer than a minute.",
+    whenToChange:
+      "Raise only if the producer's own processing between adding the first partition and committing legitimately takes longer than a minute — and only up to the broker's transaction.max.timeout.ms ceiling.",
     performanceImpact: "No effect on the happy path; bounds how long a stalled transaction holds back read_committed consumers.",
-    reliabilityImpact: "A transaction left open past this timeout is aborted automatically, preventing an indefinitely stuck consumer waiting on it.",
+    reliabilityImpact:
+      "A transaction left open past this timeout is aborted automatically by the coordinator, preventing an indefinitely stuck consumer waiting on it. The clock starts when the first partition is added, not at beginTransaction().",
     relatedConfigs: ["transactional.id", "enable.idempotence"],
-    failureModes: ["Transaction aborted and InvalidProducerEpochException raised if the producer takes longer than this to commit"],
+    failureModes: [
+      "Setting this above the broker's transaction.max.timeout.ms fails producer initialization with InvalidTxnTimeoutException",
+      "A transaction proactively aborted for exceeding this timeout fences the producer's next attempt to continue it",
+    ],
   },
   {
     key: "max.poll.interval.ms",
