@@ -2,69 +2,96 @@
 
 import { useState } from "react";
 
-const TOTAL = 8;
+const TOTAL = 10;
 const BATCH = 2;
+// Real default is 5000ms; kept the same here. Auto-commit is driven by this interval, not
+// by a batch count — with fast polls it can fall several batches behind, with slow polls it
+// fires almost every poll.
+const AUTO_COMMIT_INTERVAL_MS = 5000;
+
+const PROCESSING_OPTIONS = [1000, 2000, 6000] as const;
 
 type Mode = "auto" | "manual";
 
+interface S {
+  read: number; // in-memory position: offset of the next record poll() will return
+  committed: number; // durable bookmark in __consumer_offsets
+  clockMs: number; // wall time since the loop started
+  lastCommitMs: number; // when auto-commit last ran
+  polls: number;
+  log: string[];
+}
+
+function initial(): S {
+  return { read: 0, committed: 0, clockMs: 0, lastCommitMs: 0, polls: 0, log: ["subscribed — nothing polled yet."] };
+}
+
 export default function CommitStrategyDemo() {
   const [mode, setMode] = useState<Mode>("auto");
-  const [read, setRead] = useState(0); // in-memory position: next record to return
-  const [committed, setCommitted] = useState(0); // durable bookmark in __consumer_offsets
-  const [polls, setPolls] = useState(0);
-  const [log, setLog] = useState<string[]>(["subscribed — nothing polled yet."]);
+  const [processingMs, setProcessingMs] = useState<number>(2000);
+  const [s, setS] = useState<S>(initial());
 
-  function pushLog(line: string) {
-    setLog((l) => [line, ...l].slice(0, 6));
+  function push(state: S, line: string): string[] {
+    return [line, ...state.log].slice(0, 6);
   }
 
-  function setModeAndReset(m: Mode) {
+  function selectMode(m: Mode) {
     setMode(m);
-    setRead(0);
-    setCommitted(0);
-    setPolls(0);
-    setLog([m === "auto" ? "enable.auto.commit=true — offsets commit inside poll()." : "enable.auto.commit=false — you call commitSync() yourself."]);
+    setS(initial());
   }
 
   function poll() {
-    if (read >= TOTAL) return;
-    const from = read;
-    const to = Math.min(read + BATCH, TOTAL);
-    const nextPolls = polls + 1;
+    setS((prev) => {
+      if (prev.read >= TOTAL) return prev;
+      const t0 = prev.clockMs;
+      const from = prev.read;
+      const to = Math.min(prev.read + BATCH, TOTAL);
+      const nextPolls = prev.polls + 1;
 
-    if (mode === "auto" && polls >= 1) {
-      // Auto-commit runs at the start of poll(), committing the position reached by the
-      // PREVIOUS poll's records — on the assumption they were processed before this call.
-      setCommitted(from);
-      setRead(to);
-      setPolls(nextPolls);
-      pushLog(
-        `poll ${nextPolls}: auto-commit first advanced the committed offset to ${from} (records ${from - BATCH}–${from - 1} assumed done), then returned records ${from}–${to - 1}.`,
-      );
-      return;
-    }
+      // Auto-commit runs inside poll(): if the interval has elapsed, it commits the current
+      // position — everything returned by earlier polls, assumed processed by now.
+      let committed = prev.committed;
+      let lastCommitMs = prev.lastCommitMs;
+      let committedLine = "";
+      if (mode === "auto" && from > 0 && t0 - lastCommitMs >= AUTO_COMMIT_INTERVAL_MS && committed < from) {
+        committed = from;
+        lastCommitMs = t0;
+        committedLine = ` auto-commit fired at ${t0}ms — committed offset advanced to ${from} (records up to ${from - 1} assumed processed).`;
+      }
 
-    setRead(to);
-    setPolls(nextPolls);
-    if (mode === "auto") {
-      pushLog(`poll ${nextPolls}: returned records ${from}–${to - 1}. Nothing to auto-commit yet — this is the first batch.`);
-    } else {
-      pushLog(`poll ${nextPolls}: returned records ${from}–${to - 1}. Committed offset unchanged at ${committed} until you call commitSync().`);
-    }
+      const returnedLine = `poll ${nextPolls} at ${t0}ms: returned records ${from}–${to - 1}.`;
+      const trailing =
+        mode === "auto"
+          ? committedLine || ` No auto-commit this poll — only ${t0 - prev.lastCommitMs}ms since the last one (interval is ${AUTO_COMMIT_INTERVAL_MS}ms).`
+          : ` Committed offset stays at ${committed} until you call commitSync().`;
+
+      return {
+        read: to,
+        committed,
+        clockMs: t0 + processingMs,
+        lastCommitMs,
+        polls: nextPolls,
+        log: push(prev, returnedLine + trailing),
+      };
+    });
   }
 
   function commitSync() {
-    if (mode !== "manual" || committed === read) return;
-    const prev = committed;
-    setCommitted(read);
-    pushLog(`commitSync(): committed offset ${prev} → ${read}, right after processing records ${prev}–${read - 1}.`);
+    setS((prev) => {
+      if (mode !== "manual" || prev.committed === prev.read) return prev;
+      return {
+        ...prev,
+        committed: prev.read,
+        log: push(prev, `commitSync(): committed offset ${prev.committed} → ${prev.read}, right after processing records ${prev.committed}–${prev.read - 1}.`),
+      };
+    });
   }
 
   function reset() {
-    setModeAndReset(mode);
+    setS(initial());
   }
 
-  const uncommitted = read - committed;
+  const redelivered = s.read - s.committed;
 
   return (
     <div className="rounded-lg border border-border bg-bg-elevated p-5">
@@ -81,11 +108,12 @@ export default function CommitStrategyDemo() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — real auto-commit only fires once auto.commit.interval.ms has elapsed, and a real
-        batch is up to max.poll.records. What carries over: auto-commit advances the bookmark on poll() timing (one
-        batch behind your processing), while a manual commitSync() after processing advances it exactly when the
-        work is done. The gap between the read position and the committed offset is what gets reprocessed after a
-        crash.
+        Simplified for teaching — a real batch is up to max.poll.records and processing time varies per record. What
+        carries over: auto-commit fires on the auto.commit.interval.ms clock, not per batch, so it can trail the read
+        position by several polls when polls are fast and catch up to one batch when they are slow; a manual
+        commitSync() after processing advances the offset exactly when the work is done. The gap between the read
+        position and the committed offset is what a new owner would be handed again after a crash — mostly records
+        that were already processed (duplicates), plus any near the boundary that weren&apos;t.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -93,7 +121,7 @@ export default function CommitStrategyDemo() {
           {(["auto", "manual"] as Mode[]).map((m) => (
             <button
               key={m}
-              onClick={() => setModeAndReset(m)}
+              onClick={() => selectMode(m)}
               className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
                 mode === m
                   ? "border-accent/50 bg-accent-soft text-accent"
@@ -104,9 +132,29 @@ export default function CommitStrategyDemo() {
             </button>
           ))}
         </div>
+        {mode === "auto" && (
+          <div className="flex flex-wrap gap-2">
+            {PROCESSING_OPTIONS.map((ms) => (
+              <button
+                key={ms}
+                onClick={() => {
+                  setProcessingMs(ms);
+                  setS(initial());
+                }}
+                className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
+                  processingMs === ms
+                    ? "border-stream/50 bg-stream-soft text-stream"
+                    : "border-border-soft bg-bg-inset text-text-muted hover:border-stream/40"
+                }`}
+              >
+                {ms}ms/poll
+              </button>
+            ))}
+          </div>
+        )}
         <button
           onClick={poll}
-          disabled={read >= TOTAL}
+          disabled={s.read >= TOTAL}
           className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-stream/50 hover:text-stream disabled:cursor-default disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-muted"
         >
           poll() →
@@ -114,7 +162,7 @@ export default function CommitStrategyDemo() {
         {mode === "manual" && (
           <button
             onClick={commitSync}
-            disabled={committed === read}
+            disabled={s.committed === s.read}
             className="rounded border border-success/50 bg-success-soft px-3 py-1.5 font-mono text-[11px] text-success hover:border-success disabled:cursor-default disabled:opacity-40"
           >
             commitSync() →
@@ -125,25 +173,31 @@ export default function CommitStrategyDemo() {
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-md border border-border-soft bg-bg-inset p-3">
           <div className="font-mono text-[11px] text-text-faint">read position</div>
-          <div data-testid="read-position" className="font-mono text-lg text-text">{read}</div>
+          <div data-testid="read-position" className="font-mono text-lg text-text">{s.read}</div>
         </div>
         <div className="rounded-md border border-border-soft bg-bg-inset p-3">
           <div className="font-mono text-[11px] text-text-faint">committed offset</div>
-          <div data-testid="committed-position" className="font-mono text-lg text-text">{committed}</div>
+          <div data-testid="committed-position" className="font-mono text-lg text-text">{s.committed}</div>
         </div>
         <div className="rounded-md border border-border-soft bg-bg-inset p-3">
-          <div className="font-mono text-[11px] text-text-faint">reprocessed on crash now</div>
-          <div data-testid="uncommitted-gap" className="font-mono text-lg text-text">
-            {uncommitted} record{uncommitted === 1 ? "" : "s"}
+          <div className="font-mono text-[11px] text-text-faint">redelivered on crash now</div>
+          <div data-testid="redelivered-gap" className="font-mono text-lg text-text">
+            {redelivered} record{redelivered === 1 ? "" : "s"}
           </div>
         </div>
       </div>
+
+      {mode === "auto" && (
+        <div data-testid="clock" className="mb-4 font-mono text-[11px] text-text-faint">
+          loop clock: {s.clockMs}ms · last auto-commit: {s.lastCommitMs === 0 ? "never" : `${s.lastCommitMs}ms`} · interval: {AUTO_COMMIT_INTERVAL_MS}ms
+        </div>
+      )}
 
       <div
         data-testid="commit-log"
         className="rounded-md border border-border-soft bg-bg-inset p-3 font-mono text-[11px] leading-relaxed text-text-muted"
       >
-        {log.map((line, i) => (
+        {s.log.map((line, i) => (
           <div key={i} className={i === 0 ? "text-text" : ""}>
             {line}
           </div>

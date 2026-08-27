@@ -69,7 +69,7 @@ export default function PoisonMessageDemo() {
           attempts: prev.attempts + 1,
           log: push(
             prev,
-            `record ${offset} threw again (attempt ${prev.attempts + 1}). Offset not committed — the next poll returns record ${offset} once more. Records 3–5 are blocked behind it; lag only grows.`,
+            `record ${offset} threw (attempt ${prev.attempts + 1}). The error handler seeks back to offset ${offset} and commits nothing, so the next poll() redelivers the same record. Records 3–5 stay blocked behind it; lag only grows.`,
           ),
         };
       }
@@ -131,9 +131,12 @@ export default function PoisonMessageDemo() {
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — real retry/DLT handling is library code (Spring Kafka, a custom wrapper) and a
-        retry-topic chain runs its own consumers. What carries over: never advance the committed offset past a
-        record until it is either processed or deliberately routed somewhere durable, and bound in-place retries so
-        one bad record can&apos;t block the whole partition forever.
+        retry-topic chain runs its own consumers. The raw consumer doesn&apos;t redeliver a failed record on its
+        own: poll() has already advanced its in-memory position, so getting the record back takes a seek() (what an
+        error handler does), a rebalance, or a restart. This demo assumes a seek-back error handler, so an unhandled
+        poison record is retried forever rather than silently skipped. What carries over: never advance the
+        committed offset past a record until it is either processed or deliberately routed somewhere durable, and
+        bound in-place retries so one bad record can&apos;t block the whole partition forever.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">

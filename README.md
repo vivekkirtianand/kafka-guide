@@ -77,7 +77,7 @@ src/
   handling with retry and dead-letter topics.
 - **The incident simulator's "slow broker" incident** is fully built out (reveal clues,
   pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
-- **Config explorer** ships with 29 real settings across producer/consumer/broker/topic
+- **Config explorer** ships with 31 real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
 - **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
   the plan, searchable.

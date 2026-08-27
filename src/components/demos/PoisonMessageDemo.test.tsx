@@ -18,7 +18,7 @@ describe("PoisonMessageDemo", () => {
     await step(user); // record 2 again
 
     expect(screen.getByText("partition stuck on offset 2")).toBeInTheDocument();
-    expect(screen.getByText(/record 2 threw again \(attempt 2\)/)).toBeInTheDocument();
+    expect(screen.getByText(/record 2 threw \(attempt 2\)\. The error handler seeks back to offset 2/)).toBeInTheDocument();
     expect(screen.getByTestId("dlt")).toHaveTextContent("orders.DLT: (empty)");
   });
 

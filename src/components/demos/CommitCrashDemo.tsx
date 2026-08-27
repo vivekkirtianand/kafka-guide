@@ -28,20 +28,26 @@ export default function CommitCrashDemo() {
     setPhase("processing");
     setLog([
       cp === "after"
-        ? "poll() returned records 0–2. Plan: process each record, then commit offset 3."
-        : "poll() returned records 0–2. Plan: commit offset 3 first, then process each record.",
+        ? "poll() returned records 0–2. Policy: process all three records, then commit offset 3."
+        : "poll() returned records 0–2. Policy: commit offset 3 first, then process the records.",
     ]);
   }
 
+  // The commit-order policy is enforced by the buttons: in "after" mode you can't commit
+  // until every record is processed; in "before" mode you can't process until you've
+  // committed.
+  const canProcess = phase === "processing" && processed < BATCH_SIZE && (commitPoint === "after" || committed === BATCH_SIZE);
+  const canCommit = phase === "processing" && committed !== BATCH_SIZE && (commitPoint === "before" || processed === BATCH_SIZE);
+
   function processOne() {
-    if (phase !== "processing" || processed >= BATCH_SIZE) return;
+    if (!canProcess) return;
     const n = processed + 1;
     setProcessed(n);
     pushLog(`processed record ${n - 1}.`);
   }
 
   function commit() {
-    if (phase !== "processing" || committed === BATCH_SIZE) return;
+    if (!canCommit) return;
     setCommitted(BATCH_SIZE);
     pushLog(`committed offset ${BATCH_SIZE} — the group's durable bookmark now says records 0–2 are done.`);
   }
@@ -55,18 +61,24 @@ export default function CommitCrashDemo() {
   function recover() {
     if (phase !== "crashed") return;
     setPhase("recovered");
-    const replay = BATCH_SIZE - committed;
+    const redelivered = BATCH_SIZE - committed;
+    const duplicates = Math.max(0, processed - committed);
+    const firstTime = redelivered - duplicates;
     const skipped = Math.max(0, committed - processed);
+
     if (skipped > 0) {
       pushLog(
         `new owner resumes at committed offset ${committed}. Records ${processed}–${committed - 1} were committed but never processed — silently skipped (at-most-once).`,
       );
-    } else if (replay > 0) {
-      pushLog(
-        `new owner resumes at committed offset ${committed}. Records ${committed}–${BATCH_SIZE - 1} are delivered again — ${replay} record${replay === 1 ? "" : "s"} reprocessed (at-least-once).`,
-      );
+    } else if (redelivered === 0) {
+      pushLog(`new owner resumes at committed offset ${committed} — nothing to redeliver, clean handoff.`);
     } else {
-      pushLog(`new owner resumes at committed offset ${committed} — nothing to replay, clean handoff.`);
+      const dupPart = duplicates > 0 ? `${duplicates} already processed by the crashed consumer (duplicate${duplicates === 1 ? "" : "s"})` : null;
+      const newPart = firstTime > 0 ? `${firstTime} never processed before` : null;
+      const breakdown = [dupPart, newPart].filter(Boolean).join(", ");
+      pushLog(
+        `new owner resumes at committed offset ${committed}. Records ${committed}–${BATCH_SIZE - 1} are redelivered — ${breakdown}. At-least-once means the duplicates get processed twice.`,
+      );
     }
   }
 
@@ -74,8 +86,16 @@ export default function CommitCrashDemo() {
     configure(commitPoint);
   }
 
-  const replay = BATCH_SIZE - committed;
+  const redelivered = BATCH_SIZE - committed;
+  const duplicates = Math.max(0, processed - committed);
   const skipped = phase === "recovered" ? Math.max(0, committed - processed) : 0;
+
+  let badge: { tone: "success" | "danger" | "neutral"; label: string } | null = null;
+  if (phase === "recovered") {
+    if (skipped > 0) badge = { tone: "danger", label: `${skipped} record${skipped === 1 ? "" : "s"} skipped` };
+    else if (redelivered === 0) badge = { tone: "success", label: "clean handoff" };
+    else badge = { tone: "neutral", label: `${redelivered} redelivered · ${duplicates} duplicate${duplicates === 1 ? "" : "s"}` };
+  }
 
   return (
     <div className="rounded-lg border border-border bg-bg-elevated p-5">
@@ -94,7 +114,8 @@ export default function CommitCrashDemo() {
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — a real crash is abrupt and a real batch is larger. What carries over: a new owner
         of the partition always resumes from the committed offset, never from the crashed consumer&apos;s in-memory
-        position. Commit after processing and a crash reprocesses; commit before processing and a crash skips.
+        position. Redelivered records aren&apos;t all &quot;reprocessed&quot; — only the ones the crashed consumer
+        had already finished are true duplicates; the rest are being delivered for the first time.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -116,14 +137,14 @@ export default function CommitCrashDemo() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
           onClick={processOne}
-          disabled={phase !== "processing" || processed >= BATCH_SIZE}
+          disabled={!canProcess}
           className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-stream/50 hover:text-stream disabled:cursor-default disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-muted"
         >
           process one record →
         </button>
         <button
           onClick={commit}
-          disabled={phase !== "processing" || committed === BATCH_SIZE}
+          disabled={!canCommit}
           className="rounded border border-success/50 bg-success-soft px-3 py-1.5 font-mono text-[11px] text-success hover:border-success disabled:cursor-default disabled:opacity-40"
         >
           commit offset 3 →
@@ -160,15 +181,9 @@ export default function CommitCrashDemo() {
         </div>
       </div>
 
-      {phase === "recovered" && (
+      {badge && (
         <div className="mb-4">
-          <Badge tone={skipped > 0 ? "danger" : replay > 0 ? "neutral" : "success"}>
-            {skipped > 0
-              ? `${skipped} record${skipped === 1 ? "" : "s"} skipped`
-              : replay > 0
-                ? `${replay} record${replay === 1 ? "" : "s"} reprocessed`
-                : "clean handoff"}
-          </Badge>
+          <Badge tone={badge.tone}>{badge.label}</Badge>
         </div>
       )}
 
