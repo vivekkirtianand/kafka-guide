@@ -24,6 +24,10 @@ export interface Module {
   title: string;
   summary: string;
   topics: string[];
+  // Full lesson prose for a topic, keyed by the exact string in `topics`. Paragraphs are
+  // separated by a blank line. Omitted (or partial) where the topic is still an outline
+  // entry with no explanatory content written yet.
+  topicNarrative?: Record<string, string>;
   activities: string[];
   // "external" = built, but as content outside this app (e.g. the local cluster lab)
   // rather than an embedded React demo.

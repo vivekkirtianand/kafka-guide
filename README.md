@@ -42,6 +42,10 @@ src/
       RecordFlowDemo.tsx            Module 1 activity: producer → partition → consumer, predict-before-reveal
       PartitionOrderingDemo.tsx     Module 1 activity: partition count vs. ordering guarantees
       LeaderElectionDemo.tsx        Module 1 activity: broker failure, catch-up, and leader election
+      AcksDurabilityDemo.tsx        Module 3 activity: acks=0/1/all vs. a leader crash mid-produce
+      BatchingThroughputDemo.tsx    Module 3 activity: linger.ms/batch.size vs. request count and latency
+      BufferAndTimeoutDemo.tsx      Module 3 activity: buffer fill, oversized records, delivery.timeout.ms
+      IdempotenceDemo.tsx           Module 3 activity: duplicate sends with and without idempotence
       IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
   lib/
     types.ts                        Shared content types
@@ -53,16 +57,20 @@ src/
 
 - **Module 1 (Kafka mental model)**'s four planned interactive activities are all built
   (producer → partition → consumer flow, partition-count/ordering, broker failure/leader
-  election), as the pattern to repeat for modules 2–7. The topic list itself is still just
-  a bullet outline, though — the explanatory lesson content for each topic hasn't been
-  written yet. See [PLAN.md](PLAN.md) for the detailed status.
+  election), as the pattern to repeat for the rest of the modules. The topic list itself
+  is still just a bullet outline, though — the explanatory lesson content for each topic
+  hasn't been written yet. See [PLAN.md](PLAN.md) for the detailed status.
+- **Module 3 (Producer configuration)** is fully built: real lesson prose for all 7
+  topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
+  demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout
+  failures, idempotence and duplicates).
 - **The incident simulator's "slow broker" incident** is fully built out (reveal clues,
   pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
-- **Config explorer** ships with 12 real settings across producer/consumer/broker/topic
+- **Config explorer** ships with 21 real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
 - **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
   the plan, searchable.
-- Modules 3–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
+- Modules 4–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
   clues, categories) but their content/interactivity is not yet written — they render a
   "planned" state so the whole app is navigable today. Module 2's page is the exception: it
   links out to the local cluster lab below instead of showing that placeholder, since the
