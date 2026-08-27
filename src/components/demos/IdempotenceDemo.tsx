@@ -29,15 +29,17 @@ export default function IdempotenceDemo() {
   }
 
   // enable.idempotence is set when a producer is constructed — it can't be flipped on a
-  // live producer. Toggling it here simulates recreating the producer entirely (a new
-  // producer ID from the broker, sequence numbers back to zero), so nothing about the
-  // prior session carries over.
+  // live producer. Toggling it here simulates recreating the producer: a new producer ID
+  // and a fresh sequence space starting back at 0. That resets producer-scoped state only
+  // — it says nothing about the broker's partition log, which is exactly why a recreated
+  // producer's first send can carry the same sequence number as an old entry already in
+  // `entries` without colliding: the broker keys duplicate detection on (producer ID,
+  // sequence), and this is a different producer ID.
   function toggleIdempotent() {
     setIdempotent((v) => !v);
-    setEntries([]);
     setNextSeq(0);
     setPending(null);
-    setLog(["producer recreated with the new setting — waiting to produce a record."]);
+    pushLog("producer recreated with the new setting — new producer identity, sequence numbers restart at 0. Existing broker data is untouched.");
   }
 
   function send() {

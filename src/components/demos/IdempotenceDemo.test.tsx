@@ -69,7 +69,7 @@ describe("IdempotenceDemo", () => {
     expect(screen.getByRole("button", { name: "produce record →" })).not.toBeDisabled();
   });
 
-  it("toggling idempotence recreates the producer, clearing everything", async () => {
+  it("toggling idempotence recreates the producer without touching existing broker data", async () => {
     const user = userEvent.setup();
     render(<IdempotenceDemo />);
 
@@ -79,9 +79,16 @@ describe("IdempotenceDemo", () => {
 
     await user.click(screen.getByRole("button", { name: "enable.idempotence=true" }));
 
+    // recreating the producer resets its own identity, not records the broker already has
     expect(screen.getByRole("button", { name: "enable.idempotence=false" })).toBeInTheDocument();
-    expect(partitionLog()).toHaveTextContent("(empty)");
+    expect(partitionLog()).toHaveTextContent("offset 0 · seq=0");
     expect(screen.getByText(/producer recreated with the new setting/)).toBeInTheDocument();
+
+    // the new (non-idempotent) producer's send appends alongside the old entry, not in place of it
+    await user.click(screen.getByRole("button", { name: "produce record →" }));
+    await user.click(screen.getByRole("button", { name: /ack received normally/i }));
+    expect(partitionLog()).toHaveTextContent("offset 0 · seq=0");
+    expect(partitionLog()).toHaveTextContent("offset 1");
   });
 
   it("appends a genuine duplicate when idempotence is disabled, with no sequence number shown", async () => {
