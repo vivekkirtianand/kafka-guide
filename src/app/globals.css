@@ -1,23 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  /* Control-room palette: deep charcoal-navy, amber signal, teal stream accent */
-  --bg: #12151b;
-  --bg-elevated: #1b1f29;
-  --bg-inset: #0d0f14;
-  --border: #2a2f3b;
-  --border-soft: #232734;
-  --text: #e7e9ee;
-  --text-muted: #9ba1af;
-  --text-faint: #6b7180;
-  --accent: #e8a33d;
-  --accent-soft: #e8a33d1f;
-  --stream: #4fa8ac;
-  --stream-soft: #4fa8ac1f;
-  --danger: #d9584b;
-  --danger-soft: #d9584b1f;
-  --success: #6fae7c;
-  --success-soft: #6fae7c1f;
+  /* Daylight control room: warm paper ground, dark ink, amber signal + teal stream
+     accents pulled deep enough to hold their contrast on white. */
+  --bg: #fbfaf7;
+  --bg-elevated: #ffffff;
+  --bg-inset: #f1efe9;
+  --border: #e2ded4;
+  --border-soft: #ebe8e1;
+  --text: #22201b;
+  --text-muted: #63605a;
+  --text-faint: #97938a;
+  --accent: #a96a12;
+  --accent-soft: #a96a1216;
+  --stream: #2c797c;
+  --stream-soft: #2c797c16;
+  --danger: #b0433a;
+  --danger-soft: #b0433a12;
+  --success: #3c7a4d;
+  --success-soft: #3c7a4d12;
 }
 
 @theme inline {
@@ -47,7 +48,7 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
