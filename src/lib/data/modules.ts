@@ -238,7 +238,7 @@ export const modules: Module[] = [
           },
         ],
         watchOut:
-          "Auto topic creation is turned off on purpose. You create topics explicitly so you can see the replica and ISR assignment Kafka makes — which auto-creation would hide.",
+          "Auto topic creation is turned off on purpose — topic creation and its settings (partitions, replication factor, configs) stay deliberate, and a mistyped topic name fails instead of silently spawning a topic with broker defaults.",
       },
       "Kafka CLI tools": {
         summary:
@@ -324,12 +324,12 @@ export const modules: Module[] = [
           {
             term: "Grafana",
             detail:
-              "localhost:3001, anonymous access (admin role, local lab). Dashboards → \"Kafka lab overview\": broker count, under-replicated partitions, per-topic write rate, consumer-group lag, and an ISR-vs-replicas table.",
+              "localhost:3001, anonymous access (admin role, local lab). Dashboards → \"Kafka lab overview\": brokers reporting, under-replicated partitions, consumer-group lag by group, per-topic write rate, and in-sync vs total replicas per partition.",
           },
           {
-            term: "It lines up with the CLI",
+            term: "The lag panel vs the CLI",
             detail:
-              "The lag panel plots the same CURRENT-OFFSET / LOG-END-OFFSET / LAG numbers kafka-consumer-groups.sh --describe prints.",
+              "It graphs total lag per consumer group and topic over time — the CLI's LAG column summed across partitions. CURRENT-OFFSET, LOG-END-OFFSET, and the per-partition breakdown stay CLI-only.",
           },
         ],
         watchOut:
