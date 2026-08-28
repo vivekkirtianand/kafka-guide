@@ -15,6 +15,179 @@ export const modules: Module[] = [
       "Ordering guarantees",
       "At-most-once, at-least-once, and exactly-once processing",
     ],
+    topicDetail: {
+      "Kafka's append-only log": {
+        summary:
+          "Every topic-partition is an ordered, immutable, append-only sequence of records — the one data structure everything else is built on.",
+        points: [
+          {
+            term: "Append-only",
+            detail:
+              "Producers only ever add records to the end. Nothing is modified or inserted in the middle; even a delete is just another appended record (a tombstone, under log compaction).",
+          },
+          {
+            term: "Offsets",
+            detail:
+              "Each record gets a monotonically increasing integer offset that is its permanent position in that partition. Offsets are per-partition, never global.",
+          },
+          {
+            term: "Reading doesn't consume",
+            detail:
+              "A consumer just tracks a position in the log. Reading a record doesn't remove it — many consumers read the same partition independently, and any of them can move its position back and re-read.",
+          },
+          {
+            term: "Retention frees space, not consumption",
+            detail:
+              "Records age out by time or size, or are compacted to the latest value per key — independent of whether anyone has read them.",
+          },
+        ],
+        watchOut:
+          "The log is per-partition. \"The order of a topic\" only means something for a single-partition topic; across partitions there is no total order.",
+      },
+      "Brokers, topics, partitions, replicas": {
+        summary:
+          "A topic is split into partitions for scale; each partition is replicated across brokers for durability.",
+        points: [
+          {
+            term: "Broker",
+            detail:
+              "One Kafka server process. A cluster is a set of brokers, and each broker holds a subset of the cluster's partitions.",
+          },
+          {
+            term: "Topic → partitions",
+            detail:
+              "A topic is a named log split into N partitions. Partitions are the unit of parallelism and placement — different partitions of one topic live on different brokers.",
+          },
+          {
+            term: "Partition → replicas",
+            detail:
+              "Each partition has a replication factor R: R copies on R different brokers. One replica is the leader, the rest are followers that copy from it.",
+          },
+          {
+            term: "Key picks the partition",
+            detail:
+              "A record's key is hashed to choose its partition, so all records with the same key land in the same partition and stay ordered. No key spreads records across partitions.",
+          },
+        ],
+        watchOut:
+          "Partition count can be raised but never lowered, and raising it changes which partition future keys hash to — so keyed ordering resets for those keys.",
+      },
+      "Leaders, followers, ISR, and controllers": {
+        summary:
+          "Every partition has one leader that handles all of its reads and writes; the controller decides which broker that is.",
+        configs: ["acks", "min.insync.replicas"],
+        points: [
+          {
+            term: "Leader",
+            detail:
+              "All produces and consumes for a partition go through its leader. Followers don't serve clients (bar optional rack-local follower fetching) — they only replicate.",
+          },
+          {
+            term: "ISR — in-sync replicas",
+            detail:
+              "The replicas currently caught up with the leader. A follower that falls too far behind is dropped from the ISR and rejoins once it catches up.",
+          },
+          {
+            term: "Why the ISR matters",
+            detail:
+              "acks=all and min.insync.replicas together require a write to reach a minimum number of in-sync replicas before it's acknowledged. If the ISR shrinks below that, the leader rejects produces instead of acking a thin write.",
+          },
+          {
+            term: "Controller",
+            detail:
+              "One broker acts as controller: it tracks broker liveness and partition state and elects a new leader when one fails. In KRaft mode that state lives in a dedicated Raft metadata log; older ZooKeeper-based clusters (removed in 4.0) kept it in ZooKeeper.",
+          },
+        ],
+        watchOut:
+          "A new leader is normally chosen only from the ISR, so it has every acknowledged record. Unclean leader election (off by default) allows an out-of-sync replica to take over — trading that guarantee for availability, and losing acknowledged records.",
+      },
+      "Producers, consumers, offsets, and consumer groups": {
+        summary:
+          "Producers append to partitions; consumers track a position per partition; a consumer group splits the partitions across its members.",
+        configs: ["group.id", "enable.auto.commit"],
+        points: [
+          {
+            term: "Producer",
+            detail:
+              "Sends records to a topic; the partitioner (key hash, or a spread when there's no key) picks the partition. The broker assigns the offset on append.",
+          },
+          {
+            term: "Consumer",
+            detail:
+              "Pulls batches from the partitions it's assigned and processes them, holding an in-memory read position that advances every poll.",
+          },
+          {
+            term: "Committed offset",
+            detail:
+              "Separately from the read position, a consumer periodically commits \"done up to offset N\" to the internal __consumer_offsets topic. That is the recovery point after a restart or reassignment — not the live position.",
+          },
+          {
+            term: "Consumer group",
+            detail:
+              "Consumers sharing a group.id divide the subscribed partitions among themselves, one partition to exactly one member. Add members to scale out, up to the partition count. A different group.id gets its own independent copy of the stream.",
+          },
+        ],
+        watchOut:
+          "The read position and the committed offset are different things. Whether a crash reprocesses or skips records depends entirely on when you commit relative to doing the work.",
+      },
+      "Ordering guarantees": {
+        summary: "Kafka orders records within a single partition — and only there.",
+        configs: ["enable.idempotence", "max.in.flight.requests.per.connection"],
+        points: [
+          {
+            term: "Per-partition, not per-topic",
+            detail:
+              "Records in one partition are delivered in the offset order they were appended. Across partitions of the same topic there is no ordering.",
+          },
+          {
+            term: "Keys are how you get ordering where you need it",
+            detail:
+              "Route records that must stay ordered — all events for one account, say — to the same partition by giving them the same key.",
+          },
+          {
+            term: "Retries can reorder",
+            detail:
+              "With more than one in-flight request per connection, a failed-and-retried request can land after a later one that already succeeded. enable.idempotence=true lets the broker restore order (and dedupe) for up to 5 in-flight requests.",
+          },
+          {
+            term: "The consumer can give it up",
+            detail:
+              "A single consumer processes each assigned partition in order. Hand a partition's records to a thread pool and you've discarded that ordering yourself.",
+          },
+        ],
+        watchOut:
+          "Adding partitions raises throughput but breaks ordering for keys whose partition changes — the key hash is taken over the current partition count.",
+      },
+      "At-most-once, at-least-once, and exactly-once processing": {
+        summary:
+          "Which one you get is set by when you commit the offset relative to doing the work — plus, for exactly-once, transactions.",
+        configs: ["enable.idempotence", "isolation.level"],
+        points: [
+          {
+            term: "At-most-once",
+            detail:
+              "Commit the offset before processing. A crash after the commit but before the work skips the record — never reprocessed, sometimes lost.",
+          },
+          {
+            term: "At-least-once",
+            detail:
+              "Process, then commit. A crash between the two replays the record on restart. The default posture — fine as long as your processing is idempotent.",
+          },
+          {
+            term: "Idempotent producer is not exactly-once",
+            detail:
+              "enable.idempotence=true (on by default) removes duplicates from a producer's own retries within a session. It does not make an end-to-end consume → process → produce pipeline exactly-once.",
+          },
+          {
+            term: "Exactly-once (EOS)",
+            detail:
+              "For a Kafka-to-Kafka pipeline: a transactional producer writes the output records and the input offsets in one atomic transaction, and downstream consumers set isolation.level=read_committed.",
+          },
+        ],
+        watchOut:
+          "Exactly-once is scoped to Kafka — it means the observable result is as if each record were processed once. A database write or HTTP call inside your processing still needs its own idempotency key.",
+      },
+    },
     activities: [
       "Animate a record moving from producer to partition replicas and consumer",
       "Change partition counts and observe ordering",
