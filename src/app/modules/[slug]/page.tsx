@@ -10,6 +10,12 @@ import AcksDurabilityDemo from "@/components/demos/AcksDurabilityDemo";
 import BatchingThroughputDemo from "@/components/demos/BatchingThroughputDemo";
 import BufferAndTimeoutDemo from "@/components/demos/BufferAndTimeoutDemo";
 import IdempotenceDemo from "@/components/demos/IdempotenceDemo";
+import PollIntervalDemo from "@/components/demos/PollIntervalDemo";
+import ConsumerGroupScalingDemo from "@/components/demos/ConsumerGroupScalingDemo";
+import CommitStrategyDemo from "@/components/demos/CommitStrategyDemo";
+import CommitCrashDemo from "@/components/demos/CommitCrashDemo";
+import OffsetResetDemo from "@/components/demos/OffsetResetDemo";
+import PoisonMessageDemo from "@/components/demos/PoisonMessageDemo";
 
 export function generateStaticParams() {
   return modules.map((m) => ({ slug: m.slug }));
@@ -106,6 +112,17 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
           <BatchingThroughputDemo />
           <BufferAndTimeoutDemo />
           <IdempotenceDemo />
+        </div>
+      )}
+
+      {mod.slug === "consumer-configuration" && (
+        <div className="mt-10 flex flex-col gap-8">
+          <PollIntervalDemo />
+          <ConsumerGroupScalingDemo />
+          <CommitStrategyDemo />
+          <CommitCrashDemo />
+          <OffsetResetDemo />
+          <PoisonMessageDemo />
         </div>
       )}
 

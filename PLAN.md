@@ -112,12 +112,64 @@ PR; all reproduced and re-verified live):
 | "Improve batching" topic narrative still said every produce request is per-partition and a batch is sent as one request, contradicting the demo's own (already-corrected) disclaimer | ✅ Done | Reworded to explain batch accumulation (per partition) and request bundling (one request can carry batches for multiple partitions on the same broker) as two separate things, plus the linger.ms=0 clarification (records arriving together can still batch; only intentional waiting is disabled). |
 | PLAN.md's Verification section still said "25/25 passing" after the suite grew to 53 tests | ✅ Done | Corrected to 53/53. |
 
+## Module 4 — Consumer configuration
+
+Built to the same bar as Module 3: real lesson prose for all 7 topics (not a bullet
+outline) plus one interactive demo per listed activity (6 demos). `Module.status` is now
+`"available"` and [page.tsx](src/app/modules/%5Bslug%5D/page.tsx) renders the six demos
+below the topic narrative.
+
+| Item | Status | Notes |
+|---|---|---|
+| Topic narrative (all 7 topics) | ✅ Done | Written into `modules.ts`'s `consumer-configuration` entry (`topicNarrative`). Covers group assignment and the partition-count ceiling, the two separate liveness clocks (heartbeat vs. max.poll.interval.ms), committed offset vs. read position, eager vs. cooperative rebalance cost, static membership's failure-detection tradeoff, the cooperative-assignor migration, poison-message handling, and — from the round-2 review — the classic vs. new (KIP-848) group protocol distinction woven through the assignment, polling, and rebalance topics. Verified rendering in-browser. |
+| New config entries (10) | ✅ Done | [configs.ts](src/lib/data/configs.ts) gained `group.id`, `partition.assignment.strategy`, `group.instance.id`, `heartbeat.interval.ms`, `max.poll.records`, `enable.auto.commit`, `auto.commit.interval.ms`, `isolation.level`, `fetch.max.bytes`, `group.protocol` — closing dangling `relatedConfigs` references (`group.id`, `group.instance.id`, `heartbeat.interval.ms`, `max.poll.records`, `enable.auto.commit`, `fetch.max.bytes`) plus topical ones (`group.protocol` and the classic-only qualifiers came out of the PR review). Three new goal categories ("Consumer group scaling", "Read transactional data", "Tune consumer fetching"). Verified in Config Explorer: 31 entries on Kafka 4.0 (30 on 3.5, where `group.protocol` is hidden), new categories populate the filter. |
+| Activity: make processing exceed max.poll.interval.ms | ✅ Done | [PollIntervalDemo.tsx](src/components/demos/PollIntervalDemo.tsx) — max.poll.records × per-record processing time vs. a (scaled 1000ms) interval budget; shows the healthy poll loop vs. the rebalance loop, and that raising the interval or lowering max.poll.records both fix it. |
+| Activity: add and remove consumer instances | ✅ Done | [ConsumerGroupScalingDemo.tsx](src/components/demos/ConsumerGroupScalingDemo.tsx) — 6 partitions, 1–8 consumers, contiguous RangeAssignor-style assignment, rebalance log on every join/leave, a 7th+ consumer shown explicitly idle. |
+| Activity: compare automatic and manual commits | ✅ Done | [CommitStrategyDemo.tsx](src/components/demos/CommitStrategyDemo.tsx) — a loop clock plus auto.commit.interval.ms: auto-commit fires only when the interval has elapsed since the last commit, so fast polls (picker: 1000/2000/6000 ms per poll) trail several batches and slow polls keep to one. Polling continues past the end of the partition so the final position can commit on a later empty poll(). The read-vs-committed gap is labeled "redelivered on crash now" (mostly-but-not-all duplicates). Manual commitSync() advances the offset exactly when called. |
+| Activity: crash a consumer before and after committing | ✅ Done | [CommitCrashDemo.tsx](src/components/demos/CommitCrashDemo.tsx) — one batch of 3, explicit ordering of "commit offset 3" and "crash consumer," plus a commit-before-processing toggle whose policy the buttons enforce. Tracks processed vs. committed separately: a partial crash reports duplicates (already processed) vs. first-time deliveries, not a blanket "reprocessed." Commit-before-processing + crash → skipped records (at-most-once); commit-after-processing + clean crash → clean handoff. New owner always resumes from the committed offset. |
+| Activity: reset offsets and replay data | ✅ Done | [OffsetResetDemo.tsx](src/components/demos/OffsetResetDemo.tsx) — a 12-record log with committed offset 8; `--to-earliest` / `--to-latest` / `--to-offset` / `--shift-by` buttons. Per-offset `consumed / replay / pending / skipped` status derived from a persistent consumption history and the movable bookmark: a backward reset marks previously-consumed records `replay` (not "new"), a forward reset marks jumped-over records `skipped` (reversible by a later reset). Disclaimer notes the CLI refuses to run against an active group and needs `--execute`. |
+| Activity: process a poison message using retry and dead-letter topics | ✅ Done | [PoisonMessageDemo.tsx](src/components/demos/PoisonMessageDemo.tsx) — offset 2 is poison; all three strategies assume a seek-back error handler. Tabs: "unbounded retry" (seek back forever, partition stuck, lag grows), "dead-letter topic" (bounded in-place retries → produce to `orders.DLT` → commit past), "retry topics" (forward to `orders.retry.5s`, escalating to `.30s` then DLT). |
+
+**Tests**: 34 new tests (six Module 4 demo test files plus `configs.test.ts` for config
+version gating), bringing the suite to 87 (up from 53). Follows the Module 1/3 pattern —
+`data-testid` for structural containers, exact-string assertions on log/outcome text, one
+test per distinct behavior branch. All passing, plus `typecheck`, `lint`, and `next build`
+clean.
+
+**Review findings addressed** (8 findings from a review of PR #4; all reproduced against
+real Kafka 4.0 consumer semantics and re-verified live):
+
+| Finding | Status | Fix |
+|---|---|---|
+| Poison records aren't auto-returned by the next `poll()` — redelivery needs a `seek()`, a framework error handler, or a crash/rebalance | ✅ Done | `PoisonMessageDemo`'s seek-back strategy log now states the error handler seeks back to the failed offset (Spring Kafka's default); disclaimer explains poll() has already advanced the in-memory position, so a raw exception skips the record rather than retrying it. "Poison messages" narrative rewritten as a two-step failure: raw propagation skips, then a rebalance/restart/seek brings it back and it stays stuck. (Round 2 renamed that strategy tab from "no handling" to "unbounded retry".) |
+| `CooperativeStickyAssignor` is not the effective default — the default list is headed by `RangeAssignor` | ✅ Done | "Cooperative assignment" narrative no longer calls it "the default in modern Kafka"; adds an explicit "It is not automatically active" paragraph (first common assignor wins = RangeAssignor). `partition.assignment.strategy` config `controls`/`whenToChange`/`performanceImpact` corrected to say the same. |
+| Kafka 4's new consumer group protocol (KIP-848) is missing | ✅ Done | Added `group.protocol` config entry (classic vs. consumer, server-side assignment, `group.remote.assignor`). "Polling and heartbeats", "Rebalance behavior", and "Cooperative assignment" narratives each gained a paragraph on the new protocol. `session.timeout.ms`, `heartbeat.interval.ms`, `partition.assignment.strategy` now flagged "classic group protocol only" and noted as ignored under `group.protocol=consumer`. |
+| Partial crashes counted every redelivered record as "reprocessed" | ✅ Done | `CommitCrashDemo` now tracks processed vs. committed separately: `redelivered = BATCH − committed`, `duplicates = max(0, processed − committed)`, first-time = the rest. Processing 1 of 3 then crashing reports "1 duplicate, 2 never processed before." Subtitle and badge reworded (redelivered ≠ reprocessed). |
+| Auto-commit modeled as always exactly one batch behind | ✅ Done | `CommitStrategyDemo` rebuilt with a loop clock and `auto.commit.interval.ms` (5000ms): auto-commit fires only when the interval has elapsed since the last commit, so fast polls trail several batches and slow polls (`6000ms/poll` picker) keep to one. The read−committed metric relabeled "redelivered on crash now," subtitle notes those are mostly-but-not-all duplicates. |
+| Commit-order policy selector wasn't enforced | ✅ Done | `CommitCrashDemo` now disables "commit offset 3" until all records are processed in "after" mode, and disables "process one record" until the commit has happened in "before" mode. |
+| Forward offset resets described as permanent; skipped offsets rendered as "consumed" | ✅ Done | `OffsetResetDemo` tracks per-offset status with a legend. A forward reset marks jumped-over records `skipped`, not `consumed`; a later backward reset picks them back up. Log and disclaimer say "another reset can always move the bookmark back." (Round 2 added a persistent consumption history so backward resets over already-consumed records show as `replay`, not `pending`.) |
+| `fetch.max.bytes` was a dangling `relatedConfigs` reference | ✅ Done | Added a `fetch.max.bytes` `ConfigEntry` (new "Tune consumer fetching" goal). (Round 2: corrected the default to 50 MiB and the soft-limit wording — if the first record batch in the first non-empty partition exceeds it, that batch is still returned so the consumer can progress.) |
+
+**Review findings addressed (round 2)** (8 more findings from a follow-up review; all
+re-verified live):
+
+| Finding | Status | Fix |
+|---|---|---|
+| Auto-commit could never commit the final batch — polling was disabled once all records were read | ✅ Done | `CommitStrategyDemo` `poll()` now keeps running past the end of the partition in auto mode (empty polls that only run the auto-commit check and advance the clock) until `committed` reaches `read`; the poll button disables only then. Subtitle tells the reader to keep clicking past the end. New test covers it. |
+| `fetch.max.bytes` default was wrong (55 MiB) and the soft-limit exception was described as a single record | ✅ Done | Corrected to `52428800` (50 MiB). The soft-limit wording now says the *first record batch* in the first non-empty partition, not an individual record. |
+| Assignment described as leader-computed without qualification | ✅ Done | "Consumer groups and partition assignment" narrative now splits it: classic protocol → coordinator picks a leader that computes the assignment; `group.protocol=consumer` → the broker computes it, no leader. |
+| Cooperative migration always described as two rolling bounces | ✅ Done | "Cooperative assignment" narrative and `partition.assignment.strategy` config corrected: from the default `[RangeAssignor, CooperativeStickyAssignor]` list it's a single bounce removing RangeAssignor; two bounces only when migrating from an eager-only assignor. |
+| `group.protocol` shown in the Config Explorer for Kafka 3.5/3.7/3.9 | ✅ Done | Added `availableFromVersion?` and `earlyAccessUntilVersion?` to `ConfigEntry` plus `versionAtLeast` / `configAvailable` / `configIsEarlyAccess` helpers in `types.ts`. The Config Explorer hides entries below `availableFromVersion` and shows an "early access in Kafka N" badge + expanded warning for versions in the `[availableFromVersion, earlyAccessUntilVersion)` window. `group.protocol` is `availableFromVersion: "3.7"`, `earlyAccessUntilVersion: "4.0"` — hidden on 3.5, flagged early access on 3.7/3.9, normal on 4.0. (Round 3 correction: it was briefly gated to 4.0 only.) |
+| Offset-reset status lost consumption history — a backward reset relabeled previously-consumed records "not yet consumed" | ✅ Done | `OffsetResetDemo` rebuilt around a persistent `everConsumed[]` history plus the movable bookmark; status is derived as `consumed / replay / pending / skipped`. A backward reset over consumed records shows them as `replay`, and the count line separates "replayed" from "new." |
+| Poison strategy mislabeled "no handling" — it models an explicit seek-back retry handler | ✅ Done | Tab renamed "unbounded retry"; disclaimer states all three strategies assume a seek-back handler and that this one is Spring Kafka's original default (seek back on every failure, no limit, no routing). |
+| PLAN.md still described auto-commit as "one batch behind" and the poison strategy as "no handling" | ✅ Done | Updated the Module 4 activity rows above to match the reworked demos. |
+
 ## Test infrastructure
 
 | Item | Status | Notes |
 |---|---|---|
 | Vitest + React Testing Library setup | ✅ Done | [vitest.config.mts](vitest.config.mts), [vitest.setup.ts](vitest.setup.ts), `npm test` / `npm run test:watch`. |
-| Component tests | ✅ Done | 53 tests across 8 files: `RecordFlowDemo.test.tsx`, `PartitionOrderingDemo.test.tsx`, `LeaderElectionDemo.test.tsx`, `Sidebar.test.tsx` (Module 1), plus `AcksDurabilityDemo.test.tsx`, `BatchingThroughputDemo.test.tsx`, `BufferAndTimeoutDemo.test.tsx`, `IdempotenceDemo.test.tsx` (Module 3). |
+| Component tests | ✅ Done | 87 tests across 15 files: `RecordFlowDemo.test.tsx`, `PartitionOrderingDemo.test.tsx`, `LeaderElectionDemo.test.tsx`, `Sidebar.test.tsx` (Module 1); `AcksDurabilityDemo.test.tsx`, `BatchingThroughputDemo.test.tsx`, `BufferAndTimeoutDemo.test.tsx`, `IdempotenceDemo.test.tsx` (Module 3); `PollIntervalDemo.test.tsx`, `ConsumerGroupScalingDemo.test.tsx`, `CommitStrategyDemo.test.tsx`, `CommitCrashDemo.test.tsx`, `OffsetResetDemo.test.tsx`, `PoisonMessageDemo.test.tsx` (Module 4), plus `configs.test.ts` (config version gating). |
 | Dev preview config | ✅ Done | [.claude/launch.json](.claude/launch.json) for local dev-server preview. |
 | Node version pinned/declared | ✅ Done | `engines.node` in `package.json` (floor set by `jsdom`), [.nvmrc](.nvmrc). |
 | CI | ✅ Done | [.github/workflows/ci.yml](.github/workflows/ci.yml) — `npm run typecheck`, lint, test, build on push/PR to `main`. |
@@ -153,8 +205,9 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 | Item | Status | Notes |
 |---|---|---|
-| Modules 4–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
+| Modules 5–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
 | Module 3 (Producer configuration) | ✅ Done | Full topic narrative + 4 interactive activities. See the Module 3 section above. |
+| Module 4 (Consumer configuration) | ✅ Done | Full topic narrative (7 topics) + 6 interactive activities. See the Module 4 section above. |
 | Module 1's topic narrative content | ⭕ Planned | Still a bullet outline, unlike Module 3 — see the Module 1 section above. |
 | Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
 | 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
@@ -165,7 +218,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 53/53 passing
+- `npx vitest run` — 87/87 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's

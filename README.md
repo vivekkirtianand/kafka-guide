@@ -46,6 +46,12 @@ src/
       BatchingThroughputDemo.tsx    Module 3 activity: linger.ms/batch.size vs. request count and latency
       BufferAndTimeoutDemo.tsx      Module 3 activity: buffer fill, oversized records, delivery.timeout.ms
       IdempotenceDemo.tsx           Module 3 activity: duplicate sends with and without idempotence
+      PollIntervalDemo.tsx          Module 4 activity: processing time vs. max.poll.interval.ms
+      ConsumerGroupScalingDemo.tsx  Module 4 activity: adding/removing consumers, partition assignment, rebalances
+      CommitStrategyDemo.tsx        Module 4 activity: automatic vs. manual offset commits
+      CommitCrashDemo.tsx           Module 4 activity: crashing before vs. after a commit
+      OffsetResetDemo.tsx           Module 4 activity: offset reset (--to-earliest/--shift-by/…) and replay
+      PoisonMessageDemo.tsx         Module 4 activity: poison messages, retry topics, dead-letter topics
       IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
   lib/
     types.ts                        Shared content types
@@ -64,13 +70,18 @@ src/
   topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
   demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout
   failures, idempotence and duplicates).
+- **Module 4 (Consumer configuration)** is fully built: real lesson prose for all 7
+  topics plus one interactive demo per activity (6 demos): processing vs.
+  max.poll.interval.ms, consumer-group scaling and rebalances, automatic vs. manual
+  commits, crashing before/after a commit, offset reset and replay, and poison-message
+  handling with retry and dead-letter topics.
 - **The incident simulator's "slow broker" incident** is fully built out (reveal clues,
   pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
-- **Config explorer** ships with 21 real settings across producer/consumer/broker/topic
+- **Config explorer** ships with 31 real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
 - **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
   the plan, searchable.
-- Modules 4–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
+- Modules 5–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
   clues, categories) but their content/interactivity is not yet written — they render a
   "planned" state so the whole app is navigable today. Module 2's page is the exception: it
   links out to the local cluster lab below instead of showing that placeholder, since the
