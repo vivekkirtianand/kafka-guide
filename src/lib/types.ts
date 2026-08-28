@@ -42,9 +42,13 @@ export interface ConfigEntry {
   defaultValue: string;
   // Only set when the default differs for that version; falls back to defaultValue otherwise.
   defaultValueByVersion?: Partial<Record<KafkaVersion, string>>;
-  // Set when the config did not exist (or wasn't usable) before a given release — the entry
-  // is hidden in the Config Explorer for older selected versions.
+  // Set when the config did not exist before a given release — the entry is hidden in the
+  // Config Explorer for older selected versions.
   availableFromVersion?: KafkaVersion;
+  // Set when the config existed but only as an early-access/preview feature before a given
+  // release — the Config Explorer flags it as early access for versions below this one
+  // (and at or above availableFromVersion).
+  earlyAccessUntilVersion?: KafkaVersion;
   changeMechanism: ChangeMechanism;
   riskOfChange: RiskLevel;
   managedAvailability: "full" | "limited" | "unavailable";
@@ -66,6 +70,16 @@ export function versionAtLeast(version: KafkaVersion, min: KafkaVersion): boolea
 
 export function configAvailable(entry: ConfigEntry, version: KafkaVersion): boolean {
   return !entry.availableFromVersion || versionAtLeast(version, entry.availableFromVersion);
+}
+
+// True when the config is available in this version but only reached production readiness
+// in a later one.
+export function configIsEarlyAccess(entry: ConfigEntry, version: KafkaVersion): boolean {
+  return (
+    configAvailable(entry, version) &&
+    !!entry.earlyAccessUntilVersion &&
+    !versionAtLeast(version, entry.earlyAccessUntilVersion)
+  );
 }
 
 export interface Incident {

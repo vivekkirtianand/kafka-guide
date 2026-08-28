@@ -395,14 +395,15 @@ export const configs: ConfigEntry[] = [
     key: "group.protocol",
     scope: "consumer",
     goal: "Rebalance behavior",
-    controls: "Which consumer group protocol the client uses: classic (client-side assignment) or consumer (broker-side assignment, the new protocol GA in Kafka 4.0).",
+    controls: "Which consumer group protocol the client uses: classic (client-side assignment) or consumer (broker-side assignment). The consumer protocol was early access in Kafka 3.7–3.9 and became production-ready in 4.0.",
     defaultValue: "classic",
-    availableFromVersion: "4.0",
+    availableFromVersion: "3.7",
+    earlyAccessUntilVersion: "4.0",
     changeMechanism: "recreate-client",
     riskOfChange: "caution",
     managedAvailability: "limited",
     whenToChange:
-      "Move to consumer to get incremental, broker-coordinated rebalances without tuning client-side assignors or heartbeat timers — requires brokers on 4.0+ with the new group protocol enabled.",
+      "Move to consumer to get incremental, broker-coordinated rebalances without tuning client-side assignors or heartbeat timers. Only rely on it in production from 4.0 onward — in 3.7–3.9 it is early access, off by default on the broker, and missing pieces like regex subscriptions.",
     performanceImpact:
       "The consumer protocol removes the global synchronization barrier from a rebalance: members learn about assignment changes individually through their heartbeat responses instead of all rejoining at once.",
     reliabilityImpact:
