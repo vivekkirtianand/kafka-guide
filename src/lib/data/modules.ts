@@ -62,21 +62,200 @@ export const modules: Module[] = [
       "Preserve ordering during retries",
       "Use transactions (transactional.id, transaction timeouts)",
     ],
-    topicNarrative: {
-      "Prevent acknowledged data loss (acks, enable.idempotence, retries)":
-        "acks controls what \"successful\" means. acks=0 means the producer never waits for a response — the record may not have even reached the broker. acks=1 means the leader wrote it to its own log, but if the leader dies before followers replicate it, an in-sync follower can be elected leader without that record: the producer was told it succeeded, and it's gone anyway. acks=all is the only setting where the acknowledgment means the record is durable across a broker failure — the leader doesn't reply until every in-sync replica has it, which min.insync.replicas (a topic config, not a producer one) makes enforceable rather than best-effort.\n\nacks alone doesn't make retries safe, though. If a produce request times out after the broker actually wrote it, a naive retry sends the same record again and the log now has a duplicate. enable.idempotence=true (the default) closes that gap: the producer tags each batch with a producer ID and sequence number, and the broker discards a retry it's already seen. retries then becomes safe to leave at its effectively-unbounded default, because idempotence is what prevents \"safe to retry\" from also meaning \"safe to duplicate.\"",
-      "Improve batching (batch.size, linger.ms)":
-        "A batch is accumulated per partition: the producer groups records destined for the same partition together before writing them to disk on the broker, rather than paying that per-record overhead individually. That's a separate thing from a produce request over the network — one request to a broker can bundle the batches for every partition on that broker the producer currently has data for, so requests and batches aren't a 1:1 relationship. Batching is what makes both cheaper: fuller batches mean fewer, more efficient requests.\n\nlinger.ms is how long the producer will wait, after the first record in a batch arrives, before sending it anyway even if the batch isn't full — trading a small amount of added latency for a much fuller, more efficient batch. batch.size is the other trigger: if enough records arrive quickly enough to fill it before linger.ms elapses, the batch sends immediately regardless of the timer. Kafka 4.0 raised the default linger.ms from 0 to 5, on the reasoning that 5ms of added latency is negligible for nearly every workload and the batching win is not — though even at linger.ms=0, records that happen to arrive together can still land in the same batch; the setting only disables intentionally waiting for more.",
-      "Control memory and backpressure (buffer.memory, max.block.ms)":
-        "buffer.memory is the total memory the producer will use to hold records that have been sent but not yet acknowledged, across every partition. It exists because a producer can generate records faster than the broker (or the network) can absorb them — without a bound, an application under load could grow producer memory without limit.\n\nWhen the buffer is full, send() doesn't fail immediately — it blocks the calling thread, giving the broker a chance to catch up and free space. max.block.ms is how long it will block before giving up and throwing a TimeoutException instead. This is backpressure, not a durability control: a full buffer means the producer is being throttled by memory, not that any data has been lost. The failure mode to watch for is the opposite of a crash — a calling thread that appears hung for up to max.block.ms with no error, because nothing has actually failed yet.",
-      "Handle large records (max.request.size)":
-        "max.request.size caps the largest single produce request the producer will construct, which in practice caps the largest individual record it will accept. It's enforced synchronously inside send() — a record over the limit throws a RecordTooLargeException immediately, before the record is ever batched or reaches the network, not later as a delayed broker rejection.\n\nThis limit only matters relative to the broker side: the broker (and the topic, if it overrides the broker default) enforces its own maximum message size independently. Raising max.request.size on the producer without raising the matching limit on the broker doesn't help — it just moves where the same record gets rejected, from an immediate local exception to a failed request round trip.",
-      "Bound request latency (request.timeout.ms, delivery.timeout.ms)":
-        "These sound similar but bound different things. request.timeout.ms is how long the producer waits for a broker's response to one specific produce request before treating that attempt as failed and moving on to a retry. It's scoped to a single network round trip.\n\ndelivery.timeout.ms is the outer budget: the total time from calling send() to the record's final outcome — success or failure — covering the linger wait, every retry, and every request.timeout.ms window along the way. It's the setting that actually determines how long the producer keeps trying before giving up on a record and delivering a TimeoutException to the application's callback, which is why it — not retries — is the practical bound on retry behavior. request.timeout.ms has to stay comfortably below delivery.timeout.ms, or a single slow request could burn the entire delivery budget in one attempt.",
-      "Preserve ordering during retries":
-        "Kafka only guarantees order within a partition, and only among records the producer actually sent in that order — retries are exactly where that guarantee is easiest to accidentally break. max.in.flight.requests.per.connection controls how many produce requests can be outstanding to a broker at once, unacknowledged, before the producer waits for a response. If more than one is in flight and an earlier one fails and gets retried while a later one succeeds first, the later record lands in the log before the earlier one — silent reordering, with no error raised anywhere.\n\nenable.idempotence=true closes this gap the same way it closes the duplicate-on-retry gap: the broker tracks sequence numbers per partition and can detect and correctly order out-of-sequence retries, which is why it's safe to run with up to 5 in-flight requests (the max Kafka allows once idempotence is on) instead of being forced down to max.in.flight.requests.per.connection=1 to get the same guarantee.",
-      "Use transactions (transactional.id, transaction timeouts)":
-        "Idempotence already guarantees no duplicates independently within each partition a producer writes to — a producer can idempotently write to many partitions at once, each tracked separately. What it doesn't give you is atomicity across those partitions: nothing stops one partition's write from succeeding while another's fails. Transactions add exactly that: either every record across every partition in the transaction becomes visible to read_committed consumers, or none of them do. Setting transactional.id turns this on for a producer and also fences out any older producer instance still running with the same ID — the classic \"zombie\" scenario after a restart — which is why transactions require enable.idempotence=true and acks=all underneath.\n\ntransaction.timeout.ms bounds the other failure mode: a transaction that's had a partition added but was never committed or aborted, which would otherwise block read_committed consumers from reading past it indefinitely — the clock starts when the first partition is added, not at beginTransaction(). It also can't exceed the broker's transaction.max.timeout.ms, or initialization itself fails. Once the timeout elapses, the coordinator proactively aborts the transaction so consumers aren't left waiting on a producer that may never come back; the producer's next attempt to continue that transaction is then fenced.",
+    topicDetail: {
+      "Prevent acknowledged data loss (acks, enable.idempotence, retries)": {
+        summary:
+          "acks defines what \"success\" means; idempotence is what makes repeating that success safe.",
+        configs: ["acks", "enable.idempotence", "retries", "min.insync.replicas"],
+        points: [
+          {
+            term: "acks=0",
+            detail:
+              "The producer never waits for a response. The record may not have reached the broker at all.",
+          },
+          {
+            term: "acks=1",
+            detail:
+              "The leader wrote it to its own log. If the leader dies before followers replicate, an in-sync follower can be elected without the record — you were told it succeeded and it's gone.",
+          },
+          {
+            term: "acks=all",
+            detail:
+              "The leader doesn't reply until every in-sync replica has the record. The only setting where an acknowledgment means durable-across-a-broker-failure.",
+          },
+          {
+            term: "min.insync.replicas",
+            detail:
+              "A topic config, not a producer one. Turns \"all in-sync replicas\" into an enforceable minimum instead of best-effort.",
+          },
+          {
+            term: "enable.idempotence=true (default)",
+            detail:
+              "Tags each batch with a producer ID and sequence number so the broker discards a retry it has already seen. This is what lets retries default to effectively unbounded without also meaning \"safe to duplicate.\"",
+          },
+        ],
+        watchOut:
+          "acks=all alone doesn't make retries safe. If a produce request times out after the broker already wrote the record, a naive retry appends it a second time — idempotence is what closes that gap.",
+      },
+      "Improve batching (batch.size, linger.ms)": {
+        summary:
+          "Records are grouped per partition before they're sent; fuller batches mean fewer, cheaper requests.",
+        configs: ["batch.size", "linger.ms"],
+        points: [
+          {
+            term: "Batch vs request",
+            detail:
+              "A batch is per-partition. One network request to a broker can bundle the batches for every partition on that broker — batches and requests aren't 1:1.",
+          },
+          {
+            term: "linger.ms",
+            detail:
+              "How long the producer waits after the first record in a batch before sending anyway, trading a little latency for a fuller batch. Kafka 4.0 raised the default from 0 to 5.",
+          },
+          {
+            term: "batch.size",
+            detail:
+              "The other trigger: if records fill it before linger.ms elapses, the batch sends immediately regardless of the timer.",
+          },
+          {
+            term: "linger.ms=0",
+            detail:
+              "Doesn't disable batching — records that happen to arrive together still share a batch. It only disables intentionally waiting for more.",
+          },
+        ],
+        watchOut:
+          "A bigger batch.size only helps if records actually arrive fast enough to fill it. Otherwise linger.ms is doing all the work.",
+      },
+      "Control memory and backpressure (buffer.memory, max.block.ms)": {
+        summary:
+          "The producer buffers unsent records in memory; when that fills, send() blocks rather than failing.",
+        configs: ["buffer.memory", "max.block.ms"],
+        points: [
+          {
+            term: "buffer.memory",
+            detail:
+              "Total memory for records that have been sent but not yet acknowledged, across all partitions. Bounds a producer that generates faster than the broker or network can absorb.",
+          },
+          {
+            term: "A full buffer",
+            detail:
+              "send() blocks the calling thread to give the broker a chance to catch up — it doesn't fail immediately.",
+          },
+          {
+            term: "max.block.ms",
+            detail:
+              "How long send() will block before giving up and throwing a TimeoutException.",
+          },
+          {
+            term: "Backpressure, not data loss",
+            detail:
+              "A full buffer means the producer is being throttled by memory. Nothing has been lost.",
+          },
+        ],
+        watchOut:
+          "The failure mode is the opposite of a crash — a calling thread that looks hung for up to max.block.ms with no error, because nothing has actually failed yet.",
+      },
+      "Handle large records (max.request.size)": {
+        summary:
+          "Caps the largest request the producer will build, enforced locally inside send() before batching.",
+        configs: ["max.request.size"],
+        points: [
+          {
+            term: "What it caps",
+            detail:
+              "The largest single produce request, which in practice caps the largest individual record the producer will accept.",
+          },
+          {
+            term: "Enforced synchronously",
+            detail:
+              "A record over the limit throws RecordTooLargeException immediately inside send(), before it's batched or sent — not as a delayed broker rejection.",
+          },
+          {
+            term: "Only matters relative to the broker",
+            detail:
+              "The broker, and the topic if it overrides the broker default, enforce their own maximum message size independently.",
+          },
+        ],
+        watchOut:
+          "Raising max.request.size without raising the matching broker or topic limit just moves where the same record is rejected — from a local exception to a failed round trip.",
+      },
+      "Bound request latency (request.timeout.ms, delivery.timeout.ms)": {
+        summary:
+          "One bounds a single network round trip; the other bounds the whole journey from send() to final outcome.",
+        configs: ["request.timeout.ms", "delivery.timeout.ms"],
+        points: [
+          {
+            term: "request.timeout.ms",
+            detail:
+              "How long the producer waits for a broker's response to one produce request before treating that attempt as failed. Scoped to a single round trip.",
+          },
+          {
+            term: "delivery.timeout.ms",
+            detail:
+              "The outer budget: total time from send() to success or failure, covering the linger wait, every retry, and every request.timeout.ms window along the way.",
+          },
+          {
+            term: "The real retry bound",
+            detail:
+              "delivery.timeout.ms — not retries — is what actually determines how long the producer keeps trying before delivering a TimeoutException to the callback.",
+          },
+        ],
+        watchOut:
+          "request.timeout.ms must stay comfortably below delivery.timeout.ms, or one slow request can burn the entire delivery budget in a single attempt.",
+      },
+      "Preserve ordering during retries": {
+        summary:
+          "Kafka only orders records within a partition, and retries are the easiest way to break that by accident.",
+        configs: ["max.in.flight.requests.per.connection", "enable.idempotence"],
+        points: [
+          {
+            term: "max.in.flight.requests.per.connection",
+            detail:
+              "How many produce requests can be outstanding to a broker at once, unacknowledged, before the producer waits for a response.",
+          },
+          {
+            term: "How reordering happens",
+            detail:
+              "If more than one request is in flight and an earlier one fails and is retried while a later one already succeeded, the later record lands in the log first — silent, with no error raised.",
+          },
+          {
+            term: "enable.idempotence=true",
+            detail:
+              "The broker tracks sequence numbers per partition and correctly orders out-of-sequence retries, which is why up to 5 in-flight requests stay safe.",
+          },
+        ],
+        watchOut:
+          "Without idempotence, the only way to guarantee order under retries is max.in.flight.requests.per.connection=1 — which costs throughput.",
+      },
+      "Use transactions (transactional.id, transaction timeouts)": {
+        summary:
+          "Idempotence gives no-duplicates per partition; transactions add all-or-nothing atomicity across partitions.",
+        configs: ["transactional.id", "transaction.timeout.ms"],
+        points: [
+          {
+            term: "What idempotence lacks",
+            detail:
+              "A producer can write idempotently to many partitions at once, but nothing stops one partition's write succeeding while another's fails.",
+          },
+          {
+            term: "What transactions add",
+            detail:
+              "Either every record across every partition in the transaction becomes visible to read_committed consumers, or none of them do.",
+          },
+          {
+            term: "transactional.id",
+            detail:
+              "Turns transactions on and fences out any older producer instance still running with the same ID — the \"zombie\" after a restart. Requires enable.idempotence=true and acks=all.",
+          },
+          {
+            term: "transaction.timeout.ms",
+            detail:
+              "Bounds a transaction that had a partition added but was never committed or aborted. The clock starts when the first partition is added, not at beginTransaction(), and it can't exceed the broker's transaction.max.timeout.ms.",
+          },
+        ],
+        watchOut:
+          "An open transaction blocks read_committed consumers from reading past it. When the timeout elapses the coordinator aborts it, and the producer's next attempt to continue that transaction is fenced.",
+      },
     },
     activities: [
       "Compare acks=0, acks=1, and acks=all",
