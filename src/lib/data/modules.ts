@@ -62,21 +62,200 @@ export const modules: Module[] = [
       "Preserve ordering during retries",
       "Use transactions (transactional.id, transaction timeouts)",
     ],
-    topicNarrative: {
-      "Prevent acknowledged data loss (acks, enable.idempotence, retries)":
-        "acks controls what \"successful\" means. acks=0 means the producer never waits for a response — the record may not have even reached the broker. acks=1 means the leader wrote it to its own log, but if the leader dies before followers replicate it, an in-sync follower can be elected leader without that record: the producer was told it succeeded, and it's gone anyway. acks=all is the only setting where the acknowledgment means the record is durable across a broker failure — the leader doesn't reply until every in-sync replica has it, which min.insync.replicas (a topic config, not a producer one) makes enforceable rather than best-effort.\n\nacks alone doesn't make retries safe, though. If a produce request times out after the broker actually wrote it, a naive retry sends the same record again and the log now has a duplicate. enable.idempotence=true (the default) closes that gap: the producer tags each batch with a producer ID and sequence number, and the broker discards a retry it's already seen. retries then becomes safe to leave at its effectively-unbounded default, because idempotence is what prevents \"safe to retry\" from also meaning \"safe to duplicate.\"",
-      "Improve batching (batch.size, linger.ms)":
-        "A batch is accumulated per partition: the producer groups records destined for the same partition together before writing them to disk on the broker, rather than paying that per-record overhead individually. That's a separate thing from a produce request over the network — one request to a broker can bundle the batches for every partition on that broker the producer currently has data for, so requests and batches aren't a 1:1 relationship. Batching is what makes both cheaper: fuller batches mean fewer, more efficient requests.\n\nlinger.ms is how long the producer will wait, after the first record in a batch arrives, before sending it anyway even if the batch isn't full — trading a small amount of added latency for a much fuller, more efficient batch. batch.size is the other trigger: if enough records arrive quickly enough to fill it before linger.ms elapses, the batch sends immediately regardless of the timer. Kafka 4.0 raised the default linger.ms from 0 to 5, on the reasoning that 5ms of added latency is negligible for nearly every workload and the batching win is not — though even at linger.ms=0, records that happen to arrive together can still land in the same batch; the setting only disables intentionally waiting for more.",
-      "Control memory and backpressure (buffer.memory, max.block.ms)":
-        "buffer.memory is the total memory the producer will use to hold records that have been sent but not yet acknowledged, across every partition. It exists because a producer can generate records faster than the broker (or the network) can absorb them — without a bound, an application under load could grow producer memory without limit.\n\nWhen the buffer is full, send() doesn't fail immediately — it blocks the calling thread, giving the broker a chance to catch up and free space. max.block.ms is how long it will block before giving up and throwing a TimeoutException instead. This is backpressure, not a durability control: a full buffer means the producer is being throttled by memory, not that any data has been lost. The failure mode to watch for is the opposite of a crash — a calling thread that appears hung for up to max.block.ms with no error, because nothing has actually failed yet.",
-      "Handle large records (max.request.size)":
-        "max.request.size caps the largest single produce request the producer will construct, which in practice caps the largest individual record it will accept. It's enforced synchronously inside send() — a record over the limit throws a RecordTooLargeException immediately, before the record is ever batched or reaches the network, not later as a delayed broker rejection.\n\nThis limit only matters relative to the broker side: the broker (and the topic, if it overrides the broker default) enforces its own maximum message size independently. Raising max.request.size on the producer without raising the matching limit on the broker doesn't help — it just moves where the same record gets rejected, from an immediate local exception to a failed request round trip.",
-      "Bound request latency (request.timeout.ms, delivery.timeout.ms)":
-        "These sound similar but bound different things. request.timeout.ms is how long the producer waits for a broker's response to one specific produce request before treating that attempt as failed and moving on to a retry. It's scoped to a single network round trip.\n\ndelivery.timeout.ms is the outer budget: the total time from calling send() to the record's final outcome — success or failure — covering the linger wait, every retry, and every request.timeout.ms window along the way. It's the setting that actually determines how long the producer keeps trying before giving up on a record and delivering a TimeoutException to the application's callback, which is why it — not retries — is the practical bound on retry behavior. request.timeout.ms has to stay comfortably below delivery.timeout.ms, or a single slow request could burn the entire delivery budget in one attempt.",
-      "Preserve ordering during retries":
-        "Kafka only guarantees order within a partition, and only among records the producer actually sent in that order — retries are exactly where that guarantee is easiest to accidentally break. max.in.flight.requests.per.connection controls how many produce requests can be outstanding to a broker at once, unacknowledged, before the producer waits for a response. If more than one is in flight and an earlier one fails and gets retried while a later one succeeds first, the later record lands in the log before the earlier one — silent reordering, with no error raised anywhere.\n\nenable.idempotence=true closes this gap the same way it closes the duplicate-on-retry gap: the broker tracks sequence numbers per partition and can detect and correctly order out-of-sequence retries, which is why it's safe to run with up to 5 in-flight requests (the max Kafka allows once idempotence is on) instead of being forced down to max.in.flight.requests.per.connection=1 to get the same guarantee.",
-      "Use transactions (transactional.id, transaction timeouts)":
-        "Idempotence already guarantees no duplicates independently within each partition a producer writes to — a producer can idempotently write to many partitions at once, each tracked separately. What it doesn't give you is atomicity across those partitions: nothing stops one partition's write from succeeding while another's fails. Transactions add exactly that: either every record across every partition in the transaction becomes visible to read_committed consumers, or none of them do. Setting transactional.id turns this on for a producer and also fences out any older producer instance still running with the same ID — the classic \"zombie\" scenario after a restart — which is why transactions require enable.idempotence=true and acks=all underneath.\n\ntransaction.timeout.ms bounds the other failure mode: a transaction that's had a partition added but was never committed or aborted, which would otherwise block read_committed consumers from reading past it indefinitely — the clock starts when the first partition is added, not at beginTransaction(). It also can't exceed the broker's transaction.max.timeout.ms, or initialization itself fails. Once the timeout elapses, the coordinator proactively aborts the transaction so consumers aren't left waiting on a producer that may never come back; the producer's next attempt to continue that transaction is then fenced.",
+    topicDetail: {
+      "Prevent acknowledged data loss (acks, enable.idempotence, retries)": {
+        summary:
+          "acks defines what \"success\" means; idempotence is what makes repeating that success safe.",
+        configs: ["acks", "enable.idempotence", "retries", "min.insync.replicas"],
+        points: [
+          {
+            term: "acks=0",
+            detail:
+              "The producer never waits for a response. The record may not have reached the broker at all.",
+          },
+          {
+            term: "acks=1",
+            detail:
+              "The leader wrote it to its own log. If the leader dies before followers replicate, an in-sync follower can be elected without the record — you were told it succeeded and it's gone.",
+          },
+          {
+            term: "acks=all",
+            detail:
+              "The leader doesn't reply until every replica currently in the ISR has the record. Necessary for broker-failure durability, but not sufficient on its own — if the ISR has shrunk to just the leader, acks=all still acknowledges a single-copy write.",
+          },
+          {
+            term: "min.insync.replicas",
+            detail:
+              "A topic (or broker) config, not a producer one. The minimum ISR size an acks=all write is accepted with — set it to 2+ so a lone leader can't ack a single copy. Below it, the leader rejects produce requests with NOT_ENOUGH_REPLICAS. This, plus a replication factor above it, is what actually guarantees multiple copies exist.",
+          },
+          {
+            term: "enable.idempotence=true (default)",
+            detail:
+              "Tags each batch with a producer ID and sequence number so the broker discards a retry it has already seen. This is what lets retries default to effectively unbounded without also meaning \"safe to duplicate.\"",
+          },
+        ],
+        watchOut:
+          "acks=all alone doesn't make retries safe. If a produce request times out after the broker already wrote the record, a naive retry appends it a second time — idempotence is what closes that gap.",
+      },
+      "Improve batching (batch.size, linger.ms)": {
+        summary:
+          "Records are grouped per partition before they're sent; fuller batches mean fewer, cheaper requests.",
+        configs: ["batch.size", "linger.ms"],
+        points: [
+          {
+            term: "Batch vs request",
+            detail:
+              "A batch is per-partition. One network request to a broker can bundle the batches for every partition on that broker — batches and requests aren't 1:1.",
+          },
+          {
+            term: "linger.ms",
+            detail:
+              "How long the producer waits after the first record in a batch before sending anyway, trading a little latency for a fuller batch. Kafka 4.0 raised the default from 0 to 5.",
+          },
+          {
+            term: "batch.size",
+            detail:
+              "The other trigger: if records fill it before linger.ms elapses, the batch sends immediately regardless of the timer.",
+          },
+          {
+            term: "linger.ms=0",
+            detail:
+              "Doesn't disable batching — records that happen to arrive together still share a batch. It only disables intentionally waiting for more.",
+          },
+        ],
+        watchOut:
+          "A bigger batch.size only helps if records actually arrive fast enough to fill it. Otherwise linger.ms is doing all the work.",
+      },
+      "Control memory and backpressure (buffer.memory, max.block.ms)": {
+        summary:
+          "The producer buffers unsent records in memory; when that fills, send() blocks rather than failing.",
+        configs: ["buffer.memory", "max.block.ms"],
+        points: [
+          {
+            term: "buffer.memory",
+            detail:
+              "The budget for records buffered in the producer waiting to be sent, across all partitions. It roughly — not exactly — tracks the producer's footprint: compression buffers and in-flight requests use memory on top of it.",
+          },
+          {
+            term: "A full buffer",
+            detail:
+              "send() blocks the calling thread to give the sender thread a chance to drain the buffer to the brokers — it doesn't fail immediately.",
+          },
+          {
+            term: "max.block.ms",
+            detail:
+              "How long send() will block before giving up and throwing a TimeoutException.",
+          },
+          {
+            term: "Backpressure, not data loss",
+            detail:
+              "A full buffer means the producer is being throttled by memory. Nothing has been lost.",
+          },
+        ],
+        watchOut:
+          "The failure mode is the opposite of a crash — a calling thread that looks hung for up to max.block.ms with no error, because nothing has actually failed yet.",
+      },
+      "Handle large records (max.request.size)": {
+        summary:
+          "Caps the largest request the producer will build, enforced locally inside send() before batching.",
+        configs: ["max.request.size"],
+        points: [
+          {
+            term: "What it caps",
+            detail:
+              "The largest single produce request, which in practice caps the largest individual record the producer will accept.",
+          },
+          {
+            term: "Enforced synchronously",
+            detail:
+              "A record over the limit throws RecordTooLargeException immediately inside send(), before it's batched or sent — not as a delayed broker rejection.",
+          },
+          {
+            term: "Only matters relative to the broker",
+            detail:
+              "The broker, and the topic if it overrides the broker default, enforce their own maximum message size independently.",
+          },
+        ],
+        watchOut:
+          "Raising max.request.size without raising the matching broker or topic limit just moves where the same record is rejected — from a local exception to a failed round trip.",
+      },
+      "Bound request latency (request.timeout.ms, delivery.timeout.ms)": {
+        summary:
+          "One bounds a single network round trip; the other bounds the whole journey from send() to final outcome.",
+        configs: ["request.timeout.ms", "delivery.timeout.ms"],
+        points: [
+          {
+            term: "request.timeout.ms",
+            detail:
+              "How long the producer waits for a broker's response to one produce request before treating that attempt as failed. Scoped to a single round trip.",
+          },
+          {
+            term: "delivery.timeout.ms",
+            detail:
+              "The outer budget: total time from send() to success or failure, covering the linger wait, every retry, and every request.timeout.ms window along the way.",
+          },
+          {
+            term: "The real retry bound",
+            detail:
+              "delivery.timeout.ms — not retries — is what actually determines how long the producer keeps trying before delivering a TimeoutException to the callback.",
+          },
+        ],
+        watchOut:
+          "request.timeout.ms must stay comfortably below delivery.timeout.ms, or one slow request can burn the entire delivery budget in a single attempt.",
+      },
+      "Preserve ordering during retries": {
+        summary:
+          "Kafka only orders records within a partition, and retries are the easiest way to break that by accident.",
+        configs: ["max.in.flight.requests.per.connection", "enable.idempotence"],
+        points: [
+          {
+            term: "max.in.flight.requests.per.connection",
+            detail:
+              "How many produce requests can be outstanding to a broker at once, unacknowledged, before the producer waits for a response.",
+          },
+          {
+            term: "How reordering happens",
+            detail:
+              "If more than one request is in flight and an earlier one fails and is retried while a later one already succeeded, the later record lands in the log first — silent, with no error raised.",
+          },
+          {
+            term: "enable.idempotence=true",
+            detail:
+              "The broker tracks sequence numbers per partition and correctly orders out-of-sequence retries, which is why up to 5 in-flight requests stay safe.",
+          },
+        ],
+        watchOut:
+          "Without idempotence, the only way to guarantee order under retries is max.in.flight.requests.per.connection=1 — which costs throughput.",
+      },
+      "Use transactions (transactional.id, transaction timeouts)": {
+        summary:
+          "Idempotence gives no-duplicates per partition; transactions add all-or-nothing atomicity across partitions.",
+        configs: ["transactional.id", "transaction.timeout.ms"],
+        points: [
+          {
+            term: "What idempotence lacks",
+            detail:
+              "A producer can write idempotently to many partitions at once, but nothing stops one partition's write succeeding while another's fails.",
+          },
+          {
+            term: "What transactions add",
+            detail:
+              "Either every record across every partition in the transaction becomes visible to read_committed consumers, or none of them do.",
+          },
+          {
+            term: "transactional.id",
+            detail:
+              "Turns transactions on and fences out any older producer instance still running with the same ID — the \"zombie\" after a restart. Requires enable.idempotence=true and acks=all.",
+          },
+          {
+            term: "transaction.timeout.ms",
+            detail:
+              "Bounds a transaction that had a partition added but was never committed or aborted. The clock starts when the first partition is added, not at beginTransaction(), and it can't exceed the broker's transaction.max.timeout.ms.",
+          },
+        ],
+        watchOut:
+          "An open transaction blocks read_committed consumers from reading past it. When the timeout elapses the coordinator aborts it, and the producer's next attempt to continue that transaction is fenced.",
+      },
     },
     activities: [
       "Compare acks=0, acks=1, and acks=all",
@@ -103,21 +282,220 @@ export const modules: Module[] = [
       "Cooperative assignment",
       "Poison messages and retry strategies",
     ],
-    topicNarrative: {
-      "Consumer groups and partition assignment":
-        "A consumer group is the unit of scaling and of offset tracking. Every consumer that shares a group.id is assigned a disjoint subset of the partitions across all the topics the group subscribes to — each partition is consumed by exactly one member at a time, which is what makes horizontal scaling work: add a consumer and the coordinator hands it some partitions to take over. The ceiling is the partition count. A topic with 6 partitions supports at most 6 working consumers in one group; a 7th sits idle with nothing assigned, because a partition is never split across two members.\n\nWhere the assignment is computed depends on the group protocol. Under the classic protocol, the coordinator picks one member as the group leader, that member runs the assignor and computes the mapping, and the coordinator just distributes the result. Under Kafka 4.0's new consumer group protocol (group.protocol=consumer), the broker computes the assignment itself and there is no leader. Either way, two different group.ids on the same topic are completely independent: each gets every partition, each tracks its own offsets, and neither affects the other. That's the difference between scaling one logical consumer (same group.id, more instances) and fanning the same data out to two separate applications (different group.ids).",
-      "Polling and heartbeats":
-        "A Kafka consumer is single-threaded around one loop: call poll(), get a batch of records, process them, call poll() again. Two separate liveness mechanisms watch that loop, and conflating them causes a lot of confusion. Heartbeats run on a background thread and fire every heartbeat.interval.ms; if the coordinator doesn't hear one within session.timeout.ms it assumes the consumer process is dead — a crash, a long GC pause, a network partition. That check keeps running even while your code is mid-processing.\n\nmax.poll.interval.ms is the other clock: the maximum wall time allowed between two consecutive poll() calls. It exists to catch a consumer that's alive and heartbeating but stuck — an infinite loop in a record handler, a downstream call that never returns. If processing one batch takes longer than max.poll.interval.ms, the consumer proactively leaves the group before it can call poll() again, and a rebalance moves its partitions elsewhere. max.poll.records caps how many records one poll() returns, which is the main lever for keeping a batch's total processing time under that interval.\n\nheartbeat.interval.ms and session.timeout.ms as described here are client settings under the classic group protocol. Kafka 4.0 ships a new consumer group protocol (KIP-848), opted into with group.protocol=consumer, where the broker drives heartbeat cadence and the session timeout — those two client configs are ignored. max.poll.interval.ms stays a client concern under both protocols, because only the client knows how long its own processing is taking.",
-      "Offset commits":
-        "A committed offset is a bookmark stored in the internal __consumer_offsets topic, one per (group, topic, partition). It records the offset of the next record the group should read — meaning a commit of offset N asserts \"everything below N is done.\" It's not the consumer's current read position (that's in-memory and moves every poll); it's the recovery point a new owner of that partition will resume from after a restart or rebalance.\n\nenable.auto.commit=true (the default) commits the current position automatically, but only during a poll() call and only once auto.commit.interval.ms has elapsed since the last commit. The subtle part: the offsets committed are for records returned by the previous poll, on the assumption you finished processing them before calling poll() again. If you didn't — you're still processing on another path, or you crash after poll() but before the work is done — auto-commit will have advanced the bookmark past records that were never actually handled. Manual commits (enable.auto.commit=false, then commitSync or commitAsync after processing) exist to tie the commit to the completion of work rather than to the poll loop's timing.",
-      "Rebalance behavior":
-        "A rebalance is the process of recomputing partition assignments for a group and redistributing them — triggered whenever membership changes (a consumer joins, leaves, or is declared dead) or the subscribed topic's partition count changes. Under the classic eager protocol, a rebalance is stop-the-world: every consumer revokes all of its partitions, the group re-forms, and new assignments are handed out. For the duration, no partition in the group is being consumed. A group that rebalances constantly — because session.timeout.ms is too tight for its GC behavior, or processing keeps blowing past max.poll.interval.ms — can spend more time rebalancing than working.\n\nThe operational goals are to make rebalances rare (stable membership, processing that comfortably fits the poll interval) and, when they do happen, cheap (cooperative assignment, static membership). A rebalance also invalidates any uncommitted work: partitions you were processing get revoked, so anything not committed before the revoke will be re-delivered to whoever picks them up.\n\nAll of the above is the classic group protocol, where one elected member computes the assignment and the whole group synchronizes through the coordinator to adopt it. Kafka 4.0's new consumer group protocol (group.protocol=consumer, KIP-848) moves assignment computation to the broker and delivers the reconciliation incrementally through each member's heartbeat responses — there's no stop-the-world barrier and no client-side assignor to configure. It's opt-in in 4.0; a group left on the classic protocol behaves exactly as described here.",
-      "Static membership":
-        "Normally, a consumer that restarts is a brand-new member as far as the coordinator is concerned — it gets a fresh member ID, so the restart looks like one consumer leaving and a different one joining, and each of those triggers a rebalance. For a rolling deployment across N instances that's 2N rebalances to end up exactly where you started.\n\nStatic membership (set group.instance.id to a stable, unique value per instance) tells the coordinator to remember this member across disconnects. If a static member drops and reconnects within session.timeout.ms, the coordinator gives it back the exact partitions it had and skips the rebalance entirely. The tradeoff is deliberate: genuine failures now take up to session.timeout.ms to be noticed instead of being caught fast, so static membership usually comes with a longer session timeout and is paired with deployment tooling that bounces instances quickly enough to stay inside that window.",
-      "Cooperative assignment":
-        "Cooperative assignment (the CooperativeStickyAssignor) changes what a rebalance costs. Instead of every consumer revoking everything and starting over, the assignor computes the new distribution, and only the partitions that actually need to move are revoked — in a first rebalance round the losing consumers give up just those partitions, and a second round assigns them to their new owners. Consumers keep processing every partition they're not losing straight through the rebalance.\n\nIt is not automatically active. The default partition.assignment.strategy is the list [RangeAssignor, CooperativeStickyAssignor], and a group uses the first assignor every member has in common — which is RangeAssignor, an eager one. A consumer group that never touched this config is doing stop-the-world Range assignment. You opt into cooperative rebalancing by making CooperativeStickyAssignor the only strategy. If the group is already on the default list, that's a single rolling bounce that just removes RangeAssignor. It's two rolling bounces only when you're coming from an eager-only assignor that isn't already paired with a cooperative one: first deploy the list with both, then deploy again with the eager one removed — the group can't switch to the cooperative protocol until no member still offers only the eager one.\n\nThe practical payoff: adding one consumer to a large group then moves a handful of partitions and pauses only those, instead of pausing the entire group. The \"sticky\" part means the assignor also tries to keep partitions with their existing owner across rebalances, so a transient membership blip doesn't reshuffle everything. Kafka 4.0's new consumer group protocol (group.protocol=consumer) sidesteps this whole client-side question — assignment is computed on the broker and applied incrementally by design, with no assignor list to manage.",
-      "Poison messages and retry strategies":
-        "A poison message is a record the consumer can't process successfully no matter how many times it tries — malformed payload, a schema it can't deserialize, a business rule it always violates. The dangerous default plays out in two steps. First, the raw consumer doesn't redeliver a failed record on its own: poll() has already moved its in-memory position past that batch, so an exception that just propagates out of the loop actually skips the poison record (and often the rest of its batch) rather than retrying it. Second, the moment anything resumes from the last committed offset — a rebalance, a restart, or an error handler that calls seek() (which is what Spring Kafka's default handler does) — the poison record comes back, fails again, and is never committed past. Now the partition stops advancing, lag grows without bound, and every record behind the poison one is blocked even though nothing is wrong with them.\n\nThe standard fix is to bound in-place retries (a few immediate attempts for genuinely transient failures) and then get the bad record out of the main flow. A dead-letter topic is the common destination: after max attempts, the consumer produces the record — plus metadata about why it failed — to a separate DLT, commits past it on the original partition, and moves on. Head-of-line blocking is gone and the failed records are retained for inspection or manual replay. Non-blocking retry topics (a chain of topics each with an increasing delay) are the more elaborate version, used when failures are often transient-but-slow and you want delayed retries without holding up the main partition. The invariant across all of these: never advance the committed offset past a record until it has either been processed or deliberately routed somewhere durable.",
+    topicDetail: {
+      "Consumer groups and partition assignment": {
+        summary:
+          "A group is the unit of both scaling and offset tracking; each partition goes to exactly one member at a time.",
+        configs: ["group.id", "group.protocol"],
+        points: [
+          {
+            term: "group.id",
+            detail:
+              "Every consumer sharing it gets a disjoint subset of the subscribed partitions. Add a consumer and the coordinator hands it partitions to take over — that is horizontal scaling.",
+          },
+          {
+            term: "The ceiling is the partition count",
+            detail:
+              "6 partitions supports at most 6 working consumers in one group. A 7th sits idle — a partition is never split across two members.",
+          },
+          {
+            term: "Where the assignment is computed",
+            detail:
+              "Classic protocol: the coordinator elects one member as group leader to run the assignor. New protocol (group.protocol=consumer, Kafka 4.0): the broker computes it, with no leader.",
+          },
+          {
+            term: "Two group.ids are independent",
+            detail:
+              "Same topic, different group.id: each gets every partition and tracks its own offsets. Same group.id plus more instances is scaling one consumer; a different group.id fans the same data out to a second application.",
+          },
+        ],
+        watchOut:
+          "Running more consumers than partitions doesn't add throughput — the extra members are assigned nothing and sit idle.",
+      },
+      "Polling and heartbeats": {
+        summary:
+          "Two independent liveness clocks watch the poll loop; conflating them is the source of most rebalance confusion.",
+        configs: [
+          "heartbeat.interval.ms",
+          "session.timeout.ms",
+          "max.poll.interval.ms",
+          "max.poll.records",
+          "group.protocol",
+        ],
+        points: [
+          {
+            term: "Heartbeats",
+            detail:
+              "A background thread sends one every heartbeat.interval.ms. If the coordinator hears none within session.timeout.ms it assumes the process is dead — a crash, a long GC pause, a network partition. This runs even while your code is mid-processing.",
+          },
+          {
+            term: "max.poll.interval.ms",
+            detail:
+              "The maximum wall time allowed between two consecutive poll() calls — it catches a consumer that is alive and heartbeating but stuck in a record handler. A dynamic consumer that overruns it sends a LeaveGroup and its partitions are reassigned; a static member (group.instance.id set) stops heartbeating but keeps its assignment until the session timeout expires.",
+          },
+          {
+            term: "max.poll.records",
+            detail:
+              "Caps how many records one poll() returns — the main lever for keeping a batch's total processing time under max.poll.interval.ms.",
+          },
+          {
+            term: "Under the new protocol (KIP-848)",
+            detail:
+              "group.protocol=consumer: the broker drives heartbeat cadence and the session timeout, so those two client configs are ignored. max.poll.interval.ms stays a client concern under both protocols.",
+          },
+        ],
+        watchOut:
+          "A session timeout too tight for the app's GC pauses — client session.timeout.ms on the classic protocol, broker-side group.consumer.session.timeout.ms under group.protocol=consumer — or processing that keeps overrunning max.poll.interval.ms, makes a group rebalance constantly, sometimes more than it actually works.",
+      },
+      "Offset commits": {
+        summary:
+          "A committed offset is the recovery point for the next owner of a partition — not the consumer's live read position.",
+        configs: ["enable.auto.commit", "auto.commit.interval.ms"],
+        points: [
+          {
+            term: "What it is",
+            detail:
+              "A bookmark in the internal __consumer_offsets topic, one per (group, topic, partition). A commit of offset N asserts \"everything below N is done.\"",
+          },
+          {
+            term: "Not the read position",
+            detail:
+              "The read position is in-memory and moves every poll. The committed offset is where a new owner of the partition resumes after a restart or rebalance.",
+          },
+          {
+            term: "enable.auto.commit=true (default)",
+            detail:
+              "Commits the current position during a poll() call, once auto.commit.interval.ms has elapsed — for the records returned by the previous poll, on the assumption you finished processing them.",
+          },
+          {
+            term: "Manual commits",
+            detail:
+              "enable.auto.commit=false, then commitSync or commitAsync after processing — ties the commit to work completion instead of the poll loop's timing.",
+          },
+        ],
+        watchOut:
+          "Auto-commit advances the bookmark past records that were never handled if you're still processing them on another path, or crash after poll() but before the work is done.",
+      },
+      "Rebalance behavior": {
+        summary:
+          "Recomputing and redistributing a group's partition assignments — cheap to make rare, expensive when it's constant.",
+        configs: ["partition.assignment.strategy", "group.protocol"],
+        points: [
+          {
+            term: "What triggers it",
+            detail:
+              "Membership changes — a consumer joins, leaves, or is declared dead — or the subscribed topic's partition count changes.",
+          },
+          {
+            term: "Classic eager protocol",
+            detail:
+              "Stop-the-world: every consumer revokes all of its partitions, the group re-forms, and new assignments go out. No partition in the group is consumed for the duration.",
+          },
+          {
+            term: "Uncommitted records are redelivered",
+            detail:
+              "The new owner of a revoked partition resumes from the last committed offset, so records processed but not yet committed are handed out again and processed a second time — any external side effects from the first pass are duplicated.",
+          },
+          {
+            term: "New protocol (group.protocol=consumer, KIP-848)",
+            detail:
+              "Assignment moves to the broker and reconciliation is incremental through heartbeat responses — no stop-the-world barrier, no client-side assignor. Opt-in in 4.0.",
+          },
+        ],
+        watchOut:
+          "The operational goal is two-fold: make rebalances rare (stable membership, processing that fits the poll interval) and cheap when they happen (cooperative assignment, static membership).",
+      },
+      "Static membership": {
+        summary:
+          "Lets a restarting consumer keep its identity, so a rolling deploy doesn't cost two rebalances per instance.",
+        configs: ["group.instance.id", "session.timeout.ms", "group.protocol"],
+        points: [
+          {
+            term: "The default",
+            detail:
+              "A restarted consumer is a brand-new member with a fresh member ID. The restart looks like one consumer leaving and another joining — two rebalances. A rolling deploy of N instances is 2N.",
+          },
+          {
+            term: "group.instance.id",
+            detail:
+              "A stable, unique value per instance tells the coordinator to remember this member across disconnects. Reconnect before the session timeout expires and it gets its exact partitions back with no rebalance.",
+          },
+          {
+            term: "Which session timeout",
+            detail:
+              "Classic protocol: the client's session.timeout.ms. New protocol (group.protocol=consumer): that client config is unsupported — the broker-side group.consumer.session.timeout.ms governs the reconnect window instead.",
+          },
+          {
+            term: "The tradeoff",
+            detail:
+              "A genuine failure now takes until that session timeout expires to be noticed, instead of being caught fast.",
+          },
+        ],
+        watchOut:
+          "On the classic protocol this usually means raising session.timeout.ms and pairing it with deployment tooling that bounces instances fast enough to reconnect inside that window.",
+      },
+      "Cooperative assignment": {
+        summary:
+          "Changes what a rebalance costs — only the partitions that actually move are paused, not the whole group.",
+        configs: ["partition.assignment.strategy", "group.protocol"],
+        points: [
+          {
+            term: "How it works",
+            detail:
+              "The assignor computes the new distribution; only partitions that need to move are revoked (round one), then assigned to their new owners (round two). Consumers keep processing everything they're not losing.",
+          },
+          {
+            term: "Not on by default",
+            detail:
+              "The default partition.assignment.strategy is [RangeAssignor, CooperativeStickyAssignor]; a group uses the first strategy every member shares — RangeAssignor, an eager one. Untouched groups do stop-the-world Range assignment.",
+          },
+          {
+            term: "Opting in",
+            detail:
+              "Make CooperativeStickyAssignor the only strategy. From the default list that's one rolling bounce; from an eager-only assignor it's two — deploy both, then deploy again with the eager one removed.",
+          },
+          {
+            term: "The \"sticky\" part",
+            detail:
+              "The assignor also tries to keep partitions with their existing owner across rebalances, so a transient membership blip doesn't reshuffle everything.",
+          },
+        ],
+        watchOut:
+          "The new protocol (group.protocol=consumer) sidesteps this entirely — assignment is broker-side and incremental by design, with no assignor list to manage.",
+      },
+      "Poison messages and retry strategies": {
+        summary:
+          "A record that always fails is either silently skipped or blocks its whole partition — which one depends on how the error handler is written.",
+        points: [
+          {
+            term: "What it is",
+            detail:
+              "A record the consumer can't process no matter how many times it tries — malformed payload, an undeserializable schema, a business rule it always violates.",
+          },
+          {
+            term: "The raw consumer skips it",
+            detail:
+              "poll() has already advanced the in-memory position past that batch, so an exception propagating out of the loop skips the poison record (and often the rest of its batch) rather than retrying it. That skip is only permanent once the offset is committed past it — a later poll, after auto.commit.interval.ms has elapsed, may commit past it; a restart or rebalance before that resumes from the last committed offset and redelivers the record.",
+          },
+          {
+            term: "An unbounded retry blocks the partition",
+            detail:
+              "If a handler instead seeks back to reprocess with no retry ceiling, the record replays forever, the committed offset never advances, and every record behind it is blocked while lag grows without bound.",
+          },
+          {
+            term: "Frameworks bound it for you",
+            detail:
+              "Spring Kafka's DefaultErrorHandler retries a fixed number of times with backoff, then hands the record to a recoverer — which logs it by default, or publishes it to a dead-letter topic when one is configured.",
+          },
+          {
+            term: "The fix",
+            detail:
+              "Bound in-place retries for genuinely transient failures, then route the bad record out: a dead-letter topic (produce it with failure metadata, then commit past it), or non-blocking retry topics for transient-but-slow failures.",
+          },
+        ],
+        watchOut:
+          "The invariant: never advance the committed offset past a record until it has either been processed or deliberately routed somewhere durable.",
+      },
     },
     activities: [
       "Make processing exceed max.poll.interval.ms",

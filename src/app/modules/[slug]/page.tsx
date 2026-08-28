@@ -3,6 +3,7 @@ import Link from "next/link";
 import { modules, getModule } from "@/lib/data/modules";
 import SectionHeading from "@/components/SectionHeading";
 import Badge from "@/components/Badge";
+import TopicExplorer from "@/components/TopicExplorer";
 import LeaderElectionDemo from "@/components/demos/LeaderElectionDemo";
 import RecordFlowDemo from "@/components/demos/RecordFlowDemo";
 import PartitionOrderingDemo from "@/components/demos/PartitionOrderingDemo";
@@ -28,6 +29,20 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
 
   const next = modules.find((m) => m.index === mod.index + 1);
 
+  const activitiesBlock = mod.activities.length > 0 && (
+    <div>
+      <h2 className="mb-3 font-display text-lg text-text">Interactive activities</h2>
+      <ul className="flex flex-col gap-2">
+        {mod.activities.map((a) => (
+          <li key={a} className="flex gap-2 text-sm leading-relaxed text-text-muted">
+            <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-stream" />
+            {a}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
   return (
     <div className="max-w-4xl">
       <SectionHeading
@@ -36,7 +51,12 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         description={mod.summary}
       />
 
-      {mod.topicNarrative ? (
+      {mod.topicDetail ? (
+        <div className="flex flex-col gap-8">
+          <TopicExplorer topics={mod.topics} detail={mod.topicDetail} />
+          {activitiesBlock}
+        </div>
+      ) : mod.topicNarrative ? (
         <div className="flex flex-col gap-8">
           <div>
             <h2 className="mb-4 font-display text-lg text-text">Topics</h2>
@@ -54,19 +74,7 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
             </div>
           </div>
 
-          {mod.activities.length > 0 && (
-            <div>
-              <h2 className="mb-3 font-display text-lg text-text">Interactive activities</h2>
-              <ul className="flex flex-col gap-2">
-                {mod.activities.map((a) => (
-                  <li key={a} className="flex gap-2 text-sm leading-relaxed text-text-muted">
-                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-stream" />
-                    {a}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {activitiesBlock}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
@@ -82,19 +90,7 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
             </ul>
           </div>
 
-          {mod.activities.length > 0 && (
-            <div>
-              <h2 className="mb-3 font-display text-lg text-text">Interactive activities</h2>
-              <ul className="flex flex-col gap-2">
-                {mod.activities.map((a) => (
-                  <li key={a} className="flex gap-2 text-sm leading-relaxed text-text-muted">
-                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-stream" />
-                    {a}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {activitiesBlock}
         </div>
       )}
 

@@ -18,6 +18,19 @@ export type ChangeMechanism =
   | "recreate-client" // producer/consumer configs: only take effect for a newly constructed client
   | "broker-restart"; // static broker config, requires a process restart
 
+// A topic broken into scannable pieces for the expand/collapse Topic explorer, as an
+// alternative to the prose in `topicNarrative`. Keyed by the exact string in `topics`.
+export interface TopicDetail {
+  // One sentence of framing, shown even while the topic is collapsed.
+  summary: string;
+  // Config keys this topic turns on — rendered as monospace chips.
+  configs?: string[];
+  // The mechanics, one point at a time. `term` is the knob or concept; `detail` explains it.
+  points: { term: string; detail: string }[];
+  // The failure mode that actually bites people — rendered as a callout.
+  watchOut?: string;
+}
+
 export interface Module {
   slug: string;
   index: number;
@@ -28,6 +41,9 @@ export interface Module {
   // separated by a blank line. Omitted (or partial) where the topic is still an outline
   // entry with no explanatory content written yet.
   topicNarrative?: Record<string, string>;
+  // Structured, collapsible version of the same lesson content. Takes precedence over
+  // `topicNarrative` when present. Keyed by the exact string in `topics`.
+  topicDetail?: Record<string, TopicDetail>;
   activities: string[];
   // "external" = built, but as content outside this app (e.g. the local cluster lab)
   // rather than an embedded React demo.
