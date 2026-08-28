@@ -345,7 +345,7 @@ export const modules: Module[] = [
           },
         ],
         watchOut:
-          "A session.timeout.ms too tight for the app's GC behavior, or processing that keeps overrunning max.poll.interval.ms, makes a group rebalance constantly — sometimes more than it actually works.",
+          "A session timeout too tight for the app's GC pauses — client session.timeout.ms on the classic protocol, broker-side group.consumer.session.timeout.ms under group.protocol=consumer — or processing that keeps overrunning max.poll.interval.ms, makes a group rebalance constantly, sometimes more than it actually works.",
       },
       "Offset commits": {
         summary:
@@ -475,7 +475,7 @@ export const modules: Module[] = [
           {
             term: "The raw consumer skips it",
             detail:
-              "poll() already advanced the in-memory position past that batch, so an exception that just propagates out of the loop skips the poison record (and often the rest of its batch) — it's effectively lost, not retried.",
+              "poll() has already advanced the in-memory position past that batch, so an exception propagating out of the loop skips the poison record (and often the rest of its batch) rather than retrying it. That skip is only permanent once the offset is committed past it — auto-commit does so on the next poll; a restart or rebalance before then resumes from the last committed offset and redelivers the record.",
           },
           {
             term: "An unbounded retry blocks the partition",
