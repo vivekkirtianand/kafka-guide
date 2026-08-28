@@ -475,7 +475,7 @@ export const modules: Module[] = [
           {
             term: "The raw consumer skips it",
             detail:
-              "poll() has already advanced the in-memory position past that batch, so an exception propagating out of the loop skips the poison record (and often the rest of its batch) rather than retrying it. That skip is only permanent once the offset is committed past it — auto-commit does so on the next poll; a restart or rebalance before then resumes from the last committed offset and redelivers the record.",
+              "poll() has already advanced the in-memory position past that batch, so an exception propagating out of the loop skips the poison record (and often the rest of its batch) rather than retrying it. That skip is only permanent once the offset is committed past it — a later poll, after auto.commit.interval.ms has elapsed, may commit past it; a restart or rebalance before that resumes from the last committed offset and redelivers the record.",
           },
           {
             term: "An unbounded retry blocks the partition",
