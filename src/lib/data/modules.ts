@@ -56,7 +56,7 @@ export const modules: Module[] = [
           {
             term: "Topic → partitions",
             detail:
-              "A topic is a named log split into N partitions. Partitions are the unit of parallelism and placement — different partitions of one topic live on different brokers.",
+              "A topic is a named log split into N partitions. Partitions are the unit of parallelism and placement — Kafka spreads them across brokers for balance, though one broker routinely holds several partitions of the same topic.",
           },
           {
             term: "Partition → replicas",
@@ -90,16 +90,16 @@ export const modules: Module[] = [
           {
             term: "Why the ISR matters",
             detail:
-              "acks=all and min.insync.replicas together require a write to reach a minimum number of in-sync replicas before it's acknowledged. If the ISR shrinks below that, the leader rejects produces instead of acking a thin write.",
+              "With acks=all the leader waits for every replica currently in the ISR to have the record before acknowledging. min.insync.replicas is a separate admission floor: if the ISR is smaller than it, the leader rejects the write outright rather than acking a thin one.",
           },
           {
             term: "Controller",
             detail:
-              "One broker acts as controller: it tracks broker liveness and partition state and elects a new leader when one fails. In KRaft mode that state lives in a dedicated Raft metadata log; older ZooKeeper-based clusters (removed in 4.0) kept it in ZooKeeper.",
+              "Tracks broker liveness and partition state and elects a new partition leader when one fails. KRaft runs a quorum of controller nodes — dedicated or co-located with brokers — with one active and the rest hot standbys, holding the metadata in a replicated Raft log; ZooKeeper-based clusters (removed in 4.0) elected one broker as controller and stored it in ZooKeeper.",
           },
         ],
         watchOut:
-          "A new leader is normally chosen only from the ISR, so it has every acknowledged record. Unclean leader election (off by default) allows an out-of-sync replica to take over — trading that guarantee for availability, and losing acknowledged records.",
+          "A new leader is chosen from the ISR, so it has every committed record — one replicated to the full ISR, which is what acks=all waits for. A record acknowledged only by the leader (acks=1) can still be lost in a clean election. Unclean leader election (off by default) goes further, letting an out-of-sync replica take over and dropping committed records too.",
       },
       "Producers, consumers, offsets, and consumer groups": {
         summary:
@@ -119,7 +119,7 @@ export const modules: Module[] = [
           {
             term: "Committed offset",
             detail:
-              "Separately from the read position, a consumer periodically commits \"done up to offset N\" to the internal __consumer_offsets topic. That is the recovery point after a restart or reassignment — not the live position.",
+              "Separately from the read position, a consumer periodically commits an offset to the internal __consumer_offsets topic: committing N means every record below N is done and a new owner resumes from N. It's the recovery point after a restart or reassignment, not the live position.",
           },
           {
             term: "Consumer group",
