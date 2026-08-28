@@ -6,13 +6,13 @@
   --bg: #fbfaf7;
   --bg-elevated: #ffffff;
   --bg-inset: #f1efe9;
-  --border: #e2ded4;
-  --border-soft: #ebe8e1;
+  --border: #9a9080;      /* ~3:1 on bg/bg-elevated — meets WCAG 1.4.11 for control edges */
+  --border-soft: #9f9583; /* interior dividers, a hair lighter but still ~3:1 */
   --text: #22201b;
   --text-muted: #63605a;
-  --text-faint: #97938a;
-  --accent: #a96a12;
-  --accent-soft: #a96a1216;
+  --text-faint: #6f6a60;  /* ~4.7:1 min on bg and bg-inset (small-text AA) */
+  --accent: #8f5a08;      /* ~5:1 min as text and as button ground */
+  --accent-soft: #8f5a0816;
   --stream: #2c797c;
   --stream-soft: #2c797c16;
   --danger: #b0433a;
