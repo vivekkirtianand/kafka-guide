@@ -331,7 +331,7 @@ export const modules: Module[] = [
           {
             term: "max.poll.interval.ms",
             detail:
-              "The maximum wall time allowed between two consecutive poll() calls. It catches a consumer that is alive and heartbeating but stuck in a record handler. Overrun it and the consumer leaves the group before it can poll again.",
+              "The maximum wall time allowed between two consecutive poll() calls — it catches a consumer that is alive and heartbeating but stuck in a record handler. A dynamic consumer that overruns it sends a LeaveGroup and its partitions are reassigned; a static member (group.instance.id set) stops heartbeating but keeps its assignment until the session timeout expires.",
           },
           {
             term: "max.poll.records",
@@ -392,9 +392,9 @@ export const modules: Module[] = [
               "Stop-the-world: every consumer revokes all of its partitions, the group re-forms, and new assignments go out. No partition in the group is consumed for the duration.",
           },
           {
-            term: "Uncommitted work is lost",
+            term: "Uncommitted records are redelivered",
             detail:
-              "Revoked partitions get reassigned, so anything not committed before the revoke is re-delivered to whoever picks them up.",
+              "The new owner of a revoked partition resumes from the last committed offset, so records processed but not yet committed are handed out again and processed a second time — any external side effects from the first pass are duplicated.",
           },
           {
             term: "New protocol (group.protocol=consumer, KIP-848)",
@@ -408,7 +408,7 @@ export const modules: Module[] = [
       "Static membership": {
         summary:
           "Lets a restarting consumer keep its identity, so a rolling deploy doesn't cost two rebalances per instance.",
-        configs: ["group.instance.id", "session.timeout.ms"],
+        configs: ["group.instance.id", "session.timeout.ms", "group.protocol"],
         points: [
           {
             term: "The default",
@@ -418,16 +418,21 @@ export const modules: Module[] = [
           {
             term: "group.instance.id",
             detail:
-              "A stable, unique value per instance tells the coordinator to remember this member across disconnects. Reconnect within session.timeout.ms and it gets its exact partitions back with no rebalance.",
+              "A stable, unique value per instance tells the coordinator to remember this member across disconnects. Reconnect before the session timeout expires and it gets its exact partitions back with no rebalance.",
+          },
+          {
+            term: "Which session timeout",
+            detail:
+              "Classic protocol: the client's session.timeout.ms. New protocol (group.protocol=consumer): that client config is unsupported — the broker-side group.consumer.session.timeout.ms governs the reconnect window instead.",
           },
           {
             term: "The tradeoff",
             detail:
-              "Genuine failures now take up to session.timeout.ms to be noticed instead of being caught fast.",
+              "A genuine failure now takes until that session timeout expires to be noticed, instead of being caught fast.",
           },
         ],
         watchOut:
-          "Usually paired with a longer session.timeout.ms and deployment tooling that bounces instances quickly enough to reconnect inside that window.",
+          "On the classic protocol this usually means raising session.timeout.ms and pairing it with deployment tooling that bounces instances fast enough to reconnect inside that window.",
       },
       "Cooperative assignment": {
         summary:
@@ -460,7 +465,7 @@ export const modules: Module[] = [
       },
       "Poison messages and retry strategies": {
         summary:
-          "A record that always fails will block its entire partition unless you route it out of the main flow.",
+          "A record that always fails is either silently skipped or blocks its whole partition — which one depends on how the error handler is written.",
         points: [
           {
             term: "What it is",
@@ -468,19 +473,24 @@ export const modules: Module[] = [
               "A record the consumer can't process no matter how many times it tries — malformed payload, an undeserializable schema, a business rule it always violates.",
           },
           {
-            term: "The raw consumer doesn't retry it",
+            term: "The raw consumer skips it",
             detail:
-              "poll() already moved the in-memory position past that batch, so an exception propagating out of the loop skips the poison record (and often the rest of its batch).",
+              "poll() already advanced the in-memory position past that batch, so an exception that just propagates out of the loop skips the poison record (and often the rest of its batch) — it's effectively lost, not retried.",
           },
           {
-            term: "Then it comes back",
+            term: "An unbounded retry blocks the partition",
             detail:
-              "Any resume from the last committed offset — a rebalance, a restart, or an error handler that calls seek() (Spring Kafka's default) — replays it, it fails again, and the offset never advances. Lag grows without bound and every record behind it is blocked.",
+              "If a handler instead seeks back to reprocess with no retry ceiling, the record replays forever, the committed offset never advances, and every record behind it is blocked while lag grows without bound.",
+          },
+          {
+            term: "Frameworks bound it for you",
+            detail:
+              "Spring Kafka's DefaultErrorHandler retries a fixed number of times with backoff, then hands the record to a recoverer — which logs it by default, or publishes it to a dead-letter topic when one is configured.",
           },
           {
             term: "The fix",
             detail:
-              "Bound in-place retries for genuinely transient failures, then move the bad record out: a dead-letter topic (produce it plus failure metadata elsewhere, then commit past it), or non-blocking retry topics for transient-but-slow failures.",
+              "Bound in-place retries for genuinely transient failures, then route the bad record out: a dead-letter topic (produce it with failure metadata, then commit past it), or non-blocking retry topics for transient-but-slow failures.",
           },
         ],
         watchOut:
