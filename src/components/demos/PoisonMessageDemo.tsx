@@ -12,7 +12,7 @@ const MAX_RETRIES = 3;
 type Strategy = "none" | "dlt" | "retry-topics";
 
 const STRATEGIES: { id: Strategy; label: string }[] = [
-  { id: "none", label: "no handling" },
+  { id: "none", label: "unbounded retry" },
   { id: "dlt", label: "dead-letter topic" },
   { id: "retry-topics", label: "retry topics" },
 ];
@@ -131,12 +131,13 @@ export default function PoisonMessageDemo() {
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — real retry/DLT handling is library code (Spring Kafka, a custom wrapper) and a
-        retry-topic chain runs its own consumers. The raw consumer doesn&apos;t redeliver a failed record on its
-        own: poll() has already advanced its in-memory position, so getting the record back takes a seek() (what an
-        error handler does), a rebalance, or a restart. This demo assumes a seek-back error handler, so an unhandled
-        poison record is retried forever rather than silently skipped. What carries over: never advance the
-        committed offset past a record until it is either processed or deliberately routed somewhere durable, and
-        bound in-place retries so one bad record can&apos;t block the whole partition forever.
+        retry-topic chain runs its own consumers. All three strategies here assume a seek-back error handler: the
+        raw consumer doesn&apos;t redeliver a failed record on its own (poll() has already advanced its in-memory
+        position), so getting the record back takes a seek(), a rebalance, or a restart. &quot;Unbounded retry&quot;
+        is the common default — Spring Kafka&apos;s original behavior — where the handler seeks back on every failure
+        with no attempt limit and no place to send the record. What carries over: never advance the committed offset
+        past a record until it is either processed or deliberately routed somewhere durable, and bound in-place
+        retries so one bad record can&apos;t block the whole partition forever.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { configs, configGoals, configScopes } from "@/lib/data/configs";
-import { ChangeMechanism, ConfigEntry, DeploymentType, KafkaVersion, RiskLevel, getDefaultValue } from "@/lib/types";
+import { ChangeMechanism, ConfigEntry, DeploymentType, KafkaVersion, RiskLevel, configAvailable, getDefaultValue } from "@/lib/types";
 import { useCluster } from "@/lib/context/ClusterContext";
 import Badge from "./Badge";
 
@@ -28,12 +28,13 @@ export default function ConfigExplorer() {
 
   const filtered = useMemo(() => {
     return configs.filter((c) => {
+      if (!configAvailable(c, version)) return false;
       if (scope !== "all" && c.scope !== scope) return false;
       if (goal !== "all" && c.goal !== goal) return false;
       if (query && !c.key.toLowerCase().includes(query.toLowerCase())) return false;
       return true;
     });
-  }, [scope, goal, query]);
+  }, [scope, goal, query, version]);
 
   return (
     <div>
@@ -69,7 +70,7 @@ export default function ConfigExplorer() {
           ))}
         </select>
         <span className="ml-auto font-mono text-[11px] text-text-faint">
-          {filtered.length} of {configs.length}
+          {filtered.length} of {configs.filter((c) => configAvailable(c, version)).length}
         </span>
       </div>
 

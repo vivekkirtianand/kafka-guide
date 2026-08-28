@@ -64,6 +64,23 @@ describe("CommitStrategyDemo", () => {
     expect(screen.getByText("commitSync(): committed offset 0 → 2, right after processing records 0–1.")).toBeInTheDocument();
   });
 
+  it("keeps polling past the end of the partition until the final position commits", async () => {
+    const user = userEvent.setup();
+    render(<CommitStrategyDemo />);
+
+    // 5 polls drains the 10-record partition; committed is still behind at 6
+    await poll(user, 5);
+    expect(screen.getByTestId("read-position")).toHaveTextContent("10");
+    expect(screen.getByTestId("committed-position")).toHaveTextContent("6");
+    expect(screen.getByRole("button", { name: "poll() →" })).not.toBeDisabled();
+
+    // empty polls let auto-commit catch up to the end
+    await poll(user, 2);
+    expect(screen.getByTestId("committed-position")).toHaveTextContent("10");
+    expect(screen.getByTestId("redelivered-gap")).toHaveTextContent("0 records");
+    expect(screen.getByRole("button", { name: "poll() →" })).toBeDisabled();
+  });
+
   it("switching mode resets progress", async () => {
     const user = userEvent.setup();
     render(<CommitStrategyDemo />);

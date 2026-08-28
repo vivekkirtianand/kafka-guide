@@ -42,6 +42,9 @@ export interface ConfigEntry {
   defaultValue: string;
   // Only set when the default differs for that version; falls back to defaultValue otherwise.
   defaultValueByVersion?: Partial<Record<KafkaVersion, string>>;
+  // Set when the config did not exist (or wasn't usable) before a given release — the entry
+  // is hidden in the Config Explorer for older selected versions.
+  availableFromVersion?: KafkaVersion;
   changeMechanism: ChangeMechanism;
   riskOfChange: RiskLevel;
   managedAvailability: "full" | "limited" | "unavailable";
@@ -54,6 +57,15 @@ export interface ConfigEntry {
 
 export function getDefaultValue(entry: ConfigEntry, version: KafkaVersion): string {
   return entry.defaultValueByVersion?.[version] ?? entry.defaultValue;
+}
+
+// KAFKA_VERSIONS is ordered newest-first, so a lower index means a newer release.
+export function versionAtLeast(version: KafkaVersion, min: KafkaVersion): boolean {
+  return KAFKA_VERSIONS.indexOf(version) <= KAFKA_VERSIONS.indexOf(min);
+}
+
+export function configAvailable(entry: ConfigEntry, version: KafkaVersion): boolean {
+  return !entry.availableFromVersion || versionAtLeast(version, entry.availableFromVersion);
 }
 
 export interface Incident {

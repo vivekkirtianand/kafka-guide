@@ -42,7 +42,12 @@ export default function CommitStrategyDemo() {
 
   function poll() {
     setS((prev) => {
-      if (prev.read >= TOTAL) return prev;
+      const atEnd = prev.read >= TOTAL;
+      // Manual mode is finished once the partition is drained (commitSync handles the rest).
+      // Auto mode still needs the empty poll() calls that let auto-commit catch up to the
+      // final position.
+      if (atEnd && (mode !== "auto" || prev.committed >= prev.read)) return prev;
+
       const t0 = prev.clockMs;
       const from = prev.read;
       const to = Math.min(prev.read + BATCH, TOTAL);
@@ -59,14 +64,16 @@ export default function CommitStrategyDemo() {
         committedLine = ` auto-commit fired at ${t0}ms — committed offset advanced to ${from} (records up to ${from - 1} assumed processed).`;
       }
 
-      const returnedLine = `poll ${nextPolls} at ${t0}ms: returned records ${from}–${to - 1}.`;
+      const returnedLine = atEnd
+        ? `poll ${nextPolls} at ${t0}ms: no new records — end of partition.`
+        : `poll ${nextPolls} at ${t0}ms: returned records ${from}–${to - 1}.`;
       const trailing =
         mode === "auto"
           ? committedLine || ` No auto-commit this poll — only ${t0 - prev.lastCommitMs}ms since the last one (interval is ${AUTO_COMMIT_INTERVAL_MS}ms).`
           : ` Committed offset stays at ${committed} until you call commitSync().`;
 
       return {
-        read: to,
+        read: atEnd ? prev.read : to,
         committed,
         clockMs: t0 + processingMs,
         lastCommitMs,
@@ -110,10 +117,11 @@ export default function CommitStrategyDemo() {
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — a real batch is up to max.poll.records and processing time varies per record. What
         carries over: auto-commit fires on the auto.commit.interval.ms clock, not per batch, so it can trail the read
-        position by several polls when polls are fast and catch up to one batch when they are slow; a manual
-        commitSync() after processing advances the offset exactly when the work is done. The gap between the read
-        position and the committed offset is what a new owner would be handed again after a crash — mostly records
-        that were already processed (duplicates), plus any near the boundary that weren&apos;t.
+        position by several polls when polls are fast and catch up to one batch when they are slow — and the final
+        position only commits on a later poll() (keep clicking poll() past the end of the partition to see it land).
+        A manual commitSync() after processing advances the offset exactly when the work is done. The gap between the
+        read position and the committed offset is what a new owner would be handed again after a crash — mostly
+        records that were already processed (duplicates), plus any near the boundary that weren&apos;t.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -154,7 +162,7 @@ export default function CommitStrategyDemo() {
         )}
         <button
           onClick={poll}
-          disabled={s.read >= TOTAL}
+          disabled={s.read >= TOTAL && (mode === "manual" || s.committed >= s.read)}
           className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-stream/50 hover:text-stream disabled:cursor-default disabled:opacity-40 disabled:hover:border-border disabled:hover:text-text-muted"
         >
           poll() →

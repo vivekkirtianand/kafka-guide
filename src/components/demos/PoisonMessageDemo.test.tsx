@@ -8,7 +8,7 @@ function step(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("PoisonMessageDemo", () => {
-  it("with no handling, the poison record blocks the partition forever", async () => {
+  it("with unbounded retry, the poison record blocks the partition forever", async () => {
     const user = userEvent.setup();
     render(<PoisonMessageDemo />);
 
@@ -70,7 +70,7 @@ describe("PoisonMessageDemo", () => {
 
     await user.click(screen.getByRole("button", { name: "dead-letter topic" }));
     await step(user);
-    await user.click(screen.getByRole("button", { name: "no handling" }));
+    await user.click(screen.getByRole("button", { name: "unbounded retry" }));
 
     expect(screen.getByTestId("main-partition")).toBeInTheDocument();
     expect(screen.getByText("consumer subscribed to orders-0. Nothing processed yet.")).toBeInTheDocument();
