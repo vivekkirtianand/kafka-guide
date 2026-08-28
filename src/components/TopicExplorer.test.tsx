@@ -30,14 +30,31 @@ const detail: Record<string, TopicDetail> = {
 const firstButton = () => screen.getByRole("button", { name: /First topic/ });
 const secondButton = () => screen.getByRole("button", { name: /Second topic/ });
 
+function panelFor(button: HTMLElement): HTMLElement {
+  const id = button.getAttribute("aria-controls");
+  const panel = id && document.getElementById(id);
+  if (!panel) throw new Error(`no panel found for aria-controls=${id}`);
+  return panel;
+}
+
 describe("TopicExplorer", () => {
-  it("renders only topics with structured detail, trailing parenthetical stripped from the heading", () => {
+  it("strips the trailing parenthetical from the heading but renders every topic", () => {
     render(<TopicExplorer topics={topics} detail={detail} />);
 
     expect(screen.getByRole("heading", { name: "First topic" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /\(foo, bar\)/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Second topic" })).toBeInTheDocument();
-    expect(screen.queryByText("Outline-only topic")).not.toBeInTheDocument();
+    // A topic with no detail entry still shows, as a non-interactive stub.
+    expect(screen.getByRole("heading", { name: "Outline-only topic" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Outline-only topic/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps every panel mounted so aria-controls always resolves, and links it back with aria-labelledby", () => {
+    render(<TopicExplorer topics={topics} detail={detail} />);
+
+    const panel = panelFor(secondButton());
+    expect(panel).toBeInTheDocument();
+    expect(panel).not.toBeVisible();
+    expect(panel).toHaveAttribute("aria-labelledby", secondButton().id);
   });
 
   it("opens the first topic by default and keeps the rest collapsed", () => {
@@ -45,16 +62,16 @@ describe("TopicExplorer", () => {
 
     expect(firstButton()).toHaveAttribute("aria-expanded", "true");
     expect(secondButton()).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("does the alpha thing")).toBeInTheDocument();
-    expect(screen.queryByText("does the gamma thing")).not.toBeInTheDocument();
+    expect(screen.getByText("does the alpha thing")).toBeVisible();
+    expect(screen.getByText("does the gamma thing")).not.toBeVisible();
   });
 
   it("keeps summary and config chips visible while a topic is collapsed", () => {
     render(<TopicExplorer topics={topics} detail={detail} />);
 
     const secondRow = secondButton().closest("div") as HTMLElement;
-    expect(within(secondRow).getByText("Second summary.")).toBeInTheDocument();
-    expect(within(secondRow).getByText("baz")).toBeInTheDocument();
+    expect(within(secondRow).getByText("Second summary.")).toBeVisible();
+    expect(within(secondRow).getByText("baz")).toBeVisible();
   });
 
   it("toggles an individual topic open and closed", async () => {
@@ -63,11 +80,11 @@ describe("TopicExplorer", () => {
 
     await user.click(secondButton());
     expect(secondButton()).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("does the gamma thing")).toBeInTheDocument();
+    expect(screen.getByText("does the gamma thing")).toBeVisible();
 
     await user.click(secondButton());
     expect(secondButton()).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("does the gamma thing")).not.toBeInTheDocument();
+    expect(screen.getByText("does the gamma thing")).not.toBeVisible();
   });
 
   it("expand all opens every topic and flips its label to collapse all", async () => {
@@ -87,10 +104,9 @@ describe("TopicExplorer", () => {
     const user = userEvent.setup();
     render(<TopicExplorer topics={topics} detail={detail} />);
 
-    expect(screen.getByText("the classic foot-gun")).toBeInTheDocument();
+    expect(screen.getByText("the classic foot-gun")).toBeVisible();
 
     await user.click(secondButton());
-    const secondPanel = screen.getByRole("region", { name: "Second topic" });
-    expect(within(secondPanel).queryByText(/watch out/i)).not.toBeInTheDocument();
+    expect(within(panelFor(secondButton())).queryByText(/watch out/i)).not.toBeInTheDocument();
   });
 });

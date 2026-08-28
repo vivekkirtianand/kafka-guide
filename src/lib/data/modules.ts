@@ -81,12 +81,12 @@ export const modules: Module[] = [
           {
             term: "acks=all",
             detail:
-              "The leader doesn't reply until every in-sync replica has the record. The only setting where an acknowledgment means durable-across-a-broker-failure.",
+              "The leader doesn't reply until every replica currently in the ISR has the record. Necessary for broker-failure durability, but not sufficient on its own — if the ISR has shrunk to just the leader, acks=all still acknowledges a single-copy write.",
           },
           {
             term: "min.insync.replicas",
             detail:
-              "A topic config, not a producer one. Turns \"all in-sync replicas\" into an enforceable minimum instead of best-effort.",
+              "A topic (or broker) config, not a producer one. The minimum ISR size an acks=all write is accepted with — set it to 2+ so a lone leader can't ack a single copy. Below it, the leader rejects produce requests with NOT_ENOUGH_REPLICAS. This, plus a replication factor above it, is what actually guarantees multiple copies exist.",
           },
           {
             term: "enable.idempotence=true (default)",
@@ -134,12 +134,12 @@ export const modules: Module[] = [
           {
             term: "buffer.memory",
             detail:
-              "Total memory for records that have been sent but not yet acknowledged, across all partitions. Bounds a producer that generates faster than the broker or network can absorb.",
+              "The budget for records buffered in the producer waiting to be sent, across all partitions. It roughly — not exactly — tracks the producer's footprint: compression buffers and in-flight requests use memory on top of it.",
           },
           {
             term: "A full buffer",
             detail:
-              "send() blocks the calling thread to give the broker a chance to catch up — it doesn't fail immediately.",
+              "send() blocks the calling thread to give the sender thread a chance to drain the buffer to the brokers — it doesn't fail immediately.",
           },
           {
             term: "max.block.ms",
