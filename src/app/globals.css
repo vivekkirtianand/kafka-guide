@@ -1,23 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  /* Control-room palette: deep charcoal-navy, amber signal, teal stream accent */
-  --bg: #12151b;
-  --bg-elevated: #1b1f29;
-  --bg-inset: #0d0f14;
-  --border: #2a2f3b;
-  --border-soft: #232734;
-  --text: #e7e9ee;
-  --text-muted: #9ba1af;
-  --text-faint: #6b7180;
-  --accent: #e8a33d;
-  --accent-soft: #e8a33d1f;
-  --stream: #4fa8ac;
-  --stream-soft: #4fa8ac1f;
-  --danger: #d9584b;
-  --danger-soft: #d9584b1f;
-  --success: #6fae7c;
-  --success-soft: #6fae7c1f;
+  /* Daylight control room: warm paper ground, dark ink, amber signal + teal stream
+     accents pulled deep enough to hold their contrast on white. */
+  --bg: #fbfaf7;
+  --bg-elevated: #ffffff;
+  --bg-inset: #f1efe9;
+  --border: #9a9080;      /* 3.0–3.2:1 on bg / bg-elevated — WCAG 1.4.11 for control edges */
+  --border-soft: #8f8573; /* dividers + panels that sit on bg-inset; 3.2:1 there too */
+  --text: #22201b;
+  --text-muted: #63605a;
+  --text-faint: #6f6a60;  /* ~4.7:1 min on bg and bg-inset (small-text AA) */
+  --accent: #8f5a08;      /* ~5:1 min as text and as button ground */
+  --accent-soft: #8f5a0816;
+  --stream: #2c797c;
+  --stream-soft: #2c797c16;
+  --danger: #b0433a;
+  --danger-soft: #b0433a12;
+  --success: #3c7a4d;
+  --success-soft: #3c7a4d12;
 }
 
 @theme inline {
@@ -42,12 +43,16 @@
   --font-mono: var(--font-jbmono);
 }
 
-* {
-  border-color: var(--border);
+/* Default border color, kept in `base` so Tailwind's `border-*` and
+   `hover:border-*` utilities (in the later `utilities` layer) win. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
