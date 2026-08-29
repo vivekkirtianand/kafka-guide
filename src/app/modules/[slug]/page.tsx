@@ -17,6 +17,10 @@ import CommitStrategyDemo from "@/components/demos/CommitStrategyDemo";
 import CommitCrashDemo from "@/components/demos/CommitCrashDemo";
 import OffsetResetDemo from "@/components/demos/OffsetResetDemo";
 import PoisonMessageDemo from "@/components/demos/PoisonMessageDemo";
+import ReplicationFloorDemo from "@/components/demos/ReplicationFloorDemo";
+import RetentionCompactionDemo from "@/components/demos/RetentionCompactionDemo";
+import RackPlacementDemo from "@/components/demos/RackPlacementDemo";
+import QuotaThrottleDemo from "@/components/demos/QuotaThrottleDemo";
 
 export function generateStaticParams() {
   return modules.map((m) => ({ slug: m.slug }));
@@ -119,6 +123,15 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
           <CommitCrashDemo />
           <OffsetResetDemo />
           <PoisonMessageDemo />
+        </div>
+      )}
+
+      {mod.slug === "broker-topic-configuration" && (
+        <div className="mt-10 flex flex-col gap-8">
+          <ReplicationFloorDemo />
+          <RetentionCompactionDemo />
+          <RackPlacementDemo />
+          <QuotaThrottleDemo />
         </div>
       )}
 
