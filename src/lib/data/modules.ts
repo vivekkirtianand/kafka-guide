@@ -853,8 +853,284 @@ export const modules: Module[] = [
       "Rack awareness",
       "Automatic topic creation and defaults",
     ],
+    topicDetail: {
+      "Replication and durability": {
+        summary:
+          "How many copies of each partition exist, and how many must confirm a write before it counts.",
+        configs: ["replication.factor", "min.insync.replicas", "unclean.leader.election.enable"],
+        points: [
+          {
+            term: "replication.factor",
+            detail:
+              "The number of copies of each partition, on that many distinct brokers. Partitions use a leader plus its ISR, not quorum voting (that's KRaft metadata). 3 is the common production choice: lose one broker and two replicas remain — enough for min.insync.replicas=2 to keep acks=all writes flowing, as long as those survivors are in sync. Set per topic at creation, or via default.replication.factor.",
+          },
+          {
+            term: "min.insync.replicas",
+            detail:
+              "With acks=all the leader waits for every replica currently in the ISR to have the batch. min.insync.replicas is the admission floor: if the ISR is smaller than it, the write is rejected. replication.factor=3 with min.insync.replicas=2 keeps writes flowing with one broker down; setting it equal to the replication factor tolerates none.",
+          },
+          {
+            term: "unclean.leader.election.enable",
+            detail:
+              "Default false: a partition with no in-sync replica stays offline rather than promoting a stale one and losing committed records. Setting it true trades those records for availability.",
+          },
+          {
+            term: "It's a per-topic decision",
+            detail:
+              "Broker defaults only apply at creation time; each topic can override. Changing a topic's replication factor afterward requires a partition reassignment, not just a config edit.",
+          },
+        ],
+        watchOut:
+          "replication.factor=2 with min.insync.replicas=2 is a trap: one broker down drops you below the floor and every acks=all produce starts failing. Keep the replication factor above min.insync.replicas.",
+      },
+      "Retention and compaction": {
+        summary:
+          "Two independent ways a partition sheds old data: delete by age or size, or compact to the latest value per key.",
+        configs: ["cleanup.policy", "retention.ms", "retention.bytes"],
+        points: [
+          {
+            term: "cleanup.policy=delete (default)",
+            detail:
+              "A segment ages out once all of its records are older than retention.ms, or the partition exceeds retention.bytes. Deletion is whole-segment, never per-record.",
+          },
+          {
+            term: "cleanup.policy=compact",
+            detail:
+              "Keeps at least the latest value for each key indefinitely; older values for that key are removed over time. A key written with a null value (a tombstone) is kept briefly, then dropped — that's how deletes propagate to consumers.",
+          },
+          {
+            term: "compact,delete",
+            detail:
+              "Both policies at once: compact by key, and also drop anything past the retention window.",
+          },
+          {
+            term: "Retention is not a read guarantee",
+            detail:
+              "A consumer that falls further behind than retention skips whatever aged out before it got there. Lag alerts exist partly to catch that.",
+          },
+        ],
+        watchOut:
+          "Compaction only promises the latest value per key survives — never rely on replaying the full history of a compacted topic.",
+      },
+      "Segment management": {
+        summary:
+          "A partition's log is a series of segment files; retention, compaction, and indexing all operate on whole segments.",
+        configs: ["segment.bytes", "segment.ms", "index.interval.bytes"],
+        points: [
+          {
+            term: "The active segment",
+            detail:
+              "Writes append to one active segment. When it reaches segment.bytes or segment.ms it's rolled closed and a new one opens. Only closed segments are eligible for deletion or compaction.",
+          },
+          {
+            term: "Size is a trade-off",
+            detail:
+              "Large segments mean fewer files but coarser retention — a segment isn't removed until its newest record ages out. Small segments free data promptly but multiply file handles and index files.",
+          },
+          {
+            term: "Indexes per segment",
+            detail:
+              "Each segment carries an offset index and a time index, so a lookup by offset or timestamp is a binary search plus a short scan rather than a full read.",
+          },
+        ],
+        watchOut:
+          "Retention granularity is the segment: retention.ms only takes effect once the whole segment is old enough, so a low-traffic partition can hold data well past retention.ms because its active segment hasn't rolled.",
+      },
+      "Request and record-size limits": {
+        summary:
+          "The broker caps the size of a record batch it will accept — a hard limit the producer and topic must agree on, plus softer fetch limits on the replication and consume paths.",
+        configs: ["message.max.bytes", "max.message.bytes", "replica.fetch.max.bytes"],
+        points: [
+          {
+            term: "message.max.bytes",
+            detail:
+              "The largest record batch the broker accepts; max.message.bytes overrides it per topic. A batch over the limit is rejected with RecordTooLargeException.",
+          },
+          {
+            term: "The fetch limits are soft",
+            detail:
+              "If the first record batch is larger than replica.fetch.max.bytes, the leader returns it in full anyway so replication still progresses. Keeping replica.fetch.max.bytes at or above message.max.bytes just avoids single-batch fetches capping replication throughput.",
+          },
+          {
+            term: "Consumer side",
+            detail:
+              "fetch.max.bytes and max.partition.fetch.bytes bound how much one fetch returns. A record batch larger than them is still returned in full (so a consumer can't get stuck), just one batch per fetch.",
+          },
+        ],
+        watchOut:
+          "The hard limit is message.max.bytes (or the topic's max.message.bytes): a batch over it is rejected outright with RecordTooLargeException. Set the producer's max.request.size and the broker/topic limit together so the producer never builds a batch the broker will refuse.",
+      },
+      "Network and I/O threads": {
+        summary:
+          "Two broker thread pools: network threads move bytes on and off sockets; I/O threads do the actual request work.",
+        configs: ["num.network.threads", "num.io.threads", "queued.max.requests"],
+        points: [
+          {
+            term: "num.network.threads",
+            detail:
+              "Handle socket reads and writes and hand requests to a shared queue. Rarely the bottleneck; scale with connection count and raw byte throughput.",
+          },
+          {
+            term: "num.io.threads",
+            detail:
+              "Pull from the request queue and do the work — appending to the log, serving fetches, updating metadata. The usual lever when request-handler idle time drops.",
+          },
+          {
+            term: "The queue between them",
+            detail:
+              "queued.max.requests bounds the backlog. When it fills, network threads stop reading new requests — backpressure onto clients.",
+          },
+        ],
+        watchOut:
+          "The signal is request-handler-avg-idle-percent, not CPU. Low idle there means add I/O threads or faster disks; adding network threads instead does nothing, since I/O threads block on the page cache and disk.",
+      },
+      "Quotas": {
+        summary:
+          "Per-client throttles on produce and fetch bandwidth and on request-handler time, so one client can't starve the cluster.",
+        configs: ["producer_byte_rate", "consumer_byte_rate", "request_percentage"],
+        points: [
+          {
+            term: "Bandwidth quotas",
+            detail:
+              "producer_byte_rate and consumer_byte_rate cap bytes per second per client. The broker enforces them by delaying the client's responses — it stays connected, just slower.",
+          },
+          {
+            term: "Request quota",
+            detail:
+              "request_percentage caps the share of network + I/O thread time a client may consume — for clients that are cheap on bytes but heavy on request rate, like a metadata storm.",
+          },
+          {
+            term: "How they're keyed",
+            detail:
+              "By client-id, by (user, client-id), or by user with authentication. Applied via kafka-configs.sh against the clients / users entities; dynamic, no restart.",
+          },
+        ],
+        watchOut:
+          "Throttling appears to the client as latency, not errors — a throttled producer just looks slow. The produce/fetch throttle-time metrics are how you tell it apart from real slowness.",
+      },
+      "Controller and KRaft settings": {
+        summary:
+          "In KRaft a quorum of controller nodes keeps cluster metadata in its own replicated log; these settings define that quorum.",
+        configs: ["process.roles", "controller.quorum.voters", "controller.quorum.bootstrap.servers"],
+        points: [
+          {
+            term: "process.roles",
+            detail:
+              "broker, controller, or both. Combined mode co-locates them (fine for small clusters); dedicated controllers isolate metadata from data-plane load.",
+          },
+          {
+            term: "Defining the quorum",
+            detail:
+              "A static quorum is a fixed id@host:port list in controller.quorum.voters. Kafka 4.0's dynamic quorum instead uses controller.quorum.bootstrap.servers, with the initial members set at format time (--initial-controllers) and voters added or removed while running. Either way it's usually 3 nodes, tolerating one loss.",
+          },
+          {
+            term: "The metadata log",
+            detail:
+              "__cluster_metadata is a single-partition Raft log the active controller writes and everyone else replicates. Brokers pull metadata changes from it rather than being pushed updates as under ZooKeeper.",
+          },
+        ],
+        watchOut:
+          "Losing quorum — 2 of 3 controllers down — freezes all metadata changes: no leader elections, no topic creation, even though existing partition leaders keep serving. Controller nodes are critical infrastructure.",
+      },
+      "Listener configuration": {
+        summary:
+          "A broker exposes several named listeners on different ports for different traffic — internal, external, controller — each with its own security.",
+        configs: ["listeners", "advertised.listeners", "inter.broker.listener.name"],
+        points: [
+          {
+            term: "listeners vs advertised.listeners",
+            detail:
+              "listeners is what the broker binds locally; advertised.listeners is the address it hands back to clients to reconnect on. They differ whenever there's NAT, a load balancer, or Docker port mapping.",
+          },
+          {
+            term: "listener.security.protocol.map",
+            detail:
+              "Maps each listener name to a protocol — PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL — so different listeners can enforce different security.",
+          },
+          {
+            term: "Separate listeners for separate roles",
+            detail:
+              "inter.broker.listener.name keeps broker-to-broker traffic off the client listener; controller.listener.names is the KRaft quorum's listener and must not be advertised to clients.",
+          },
+        ],
+        watchOut:
+          "A wrong advertised.listeners is the classic \"connects, then times out\": the client reaches the bootstrap broker, gets back an address it can't route to, and hangs on the next request.",
+      },
+      "Security": {
+        summary:
+          "Three independent layers: encryption in transit, authentication (who), and authorization (what they may do).",
+        configs: ["security.protocol", "sasl.mechanism", "authorizer.class.name"],
+        points: [
+          {
+            term: "Encryption",
+            detail:
+              "TLS on a listener encrypts traffic and, with mutual TLS, can also authenticate. SASL_SSL is SASL authentication over a TLS channel.",
+          },
+          {
+            term: "Authentication",
+            detail:
+              "SASL mechanisms: PLAIN (only safe over TLS), SCRAM (salted, credentials in Kafka's own metadata), GSSAPI (Kerberos), OAUTHBEARER — or mutual TLS with the client certificate's DN as the principal.",
+          },
+          {
+            term: "Authorization",
+            detail:
+              "An authorizer (StandardAuthorizer in KRaft) checks ACLs per principal, operation, and resource. Configuring one makes the cluster default-deny unless allow.everyone.if.no.acl.found is set.",
+          },
+        ],
+        watchOut:
+          "SASL/PLAIN sends the password in the clear, so it's only safe on a TLS listener. SCRAM uses a salted challenge-response and never transmits the password itself — but without TLS the channel still isn't confidential, so use SASL_SSL for anything exposed either way.",
+      },
+      "Rack awareness": {
+        summary:
+          "Tell each broker its failure domain so a partition's replicas are spread across domains rather than stacked in one.",
+        configs: ["broker.rack", "replica.selector.class", "client.rack"],
+        points: [
+          {
+            term: "broker.rack",
+            detail:
+              "A label per broker — typically the availability zone. The replica assignor then places a partition's replicas across as many distinct racks as it can.",
+          },
+          {
+            term: "Why it matters",
+            detail:
+              "Without it, all three replicas of a partition can land in one zone; that zone fails and the partition is offline despite replication.factor=3.",
+          },
+          {
+            term: "Rack-aware fetching",
+            detail:
+              "Two settings, both required: the broker's replica.selector.class set to the rack-aware selector, and each consumer's client.rack set to its zone. The consumer can then fetch from an in-sync follower in its own rack instead of the leader, cutting cross-zone transfer cost.",
+          },
+        ],
+        watchOut:
+          "Rack-aware placement only affects new assignments — adding broker.rack to a running cluster won't spread existing replicas across racks without a partition reassignment. Rack-aware fetching, by contrast, starts working on existing partitions as soon as replica.selector.class and client.rack are set.",
+      },
+      "Automatic topic creation and defaults": {
+        summary:
+          "Whether a produce or fetch to a missing topic creates it, and the defaults it would inherit.",
+        configs: ["auto.create.topics.enable", "num.partitions", "default.replication.factor"],
+        points: [
+          {
+            term: "auto.create.topics.enable",
+            detail:
+              "Default true on the broker. A client referencing a topic that doesn't exist triggers creation with num.partitions and default.replication.factor.",
+          },
+          {
+            term: "Why turn it off",
+            detail:
+              "Auto-created topics inherit generic defaults and a mistyped topic name silently becomes a real topic. Explicit creation forces a deliberate partition count and replication factor.",
+          },
+          {
+            term: "The defaults still apply",
+            detail:
+              "Even with auto-create off, num.partitions and default.replication.factor are the fallback whenever a create request omits them.",
+          },
+        ],
+        watchOut:
+          "default.replication.factor=1 is the dangerous default on a multi-broker cluster: any topic created without an explicit factor has no redundancy at all.",
+      },
+    },
     activities: [],
-    status: "planned",
+    status: "available",
   },
   {
     slug: "observability",
@@ -874,10 +1150,265 @@ export const modules: Module[] = [
       "Rebalance frequency",
       "Log-cleaner performance",
     ],
+    topicDetail: {
+      "Consumer lag and lag growth rate": {
+        summary:
+          "How far behind a consumer group is, and whether the gap is stable, shrinking, or running away.",
+        points: [
+          {
+            term: "Lag",
+            detail:
+              "log-end-offset minus the group's committed offset, per partition. A steadily rising lag means consumption can't keep up with production.",
+          },
+          {
+            term: "Slope first, then the absolute value",
+            detail:
+              "A rising slope pages you regardless of where lag started. But flat isn't automatically fine: a steady 10k still has to clear your latency SLA — check time lag, how old the next unread record is — and sit well inside retention.",
+          },
+          {
+            term: "Break it down by partition",
+            detail:
+              "Total lag can look flat while one partition is stuck — a poison message, a hot key — and the rest race ahead. Always look per partition, not just the group total.",
+          },
+        ],
+        watchOut:
+          "Lag on a short-retention topic is doubly urgent: fall further behind than retention and the records are deleted before the consumer reads them — the data is simply gone.",
+      },
+      "Under-replicated and offline partitions": {
+        summary:
+          "Partitions that don't currently have their full in-sync replica set — or no leader at all.",
+        points: [
+          {
+            term: "UnderReplicatedPartitions",
+            detail:
+              "A broker gauge: partitions where the ISR is smaller than the replica set. Non-zero means a replica is down or lagging; it should return to zero on its own once the broker recovers.",
+          },
+          {
+            term: "OfflinePartitionsCount",
+            detail:
+              "Partitions with no leader — every replica down, or no in-sync replica left and unclean election off. Unavailable for reads and writes.",
+          },
+          {
+            term: "Where to look",
+            detail:
+              "ReplicaManager JMX metrics, or kafka-topics.sh --describe --under-replicated-partitions. The controller tracks it too.",
+          },
+        ],
+        watchOut:
+          "A brief spike during a rolling restart is normal. A sustained non-zero count, or any offline partition, is an incident — start with which brokers the affected replicas live on.",
+      },
+      "ISR changes": {
+        summary:
+          "How often replicas drop out of and rejoin the in-sync set — a proxy for replication health.",
+        points: [
+          {
+            term: "IsrShrinksPerSec / IsrExpandsPerSec",
+            detail:
+              "A shrink means a follower fell behind replica.lag.time.max.ms; an expand means it caught back up. One pair around an isolated event — a broker restart, a brief network blip — is expected. Repeated shrink/expand under normal load is not: it means a follower that can't sustain the load.",
+          },
+          {
+            term: "What's behind it",
+            detail:
+              "An overloaded or slow-disk broker, a saturated inter-broker network, or a GC-pausing follower. Churn is the early warning before under-replication becomes chronic.",
+          },
+          {
+            term: "Localize it first",
+            detail:
+              "Often it's one broker — the one whose followers keep falling behind, or that leads a hot partition. But shared causes (a saturated network fabric, a common storage backend, correlated GC under a load spike) churn ISRs across many brokers at once. Check whether it's one broker or several before diagnosing.",
+          },
+        ],
+        watchOut:
+          "Steady shrink/expand churn with min.insync.replicas set tight means acks=all produces are riding the edge — every shrink that crosses the floor rejects writes.",
+      },
+      "Request latency and request queues": {
+        summary:
+          "Where time goes inside the broker for a produce or fetch — queue, local processing, remote wait, response.",
+        points: [
+          {
+            term: "The phases",
+            detail:
+              "TotalTimeMs splits into RequestQueueTimeMs (waiting for an I/O thread), LocalTimeMs (leader processing), RemoteTimeMs (waiting on followers for acks=all, or on data for a long-poll fetch), then response queue and send time.",
+          },
+          {
+            term: "Reading the breakdown",
+            detail:
+              "High RequestQueueTimeMs points to too few I/O threads or a saturated broker; high LocalTimeMs to slow disk or lock contention; high RemoteTimeMs on produce to a slow follower.",
+          },
+          {
+            term: "Queue depth",
+            detail:
+              "RequestQueueSize climbing toward queued.max.requests means the broker is accepting requests faster than it can serve them.",
+          },
+        ],
+        watchOut:
+          "Watch p99, not the mean. Broker latency is bimodal — page-cache hit vs disk read — so a healthy average routinely hides a p99 that's far worse.",
+      },
+      "Produce and fetch error rates": {
+        summary:
+          "The rate and type of failed requests — the difference between \"slow\" and \"broken\".",
+        points: [
+          {
+            term: "Where to see them",
+            detail:
+              "Broker: per-error-code request metrics, FailedProduceRequestsPerSec, FailedFetchRequestsPerSec. Client: producer record-error-rate, consumer metrics, and the exceptions in your app logs.",
+          },
+          {
+            term: "The ones that matter",
+            detail:
+              "NOT_ENOUGH_REPLICAS (ISR below min.insync.replicas), NOT_LEADER_OR_FOLLOWER (stale metadata, usually transient during a leader change), REQUEST_TIMED_OUT, RecordTooLargeException.",
+          },
+          {
+            term: "Retriable vs not",
+            detail:
+              "Most produce errors are retriable and the client handles them silently — they show up as elevated latency and retry-rate long before any delivery failure.",
+          },
+        ],
+        watchOut:
+          "NOT_LEADER_OR_FOLLOWER should be a brief burst around a leader election, then back to zero. A continuous low rate is not background noise — clients are persistently acting on stale metadata, so check metadata propagation and the controller.",
+      },
+      "Disk usage and disk latency": {
+        summary:
+          "How full the log directories are, and how long the disk takes to serve the reads and writes Kafka can't avoid.",
+        points: [
+          {
+            term: "Capacity",
+            detail:
+              "Kafka writes until the disk is full, then the affected log directory goes offline — taking that broker's replicas of those partitions with it, not the partitions themselves. Reads and acks=1 writes continue from a surviving replica, but acks=all writes still fail if the remaining ISR drops below min.insync.replicas. Alert on free space with enough headroom to act; retention won't free it fast enough.",
+          },
+          {
+            term: "Latency",
+            detail:
+              "Produce path: appends land in the page cache and return — the OS flushes to disk in the background, and durability comes from replication, not an fsync per write (unless flush.messages / flush.ms are set). Fetch path: reads that miss the page cache when a lagging consumer pulls cold data hit the disk directly. Rising disk await time surfaces as broker LocalTimeMs and log-flush latency.",
+          },
+          {
+            term: "Page cache is the read cache",
+            detail:
+              "Kafka relies on the OS page cache, not a JVM cache. RAM used by page cache is healthy; a low cache-hit ratio — lots of cold reads — is what hurts.",
+          },
+        ],
+        watchOut:
+          "One slow disk on one broker drags down every partition it leads, and via replication the ISRs of partitions led elsewhere. Disk problems rarely stay contained to one broker's metrics.",
+      },
+      "Network saturation": {
+        summary:
+          "Whether the NIC or the inter-broker links are the ceiling — replication and consumer fan-out both live here.",
+        points: [
+          {
+            term: "Where the bytes go",
+            detail:
+              "Each record enters the cluster once from the producer, then each follower fetches it to replicate (replication.factor − 1 copies — regardless of acks; acks only controls whether the producer waits). On the read side each consumer group fetches it once, not each consumer. Cluster-wide with RF 3 and 3 consumer groups: roughly 3x the produce rate inbound (1 produce + 2 replication fetches) and 5x outbound (2 replication sends + 3 group reads).",
+          },
+          {
+            term: "BytesInPerSec / BytesOutPerSec",
+            detail:
+              "Per-broker and per-topic; compare against the NIC's usable line rate. There's no universal safe percentage — pair it with retransmits, drops, and queue depth, and set a headroom target tested for your environment. Latency climbing as byte rate climbs is the real tell.",
+          },
+          {
+            term: "Replication traffic is separate",
+            detail:
+              "ReplicationBytesInPerSec / OutPerSec is distinct from client traffic. A replica backfilling after a restart can saturate a link on its own.",
+          },
+        ],
+        watchOut:
+          "Cross-zone replication and cross-zone consumer fetches cost money as well as latency — rack-aware fetching and a budgeted replication quota are the levers.",
+      },
+      "Controller health": {
+        summary:
+          "Whether the KRaft controller quorum is intact and metadata is propagating to brokers.",
+        points: [
+          {
+            term: "Quorum state",
+            detail:
+              "One active controller, the rest hot standbys. Watch for a controller that can't reach quorum, or frequent active-controller changes — a flapping leader in the metadata Raft group.",
+          },
+          {
+            term: "Metadata lag",
+            detail:
+              "Brokers replicate the __cluster_metadata log; a broker whose metadata offset trails the active controller's is slow to see leadership changes and topic updates.",
+          },
+          {
+            term: "ActiveControllerCount",
+            detail:
+              "Should be exactly 1 across the cluster. 0 means metadata changes are frozen; more than 1 for more than a moment means a split.",
+          },
+        ],
+        watchOut:
+          "Controller problems are quiet — existing partition leaders keep serving, so dashboards look fine while topic creation hangs and failed brokers never get their partitions reassigned.",
+      },
+      "JVM memory and garbage collection": {
+        summary:
+          "GC pauses on a broker stall replication and heartbeats — this is where \"the broker looks up but acts dead\" comes from.",
+        points: [
+          {
+            term: "Heap sizing",
+            detail:
+              "Brokers want a modest heap (commonly ~6GB); most memory should go to the OS page cache, not the JVM. An oversized heap steals cache and lengthens GC.",
+          },
+          {
+            term: "Pause time",
+            detail:
+              "A stop-the-world pause longer than replica.lag.time.max.ms drops a broker's followers from ISRs; longer than a consumer's session timeout looks like a dead consumer. Low-tens-of-ms pauses are a realistic target for G1 on a modest heap, not a guarantee — it depends on live-set size, allocation rate, CPU, and JVM version. Verify it against actual GC pause metrics.",
+          },
+          {
+            term: "It's a client concern too",
+            detail:
+              "A GC-pausing consumer misses poll() deadlines and triggers rebalances; a GC-pausing producer stalls sends. Same signal, both ends.",
+          },
+        ],
+        watchOut:
+          "kafka-exporter doesn't expose JVM metrics — GC and heap need a JMX exporter or the JVM's own telemetry. A cluster watched only through kafka-exporter is blind to its most common latency cause.",
+      },
+      "Rebalance frequency": {
+        summary:
+          "How often consumer groups reassign partitions — cheap when rare, crippling when constant.",
+        points: [
+          {
+            term: "The signal",
+            detail:
+              "Group rebalance rate and rebalance latency (client metrics), plus join/sync-group request rates on the broker. A group re-forming every few minutes is losing consumption time — how much depends on the protocol (below).",
+          },
+          {
+            term: "Common causes",
+            detail:
+              "Processing that overruns max.poll.interval.ms, a session timeout too tight for GC pauses, unstable pod scheduling, or a consumer crash-looping.",
+          },
+          {
+            term: "Eager vs cooperative",
+            detail:
+              "Under the classic eager protocol every rebalance is stop-the-world: the whole group stops consuming until it re-forms. Cooperative assignment keeps the partitions that aren't moving flowing throughout; the new consumer protocol (KIP-848) drops the global synchronization barrier so reassignment is incremental. Which one you run changes how much rebalance frequency you can tolerate.",
+          },
+        ],
+        watchOut:
+          "Frequent rebalances and rising lag are usually the same incident — the group can't progress because it keeps re-forming. Fix the rebalance cause, not the lag.",
+      },
+      "Log-cleaner performance": {
+        summary:
+          "For compacted topics, whether the background cleaner keeps up with the un-compacted portion of the log.",
+        points: [
+          {
+            term: "What it does",
+            detail:
+              "The log cleaner rewrites compacted-topic segments to keep only the latest value per key, working through the \"dirty\" section — everything appended since that partition was last cleaned.",
+          },
+          {
+            term: "The signal",
+            detail:
+              "max-dirty-percent and per-partition cleaner lag. A cleaner falling behind lets compacted topics grow unbounded and slows consumer startup — more history to read.",
+          },
+          {
+            term: "Why it falls behind",
+            detail:
+              "A dedupe map that can't hold every key in the dirty section limits how far one pass gets — heavy key cardinality then takes multiple passes to catch up. A log Kafka genuinely can't clean (a corrupt segment) is marked uncleanable and skipped; the cleaner moves on to other partitions rather than stalling.",
+          },
+        ],
+        watchOut:
+          "A crashed cleaner thread is silent. With the default log.cleaner.threads=1 it stops compaction entirely — every compacted topic (including __consumer_offsets) just grows; with more threads it only cuts throughput. Alert on max-dirty-percent and on live cleaner threads.",
+      },
+    },
     activities: [
       "Present an unlabeled dashboard and identify the bottleneck: producer, broker, consumer, disk, network, or downstream processing",
     ],
-    status: "planned",
+    status: "available",
   },
   {
     slug: "troubleshooting-scenarios",
