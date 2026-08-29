@@ -1347,7 +1347,7 @@ export const modules: Module[] = [
           {
             term: "Pause time",
             detail:
-              "A stop-the-world pause longer than replica.lag.time.max.ms drops a broker's followers from ISRs; longer than a consumer's session timeout looks like a dead consumer. G1 on a modest heap keeps pauses in the low tens of ms.",
+              "A stop-the-world pause longer than replica.lag.time.max.ms drops a broker's followers from ISRs; longer than a consumer's session timeout looks like a dead consumer. Low-tens-of-ms pauses are a realistic target for G1 on a modest heap, not a guarantee — it depends on live-set size, allocation rate, CPU, and JVM version. Verify it against actual GC pause metrics.",
           },
           {
             term: "It's a client concern too",
@@ -1365,7 +1365,7 @@ export const modules: Module[] = [
           {
             term: "The signal",
             detail:
-              "Group rebalance rate and rebalance latency (client metrics), plus join/sync-group request rates on the broker. A group re-forming every few minutes spends that time not consuming.",
+              "Group rebalance rate and rebalance latency (client metrics), plus join/sync-group request rates on the broker. A group re-forming every few minutes is losing consumption time — how much depends on the protocol (below).",
           },
           {
             term: "Common causes",
@@ -1375,7 +1375,7 @@ export const modules: Module[] = [
           {
             term: "Eager vs cooperative",
             detail:
-              "Under the classic eager protocol every rebalance is stop-the-world for the whole group. Cooperative assignment or the new consumer protocol makes each one cheaper — which changes how much frequency you can tolerate.",
+              "Under the classic eager protocol every rebalance is stop-the-world: the whole group stops consuming until it re-forms. Cooperative assignment keeps the partitions that aren't moving flowing throughout; the new consumer protocol (KIP-848) drops the global synchronization barrier so reassignment is incremental. Which one you run changes how much rebalance frequency you can tolerate.",
           },
         ],
         watchOut:
