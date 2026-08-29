@@ -867,7 +867,7 @@ export const modules: Module[] = [
           {
             term: "min.insync.replicas",
             detail:
-              "With acks=all, the minimum in-sync replicas that must hold a record before it's acknowledged. replication.factor=3 with min.insync.replicas=2 tolerates one broker down; min.insync.replicas equal to the replication factor tolerates none.",
+              "With acks=all the leader waits for every replica currently in the ISR to have the batch. min.insync.replicas is the admission floor: if the ISR is smaller than it, the write is rejected. replication.factor=3 with min.insync.replicas=2 keeps writes flowing with one broker down; setting it equal to the replication factor tolerates none.",
           },
           {
             term: "unclean.leader.election.enable",
@@ -938,7 +938,7 @@ export const modules: Module[] = [
       },
       "Request and record-size limits": {
         summary:
-          "The broker caps the size of a single record batch — and that cap has to agree with the producer, the topic, and the replication path.",
+          "The broker caps the size of a record batch it will accept — a hard limit the producer and topic must agree on, plus softer fetch limits on the replication and consume paths.",
         configs: ["message.max.bytes", "max.message.bytes", "replica.fetch.max.bytes"],
         points: [
           {
@@ -947,18 +947,18 @@ export const modules: Module[] = [
               "The largest record batch the broker accepts; max.message.bytes overrides it per topic. A batch over the limit is rejected with RecordTooLargeException.",
           },
           {
-            term: "Three limits must line up",
+            term: "The fetch limits are soft",
             detail:
-              "Producer max.request.size, broker/topic message.max.bytes, and replica.fetch.max.bytes. If the fetch limit is below the message limit, a large record the leader accepts can't be replicated and the partition goes under-replicated.",
+              "If the first record batch is larger than replica.fetch.max.bytes, the leader returns it in full anyway so replication still progresses. Keeping replica.fetch.max.bytes at or above message.max.bytes just avoids single-batch fetches capping replication throughput.",
           },
           {
             term: "Consumer side",
             detail:
-              "fetch.max.bytes and max.partition.fetch.bytes bound how much one fetch returns. A single record larger than them is still delivered (so a consumer can't get stuck), but throughput drops.",
+              "fetch.max.bytes and max.partition.fetch.bytes bound how much one fetch returns. A record batch larger than them is still returned in full (so a consumer can't get stuck), just one batch per fetch.",
           },
         ],
         watchOut:
-          "Raising message.max.bytes without raising replica.fetch.max.bytes to match silently breaks replication for large records — the leader has them, the followers can't fetch them.",
+          "The hard limit is message.max.bytes (or the topic's max.message.bytes): a batch over it is rejected outright with RecordTooLargeException. Set the producer's max.request.size and the broker/topic limit together so the producer never builds a batch the broker will refuse.",
       },
       "Network and I/O threads": {
         summary:
@@ -1011,7 +1011,7 @@ export const modules: Module[] = [
       "Controller and KRaft settings": {
         summary:
           "In KRaft a quorum of controller nodes keeps cluster metadata in its own replicated log; these settings define that quorum.",
-        configs: ["process.roles", "controller.quorum.voters", "controller.listener.names"],
+        configs: ["process.roles", "controller.quorum.voters", "controller.quorum.bootstrap.servers"],
         points: [
           {
             term: "process.roles",
@@ -1019,9 +1019,9 @@ export const modules: Module[] = [
               "broker, controller, or both. Combined mode co-locates them (fine for small clusters); dedicated controllers isolate metadata from data-plane load.",
           },
           {
-            term: "controller.quorum.voters",
+            term: "Defining the quorum",
             detail:
-              "The list of controller nodes (id@host:port) forming the Raft quorum — usually 3, tolerating one loss; 5 for larger clusters.",
+              "A static quorum is a fixed id@host:port list in controller.quorum.voters. Kafka 4.0's dynamic quorum instead uses controller.quorum.bootstrap.servers, with the initial members set at format time (--initial-controllers) and voters added or removed while running. Either way it's usually 3 nodes, tolerating one loss.",
           },
           {
             term: "The metadata log",
@@ -1078,7 +1078,7 @@ export const modules: Module[] = [
           },
         ],
         watchOut:
-          "SASL/PLAIN or SCRAM over a PLAINTEXT listener sends credentials in the clear. Always pair SASL with TLS (SASL_SSL) on anything exposed.",
+          "SASL/PLAIN sends the password in the clear, so it's only safe on a TLS listener. SCRAM uses a salted challenge-response and never transmits the password itself — but without TLS the channel still isn't confidential, so use SASL_SSL for anything exposed either way.",
       },
       "Rack awareness": {
         summary:
@@ -1158,12 +1158,12 @@ export const modules: Module[] = [
           {
             term: "Lag",
             detail:
-              "log-end-offset minus the group's committed offset, per partition. A steady non-zero lag is fine; a steadily rising one means consumption can't keep up with production.",
+              "log-end-offset minus the group's committed offset, per partition. A steadily rising lag means consumption can't keep up with production.",
           },
           {
-            term: "The growth rate is the real signal",
+            term: "Slope first, then the absolute value",
             detail:
-              "The slope matters more than the value. Flat lag at 10k is healthy; lag climbing 1k/min pages you regardless of where it started.",
+              "A rising slope pages you regardless of where lag started. But flat isn't automatically fine: a steady 10k still has to clear your latency SLA — check time lag, how old the next unread record is — and sit well inside retention.",
           },
           {
             term: "Break it down by partition",
@@ -1278,7 +1278,7 @@ export const modules: Module[] = [
           {
             term: "Latency",
             detail:
-              "Produce path: fsync and page-cache writeback. Fetch path: reads that miss the page cache when a lagging consumer reads cold data. Rising disk await time surfaces as broker LocalTimeMs.",
+              "Produce path: appends land in the page cache and return — the OS flushes to disk in the background, and durability comes from replication, not an fsync per write (unless flush.messages / flush.ms are set). Fetch path: reads that miss the page cache when a lagging consumer pulls cold data hit the disk directly. Rising disk await time surfaces as broker LocalTimeMs and log-flush latency.",
           },
           {
             term: "Page cache is the read cache",
@@ -1296,7 +1296,7 @@ export const modules: Module[] = [
           {
             term: "Where the bytes go",
             detail:
-              "Every acks=all produce is written once by a client and re-sent to each follower. A topic with replication factor 3 and 10 consumers moves roughly 13x its produce bandwidth.",
+              "Each record is written once by the producer, then copied to every other replica over the inter-broker network — replication.factor − 1 more times, regardless of acks (acks only controls whether the producer waits). Reads add one copy per consumer group, not per consumer. RF 3 with 3 independent groups is roughly 3x in and 3x out.",
           },
           {
             term: "BytesInPerSec / BytesOutPerSec",
@@ -1396,13 +1396,13 @@ export const modules: Module[] = [
               "max-dirty-percent and per-partition cleaner lag. A cleaner falling behind lets compacted topics grow unbounded and slows consumer startup — more history to read.",
           },
           {
-            term: "Why it stalls",
+            term: "Why it falls behind",
             detail:
-              "One un-cleanable partition — an oversized record, or a key set too large for the cleaner's dedupe buffer — blocks the cleaner thread and every partition behind it in the queue.",
+              "A dedupe map that can't hold every key in the dirty section limits how far one pass gets — heavy key cardinality then takes multiple passes to catch up. A log Kafka genuinely can't clean (a corrupt segment) is marked uncleanable and skipped; the cleaner moves on to other partitions rather than stalling.",
           },
         ],
         watchOut:
-          "A dead log-cleaner thread is silent: compacted topics (including __consumer_offsets) just quietly stop compacting and grow. Alert on max-dirty-percent and on the thread being alive.",
+          "A crashed log-cleaner thread is silent: every compacted topic (including __consumer_offsets) just stops compacting and grows. Alert on max-dirty-percent and on the cleaner thread being alive.",
       },
     },
     activities: [
