@@ -1129,7 +1129,12 @@ export const modules: Module[] = [
           "default.replication.factor=1 is the dangerous default on a multi-broker cluster: any topic created without an explicit factor has no redundancy at all.",
       },
     },
-    activities: [],
+    activities: [
+      "Shrink the ISR below min.insync.replicas and watch acks=all writes fail",
+      "Compare delete and compact cleanup on the same keyed log",
+      "Spread replicas across racks, then fail a rack",
+      "Push a client past its byte-rate quota and watch it slow, not error",
+    ],
     status: "available",
   },
   {
