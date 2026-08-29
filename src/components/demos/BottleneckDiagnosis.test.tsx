@@ -27,7 +27,8 @@ describe("BottleneckDiagnosis", () => {
     render(<BottleneckDiagnosis />);
     await user.click(cause("Producer application"));
     expect(screen.getByText("not the bottleneck")).toBeInTheDocument();
-    expect(feedback()).toMatch(/A producer application bottleneck would show buffer-available near zero/);
+    expect(feedback()).toMatch(/A producer application bottleneck would show throughput well under target/);
+    expect(feedback()).toMatch(/the producer's own send buffer near-empty/);
     expect(feedback()).toMatch(/answer: Broker disk/);
   });
 
@@ -67,13 +68,15 @@ describe("BottleneckDiagnosis", () => {
     expect(feedback()).toMatch(/request queue is 28 deep and request-handler threads are 3% idle/);
   });
 
-  it("dashboard 4 (producer) has an idle broker and a starved buffer", async () => {
+  it("dashboard 4 (producer) has an idle broker and a near-empty send buffer — the app isn't feeding send()", async () => {
     const user = userEvent.setup();
     render(<BottleneckDiagnosis />);
     await user.click(dashboard(4));
     await user.click(cause("Producer application"));
     expect(screen.getByText("correct")).toBeInTheDocument();
     expect(feedback()).toMatch(/broker acks in 14 ms and sits 82% idle/);
+    expect(feedback()).toMatch(/the producer's own send buffer sits 89% free/);
+    expect(feedback()).toMatch(/A near-full buffer would point the other way/);
   });
 
   it("reset returns to dashboard 1", async () => {

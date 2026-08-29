@@ -3,14 +3,16 @@
 import { useState } from "react";
 import Badge from "@/components/Badge";
 
-// Three partitions in one consumer group. Lag is log-end-offset minus committed
-// offset, per partition. The demo steps a fixed clock and recomputes each
-// partition's lag from a produce rate and a fixed per-partition consume ceiling.
+// Three partitions in one consumer group, one consumer per partition. Lag is
+// log-end-offset minus committed offset, per partition. The demo steps a fixed
+// clock and recomputes each partition's lag from a produce rate and a fixed
+// per-partition consume ceiling. Time lag is shown as a constant-rate estimate
+// (lag ÷ produce rate), so the produce rate is locked once the clock starts.
 
 const PARTITIONS: number[] = [0, 1, 2];
 const STEP_SECONDS = 10;
 const MAX_STEPS = 8;
-const CONSUME_CAP = 120; // records/s a single consumer clears per partition
+const CONSUME_CAP = 120; // records/s the one consumer on a partition can clear
 const RETENTION_RECORDS = 6000; // oldest unread record falls off the log past this
 const TIME_LAG_SLA_SECONDS = 15;
 const INITIAL_LAG: Record<number, number> = { 0: 0, 1: 0, 2: 2000 };
@@ -34,6 +36,7 @@ export default function LagSlopeVsAbsolute() {
 
   const now = history[history.length - 1];
   const prev = history.length > 1 ? history[history.length - 2] : null;
+  const started = now.step > 0;
 
   function advance() {
     setHistory((h) => {
@@ -69,25 +72,24 @@ export default function LagSlopeVsAbsolute() {
   let tone: "success" | "accent" | "danger" = "success";
   if (pastRetention.length > 0) {
     tone = "danger";
-    verdict = `Partition ${pastRetention.join(", ")} is past the ~${RETENTION_RECORDS}-record retention window — the oldest unread records were deleted before the consumer reached them. That data is gone; resetting the group forward is the only way out.`;
+    verdict = `Partition ${pastRetention.join(", ")} is past the ~${RETENTION_RECORDS}-record retention window — the oldest unread records were deleted before the consumer reached them. That data is gone for good. Consumption still resumes: auto.offset.reset moves the group to earliest or latest on its own (or throws, with none), or you reset it forward by hand — but the skipped records aren't coming back.`;
   } else if (now.step === 0) {
     if (slaBreached.length > 0) {
       tone = "accent";
-      verdict = `Nothing has moved yet, but partition ${slaBreached.join(", ")} already holds a steady backlog whose oldest record is more than ${TIME_LAG_SLA_SECONDS}s old — past the latency SLA. A flat line at a high absolute value is still a problem. Step the clock to watch the slope.`;
+      verdict = `Nothing has moved yet, but partition ${slaBreached.join(", ")} already holds a steady backlog whose oldest record is roughly ${TIME_LAG_SLA_SECONDS}s+ old at this produce rate — past the latency SLA. A flat line at a high absolute value is still a problem. Step the clock to watch the slope.`;
     } else {
       verdict = "Step the clock to watch how each partition's lag moves — the slope, not just the number.";
     }
   } else if (stuck && !overCap) {
     tone = "danger";
     verdict =
-      "The group total is rising, but the rise is entirely partition 0 — a stuck partition (a poison message, a hot key) climbs while the healthy partitions sit flat. A dashboard showing only group-total lag would still look like a slow, uniform slope. Always break lag down per partition.";
+      "The group total is rising, but the rise is entirely partition 0 — one consumer stuck retrying a bad record forever makes no progress there while the healthy partitions sit flat. A dashboard showing only group-total lag would still look like a slow, uniform slope. Always break lag down per partition.";
   } else if (overCap) {
     tone = "danger";
-    verdict =
-      "Every partition is climbing at the same slope — this is genuine under-provisioning, not one bad partition. Consumption can't keep up with production anywhere. Add consumers (up to the partition count) or cut the produce rate.";
+    verdict = `Every partition is climbing at the same slope — consumption can't keep pace anywhere. Each partition already has its own consumer pinned at the ${CONSUME_CAP} records/s ceiling, so adding consumers won't help: you can't split a partition. Raise per-partition throughput (faster processing, batched or async writes), or add partitions and consumers together.`;
   } else if (slaBreached.length > 0) {
     tone = "accent";
-    verdict = `Lag is flat — the slope is fine — but partition ${slaBreached.join(", ")} holds a steady backlog whose oldest record is more than ${TIME_LAG_SLA_SECONDS}s old, past the latency SLA. Flat is not automatically healthy: check the time lag and the distance to retention too.`;
+    verdict = `Lag is flat — the slope is fine — but partition ${slaBreached.join(", ")} holds a steady backlog whose oldest record is well past the ${TIME_LAG_SLA_SECONDS}s latency SLA. Flat is not automatically healthy: check the time lag and the distance to retention too.`;
   } else {
     verdict = "Consumption is keeping up on every partition and no backlog breaches the latency SLA. Lag is stable.";
   }
@@ -107,10 +109,13 @@ export default function LagSlopeVsAbsolute() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — three partitions, a fixed {CONSUME_CAP} records/s consume ceiling per partition, and
-        a clock you step by hand. What carries over: a rising slope pages you regardless of the starting value; a flat
-        line still has to clear the latency SLA (time lag) and stay inside retention; and a healthy-looking group
-        total can hide one partition running away, so the per-partition breakdown is the one that matters.
+        Simplified for teaching — three partitions, one consumer each clearing up to {CONSUME_CAP} records/s, a clock
+        you step by hand, and time lag shown as a constant-rate estimate (lag ÷ produce rate) so the rate locks once
+        the clock starts. &ldquo;Stuck&rdquo; models a consumer whose error handler seeks back and retries the same bad
+        record forever (or crash-loops on it) — a raw exception would instead skip it and move on, as in Module 4.
+        What carries over: a rising slope pages you regardless of the starting value; a flat line still has to clear
+        the latency SLA and stay inside retention; and a healthy-looking group total can hide one partition running
+        away, so the per-partition breakdown is the one that matters.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-4">
@@ -123,19 +128,21 @@ export default function LagSlopeVsAbsolute() {
             max={200}
             step={20}
             value={produce}
+            disabled={started}
             onChange={(e) => setProduce(Number(e.target.value))}
-            className="w-full max-w-xs accent-accent"
+            className="w-full max-w-xs accent-accent disabled:opacity-40"
           />
+          {started && <span className="text-text-faint">locked while the clock runs — reset to change</span>}
         </label>
         <label className="flex items-center gap-2 font-mono text-[11px] text-text-muted">
           <input
             type="checkbox"
-            aria-label="partition 0 stuck on a poison message"
+            aria-label="partition 0 stuck retrying a bad record"
             checked={stuck}
             onChange={(e) => setStuck(e.target.checked)}
             className="accent-accent"
           />
-          partition 0 stuck (poison message)
+          partition 0 stuck (unbounded retry on a bad record)
         </label>
       </div>
 

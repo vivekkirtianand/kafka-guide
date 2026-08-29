@@ -3,136 +3,170 @@
 import { useState } from "react";
 import Badge from "@/components/Badge";
 
-// Four brokers, replication factor 3. IsrShrinksPerSec / IsrExpandsPerSec count
-// replicas leaving and rejoining the in-sync set. One isolated pair around an event
-// is expected; sustained churn is not — and the tell is whether it is always the
-// same replica leaving (one slow broker) or different replicas each time (a shared
-// cause). The demo steps a one-minute clock and accumulates the counts.
+// Four brokers, replication factor 3. The IsrShrinks / IsrExpands meters
+// (ReplicaManager, per broker) are incremented by the broker LEADING the affected
+// partition when it drops or re-adds a replica — never by the follower that fell
+// behind. So a single slow follower lights up the meters of the brokers that lead
+// its partitions. To localize, you have to look at WHICH replica was removed
+// (ISR membership / kafka-topics --describe), not the broker-level counters.
+// The demo steps a one-minute clock and accumulates the events.
 
 const BROKERS = [1, 2, 3, 4] as const;
 const MAX_STEPS = 6;
 
 type Scenario = "healthy" | "slow-broker" | "shared-fabric";
-type Load = "normal" | "spike";
 
-interface ChurnEvent {
-  broker: number;
-  partition: number;
+interface Partition {
+  id: number;
+  leader: number;
+  followers: [number, number];
 }
 
-function stepEvents(scenario: Scenario, load: Load, step: number): ChurnEvent[] {
+const TOPOLOGY: Partition[] = [
+  { id: 1, leader: 1, followers: [2, 3] },
+  { id: 2, leader: 2, followers: [3, 4] },
+  { id: 3, leader: 3, followers: [4, 1] },
+  { id: 4, leader: 4, followers: [1, 2] },
+];
+
+interface ShrinkEvent {
+  partition: number;
+  leader: number; // the broker whose IsrShrinks meter ticks
+  removed: number; // the replica that actually fell behind
+}
+
+function stepEvents(scenario: Scenario, step: number): ShrinkEvent[] {
+  const ev = (partition: number, removed: number): ShrinkEvent => {
+    const p = TOPOLOGY.find((t) => t.id === partition)!;
+    return { partition, leader: p.leader, removed };
+  };
   if (scenario === "healthy") {
-    if (load === "spike" && step === 1) return [{ broker: 1, partition: 1 }];
-    return [];
+    // A single blip in the first minute — a brief GC on a follower — then quiet.
+    return step === 1 ? [ev(1, 2)] : [];
   }
   if (scenario === "slow-broker") {
-    // broker-3 follows partitions 1 and 2; under load it also falls behind on 4.
-    const base = [
-      { broker: 3, partition: 1 },
-      { broker: 3, partition: 2 },
-    ];
-    return load === "spike" ? [...base, { broker: 3, partition: 4 }] : base;
+    // broker-3 is a slow follower of partitions 1 and 2 (both led elsewhere).
+    return [ev(1, 3), ev(2, 3)];
   }
-  // shared-fabric: a different pair of replicas each minute — no single culprit.
-  const rotations: ChurnEvent[][] = [
+  // shared-fabric: a different replica lags each minute, all over the cluster.
+  const rotations: [number, number][][] = [
     [
-      { broker: 1, partition: 2 },
-      { broker: 2, partition: 3 },
+      [1, 2],
+      [4, 1],
     ],
     [
-      { broker: 3, partition: 4 },
-      { broker: 4, partition: 1 },
+      [2, 4],
+      [3, 4],
     ],
     [
-      { broker: 2, partition: 1 },
-      { broker: 1, partition: 3 },
+      [1, 3],
+      [2, 3],
     ],
     [
-      { broker: 4, partition: 2 },
-      { broker: 3, partition: 1 },
+      [4, 2],
+      [3, 1],
     ],
   ];
-  const evts = rotations[(step - 1) % rotations.length];
-  return load === "spike" ? [...evts, { broker: (step % 4) + 1, partition: 2 }] : evts;
+  return rotations[(step - 1) % rotations.length].map(([partition, removed]) => ev(partition, removed));
 }
 
 interface State {
   step: number;
-  shrinks: Record<number, number>;
-  expands: Record<number, number>;
-  lastStepEvents: ChurnEvent[];
+  meterByLeader: Record<number, number>; // IsrShrinks Count, per broker, as leader
+  removedTally: Record<number, number>; // times this broker's replica was the one removed
+  lastStepEvents: ShrinkEvent[];
   log: string[];
 }
 
+const zero = (): Record<number, number> => ({ 1: 0, 2: 0, 3: 0, 4: 0 });
+
 const START: State = {
   step: 0,
-  shrinks: { 1: 0, 2: 0, 3: 0, 4: 0 },
-  expands: { 1: 0, 2: 0, 3: 0, 4: 0 },
+  meterByLeader: zero(),
+  removedTally: zero(),
   lastStepEvents: [],
-  log: ["partition replicas RF 3 · all ISRs {leader + 2 followers} · no churn"],
+  log: ["partition replicas RF 3 · every ISR {leader + 2 followers} · no churn"],
 };
 
 export default function IsrChurnDemo() {
   const [scenario, setScenario] = useState<Scenario>("slow-broker");
-  const [load, setLoad] = useState<Load>("normal");
   const [minISR, setMinISR] = useState<1 | 2>(2);
   const [s, setS] = useState<State>(START);
+
+  function pickScenario(next: Scenario) {
+    setScenario(next);
+    setS(START);
+  }
 
   function advance() {
     setS((prev) => {
       if (prev.step >= MAX_STEPS) return prev;
       const step = prev.step + 1;
-      const evts = stepEvents(scenario, load, step);
-      const shrinks = { ...prev.shrinks };
-      const expands = { ...prev.expands };
+      const evts = stepEvents(scenario, step);
+      const meterByLeader = { ...prev.meterByLeader };
+      const removedTally = { ...prev.removedTally };
       for (const e of evts) {
-        shrinks[e.broker] += 1;
-        expands[e.broker] += 1; // the follower catches back up within the minute
+        meterByLeader[e.leader] += 1;
+        removedTally[e.removed] += 1;
       }
       const line =
         evts.length === 0
           ? `minute ${step}: no ISR changes.`
-          : `minute ${step}: ${evts.length} shrink/expand ${evts.length === 1 ? "pair" : "pairs"} — ${evts
-              .map((e) => `broker-${e.broker} left partition-${e.partition}'s ISR, then rejoined`)
+          : `minute ${step}: ${evts
+              .map(
+                (e) =>
+                  `partition-${e.partition} (leader broker-${e.leader}) dropped broker-${e.removed} from the ISR, then re-added it`,
+              )
               .join("; ")}.`;
-      return { step, shrinks, expands, lastStepEvents: evts, log: [line, ...prev.log].slice(0, 6) };
+      return {
+        step,
+        meterByLeader,
+        removedTally,
+        lastStepEvents: evts,
+        log: [line, ...prev.log].slice(0, 6),
+      };
     });
   }
 
   function reset() {
     setScenario("slow-broker");
-    setLoad("normal");
     setMinISR(2);
     setS(START);
   }
 
-  const totalShrinks = BROKERS.reduce((sum, b) => sum + s.shrinks[b], 0);
-  const churnedBrokers = BROKERS.filter((b) => s.shrinks[b] > 0);
-  const isolatedPair = scenario === "healthy" && load === "spike" && totalShrinks <= 1;
+  const totalEvents = BROKERS.reduce((sum, b) => sum + s.meterByLeader[b], 0);
+  const removedBrokers = BROKERS.filter((b) => s.removedTally[b] > 0);
+  const isolated = totalEvents === 1;
 
   let tone: "success" | "accent" | "danger" = "success";
   let verdict: string;
-  if (totalShrinks === 0) {
+  if (totalEvents === 0) {
     verdict =
       s.step === 0
-        ? "Step the clock a few minutes and watch IsrShrinksPerSec — then read whether it is one broker or several."
-        : "No ISR churn across any broker. Replication is healthy.";
-  } else if (isolatedPair) {
+        ? "Step the clock a few minutes, then read the meters against the removed-replica tally — they point at different brokers."
+        : "No ISR churn. Replication is healthy.";
+  } else if (isolated) {
     verdict =
-      "One shrink/expand pair around the load spike, then back to zero — expected. A single pair around an isolated event (a spike, a brief network blip, a restart) is not an incident.";
-  } else if (churnedBrokers.length === 1) {
+      "One shrink/expand pair in the first minute, then nothing — a brief follower blip (a GC pause, a momentary network stall). A single isolated pair is not an incident; don't page on it.";
+  } else if (removedBrokers.length === 1) {
     tone = "danger";
-    verdict = `Localized: every shrink is broker-${churnedBrokers[0]} leaving. That is one slow broker — check its disk await time, its inter-broker link, and its GC pauses. The other brokers are fine; the partitions churning just happen to keep a replica on broker-${churnedBrokers[0]}.`;
-  } else if (churnedBrokers.length >= 3) {
+    const culprit = removedBrokers[0];
+    const leaders = BROKERS.filter((b) => s.meterByLeader[b] > 0);
+    verdict = `The IsrShrinks meters fire on broker${leaders.length > 1 ? "s" : ""} ${leaders.join(
+      " and ",
+    )} — but those are just the leaders reporting that a follower fell behind. The replica removed every single time is broker-${culprit}. That is the slow broker; the meters point at the wrong place. Check broker-${culprit}'s disk await, its inter-broker link, and its GC pauses.`;
+  } else if (removedBrokers.length >= 3) {
     tone = "danger";
     verdict =
-      "Not localized: a different replica drops out each minute, spread across most of the cluster. That points at a shared cause — a saturated network fabric, a common storage backend, or correlated GC under a load spike — not one bad broker.";
+      "Both the meters and the removed-replica tally are spread across the cluster — a different replica lags each minute, and no single broker is always the one removed. That is a shared cause: a saturated network fabric, a common storage backend, or correlated GC under load — not one bad broker.";
   } else {
     tone = "accent";
-    verdict = `Churn on brokers ${churnedBrokers.join(" and ")}. Check whether they share a rack, a top-of-rack switch, or a storage backend before diagnosing either one on its own.`;
+    verdict = `The removed replica is broker ${removedBrokers.join(
+      " and broker ",
+    )} across these minutes. Check whether they share a rack, a top-of-rack switch, or a storage backend before diagnosing either one alone.`;
   }
 
-  const atFloorWarning = minISR === 2 && s.lastStepEvents.length > 0 && !isolatedPair;
+  const atFloorWarning = minISR === 2 && s.lastStepEvents.length > 0 && !isolated;
 
   return (
     <div className="rounded-lg border border-border bg-bg-elevated p-5">
@@ -149,10 +183,11 @@ export default function IsrChurnDemo() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — four brokers, a one-minute clock you step by hand, and every fallen-behind follower
-        catches back up within the same minute. What carries over: an isolated shrink/expand pair is normal; sustained
-        churn is not; and the diagnosis turns on whether it is always the same replica leaving (one overloaded or
-        slow-disk or GC-pausing broker) or different replicas each minute (a shared network, storage, or load cause).
+        Simplified for teaching — four brokers, a fixed partition layout, a one-minute clock you step by hand, and
+        every fallen-behind follower rejoins within the same minute. What carries over: the IsrShrinks / IsrExpands
+        meters are incremented by the <em>leader</em> of the affected partition, not by the follower that lagged — so
+        one slow broker lights up its <em>leaders&apos;</em> meters. To localize, look at which replica was removed
+        from the ISR, not at which broker&apos;s meter moved.
       </p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -165,10 +200,7 @@ export default function IsrChurnDemo() {
         ).map(([val, label]) => (
           <button
             key={val}
-            onClick={() => {
-              setScenario(val);
-              setS(START);
-            }}
+            onClick={() => pickScenario(val)}
             className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
               scenario === val
                 ? "border-accent/50 bg-accent-soft text-accent"
@@ -181,19 +213,6 @@ export default function IsrChurnDemo() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => {
-            setLoad((l) => (l === "normal" ? "spike" : "normal"));
-            setS(START);
-          }}
-          className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
-            load === "spike"
-              ? "border-accent/50 bg-accent-soft text-accent"
-              : "border-border-soft bg-bg-inset text-text-muted hover:border-accent/40"
-          }`}
-        >
-          load: {load}
-        </button>
         <span className="font-mono text-[11px] text-text-faint">min.insync.replicas</span>
         {([1, 2] as const).map((v) => (
           <button
@@ -222,40 +241,66 @@ export default function IsrChurnDemo() {
           minute {s.step}
         </span>
         <span data-testid="isrc-total" className="font-mono text-[11px] text-text-muted">
-          IsrShrinksPerSec (cumulative): {totalShrinks}
+          IsrShrinks Count (all brokers): {totalEvents}
         </span>
       </div>
 
-      <div data-testid="isrc-brokers" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-wide text-text-faint">
+        IsrShrinks Count — per broker, as partition leader
+      </div>
+      <div data-testid="isrc-brokers" className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {BROKERS.map((b) => {
-          const active = s.shrinks[b] > 0;
+          const count = s.meterByLeader[b];
           return (
             <div
               key={b}
               data-testid={`isrc-broker-${b}`}
               className={`rounded-md border p-3 ${
-                active ? "border-danger/40 bg-danger-soft" : "border-border-soft bg-bg-inset"
+                count > 0 ? "border-accent/40 bg-accent-soft" : "border-border-soft bg-bg-inset"
+              }`}
+            >
+              <div className="font-mono text-sm text-text">broker-{b}</div>
+              <div className="mt-1 font-mono text-[11px] text-text-faint">Count {count}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-wide text-text-faint">
+        Replica removed from the ISR — from partition state, not a meter
+      </div>
+      <div data-testid="isrc-removed" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {BROKERS.map((b) => {
+          const count = s.removedTally[b];
+          return (
+            <div
+              key={b}
+              data-testid={`isrc-removed-${b}`}
+              className={`rounded-md border p-3 ${
+                count > 0 ? "border-danger/40 bg-danger-soft" : "border-border-soft bg-bg-inset"
               }`}
             >
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm text-text">broker-{b}</span>
-                {active && <Badge tone="danger">churning</Badge>}
+                {count > 0 && <Badge tone="danger">lagging</Badge>}
               </div>
-              <div className="mt-1 font-mono text-[11px] text-text-faint">
-                shrinks {s.shrinks[b]} · expands {s.expands[b]}
-              </div>
+              <div className="mt-1 font-mono text-[11px] text-text-faint">removed {count}×</div>
             </div>
           );
         })}
       </div>
 
       {atFloorWarning && (
-        <div data-testid="isrc-floor" className="mb-4 rounded-md border border-danger/40 bg-danger-soft p-3 text-sm text-text-muted">
+        <div
+          data-testid="isrc-floor"
+          className="mb-4 rounded-md border border-danger/40 bg-danger-soft p-3 text-sm text-text-muted"
+        >
           <Badge tone="danger">at the floor</Badge>
           <p className="mt-2">
             With min.insync.replicas=2 and RF 3, each shrink drops that partition&apos;s ISR to exactly 2 — the floor.
-            acks=all still succeeds, but the next shrink on the same partition before the follower rejoins rejects the
-            write with NOT_ENOUGH_REPLICAS. Tight min.insync.replicas turns replication churn into produce failures.
+            acks=all still succeeds, but a second replica falling behind on the same partition before the first rejoins
+            drops the ISR to 1 and rejects the write with NOT_ENOUGH_REPLICAS. Tight min.insync.replicas turns
+            replication churn into produce failures.
           </p>
         </div>
       )}

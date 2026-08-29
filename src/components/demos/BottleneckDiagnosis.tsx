@@ -20,7 +20,7 @@ const CAUSES: Cause[] = ["producer", "broker", "consumer", "disk", "network", "d
 // wrong answer still teaches what that cause actually looks like.
 const SIGNATURE: Record<Cause, string> = {
   producer:
-    "buffer-available near zero and throughput well under target while the broker acks fast and sits mostly idle",
+    "throughput well under target with the broker acking fast and sitting idle, no errors, and the producer's own send buffer near-empty — nothing is feeding send() fast enough",
   broker:
     "a deep request queue and request-handler threads near 0% idle, with disk await and network both clean",
   consumer:
@@ -129,7 +129,7 @@ const SCENARIOS: Scenario[] = [
     brief: "Ticket: the pipeline isn't hitting its target throughput. No errors anywhere.",
     panels: panels(
       ["14 ms · 60k/s of 200k/s target", HI],
-      ["4% / 0.2 per s", HI],
+      ["89% / 0.1 per s", N],
       ["flat", N],
       ["180 ms / 300000 ms", N],
       ["2 / 82% idle", N],
@@ -140,7 +140,7 @@ const SCENARIOS: Scenario[] = [
     ),
     cause: "producer",
     explain:
-      "The broker acks in 14 ms and sits 82% idle, disk and network have plenty of headroom, and there are no errors — the cluster is barely working. Yet buffer-available is at 4% and throughput is a third of target. The bottleneck is the producer handing records off: synchronous send().get() per record, too few producer instances, or a single-threaded caller. Batch more, or produce from more threads.",
+      "The broker acks in 14 ms and sits 82% idle, disk and network have plenty of headroom, there are no errors — and the producer's own send buffer sits 89% free. Nothing is rushing in. The bottleneck is upstream of the client library: the application is calling send() too slowly — a synchronous send().get() per record, a single-threaded caller, or heavy per-record work (serialization, compression) on the calling thread. Batch more, and produce from more threads. (A near-full buffer would point the other way — at the sender thread, the network, or a throttle.)",
   },
   {
     brief: "Page: consumer group lag has been climbing for 20 minutes.",
