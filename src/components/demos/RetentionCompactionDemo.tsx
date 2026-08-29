@@ -9,12 +9,14 @@ interface Entry {
   offset: number;
   key: string;
   value: string | null; // null = tombstone
-  // set on a compacted tombstone that survived one pass and goes on the next
-  expiring?: boolean;
+  // The clock tick at which compaction first retained this tombstone as the latest
+  // value for its key. Its delete.retention.ms window runs from here.
+  heldSince?: number;
 }
 
 const KEYS = ["a", "b", "c"] as const;
 const SEGMENT_SIZE = 4; // offsets per segment
+const DELETE_RETENTION_TICKS = 2; // stand-in for delete.retention.ms
 
 const INITIAL: Entry[] = [
   { offset: 0, key: "a", value: "a0" },
@@ -24,13 +26,19 @@ const INITIAL: Entry[] = [
   { offset: 4, key: "b", value: "b4" },
 ];
 
-function segmentOf(offset: number): number {
-  return Math.floor(offset / SEGMENT_SIZE);
+const segmentOf = (offset: number) => Math.floor(offset / SEGMENT_SIZE);
+
+// What a raw consumer reading the whole partition sees — tombstones included.
+function rawReplay(entries: Entry[]): string {
+  if (entries.length === 0) return "(empty)";
+  return entries.map((e) => `${e.key}=${e.value === null ? "∅" : e.value}`).join(", ");
 }
 
-// What a consumer reading the whole partition from the beginning would see.
-function replay(entries: Entry[]): string {
-  const live = entries.filter((e) => e.value !== null).map((e) => `${e.key}=${e.value}`);
+// What you get after applying the log key by key — the latest non-null value per key.
+function materialized(entries: Entry[]): string {
+  const latest = new Map<string, Entry>();
+  for (const e of entries) latest.set(e.key, e);
+  const live = [...latest.values()].filter((e) => e.value !== null).map((e) => `${e.key}=${e.value}`);
   return live.length > 0 ? live.join(", ") : "(nothing)";
 }
 
@@ -39,21 +47,16 @@ export default function RetentionCompactionDemo() {
   const [entries, setEntries] = useState<Entry[]>(INITIAL);
   const [nextOffset, setNextOffset] = useState(5);
   const [key, setKey] = useState<(typeof KEYS)[number]>("a");
+  const [clock, setClock] = useState(0);
   const [log, setLog] = useState<string[]>([
     "cleanup.policy=delete · 5 records across keys a, b, c",
   ]);
 
-  function push(line: string) {
-    setLog((l) => [line, ...l].slice(0, 6));
-  }
-
+  const push = (line: string) => setLog((l) => [line, ...l].slice(0, 6));
   const activeSegment = segmentOf(nextOffset);
 
   function produce(tombstone: boolean) {
-    setEntries((e) => [
-      ...e,
-      { offset: nextOffset, key, value: tombstone ? null : `${key}${nextOffset}` },
-    ]);
+    setEntries((e) => [...e, { offset: nextOffset, key, value: tombstone ? null : `${key}${nextOffset}` }]);
     setNextOffset((n) => n + 1);
     push(
       tombstone
@@ -67,58 +70,69 @@ export default function RetentionCompactionDemo() {
     push(`cleanup.policy=${p}.`);
   }
 
+  function advanceTime() {
+    setClock((c) => c + 1);
+    push(`time advances — delete.retention.ms window is now ${clock + 1} tick(s) wide.`);
+  }
+
   function ageOutSegment() {
-    // Remove the lowest closed segment that still holds records.
     const closedSegs = [...new Set(entries.map((e) => segmentOf(e.offset)))]
       .filter((seg) => seg < activeSegment)
       .sort((a, b) => a - b);
     if (closedSegs.length === 0) {
-      push(
-        `nothing to age out — every record is still in the active segment (offsets ${activeSegment * SEGMENT_SIZE}+), which is never deleted.`,
-      );
+      push(`nothing to age out — every record is still in the active segment (offsets ${activeSegment * SEGMENT_SIZE}+), which is never deleted.`);
       return;
     }
     const seg = closedSegs[0];
     const lo = seg * SEGMENT_SIZE;
-    const hi = lo + SEGMENT_SIZE - 1;
     const removed = entries.filter((e) => segmentOf(e.offset) === seg);
     setEntries((e) => e.filter((x) => segmentOf(x.offset) !== seg));
     push(
-      `retention elapsed for segment ${seg} (offsets ${lo}–${hi}) — dropped ${removed.length} record(s) whole, regardless of key. Newer values for those keys still remain.`,
+      `retention elapsed for segment ${seg} (offsets ${lo}–${lo + SEGMENT_SIZE - 1}) — dropped ${removed.length} record(s) whole, regardless of key. Newer values for those keys remain.`,
     );
   }
 
   function compact() {
-    // Keep only the highest-offset entry per key. Offsets are preserved (gaps appear).
+    // The cleaner only ever touches closed segments; the active segment is left alone.
     const latestByKey = new Map<string, Entry>();
     for (const e of entries) latestByKey.set(e.key, e);
 
-    let removedTombstones = 0;
+    let superseded = 0;
+    let tombstonesDropped = 0;
     const next: Entry[] = [];
+
     for (const e of entries) {
-      if (latestByKey.get(e.key) !== e) continue; // superseded value
+      const inActiveSegment = segmentOf(e.offset) >= activeSegment;
+      if (inActiveSegment) {
+        next.push(e); // untouched
+        continue;
+      }
+      if (latestByKey.get(e.key) !== e) {
+        superseded++; // an older value the cleaner collapses
+        continue;
+      }
       if (e.value === null) {
-        if (e.expiring) {
-          removedTombstones++;
-          continue; // second pass — tombstone finally dropped
+        const heldSince = e.heldSince ?? clock;
+        if (clock - heldSince >= DELETE_RETENTION_TICKS) {
+          tombstonesDropped++;
+          continue;
         }
-        next.push({ ...e, expiring: true });
+        next.push({ ...e, heldSince });
       } else {
-        next.push({ ...e, expiring: false });
+        next.push({ ...e, heldSince: undefined });
       }
     }
 
-    const collapsed = entries.length - next.length - removedTombstones;
     setEntries(next);
-    const parts = [];
-    if (collapsed > 0) parts.push(`removed ${collapsed} superseded value(s)`);
-    if (removedTombstones > 0) parts.push(`dropped ${removedTombstones} expired tombstone(s)`);
-    const marked = next.filter((e) => e.expiring).length;
-    if (marked > 0) parts.push(`${marked} tombstone(s) kept for one more pass, then deleted`);
+    const parts: string[] = [];
+    if (superseded > 0) parts.push(`collapsed ${superseded} superseded record(s)`);
+    if (tombstonesDropped > 0) parts.push(`removed ${tombstonesDropped} tombstone(s) past delete.retention.ms`);
+    const held = next.filter((e) => e.value === null && e.heldSince !== undefined).length;
+    if (held > 0) parts.push(`${held} tombstone(s) retained until delete.retention.ms elapses`);
     push(
       parts.length > 0
-        ? `compaction pass — ${parts.join("; ")}. Latest value per key survives.`
-        : "compaction pass — nothing to do; already one value per key.",
+        ? `compaction pass over the closed segments — ${parts.join("; ")}.`
+        : "compaction pass — nothing to collapse in the closed segments.",
     );
   }
 
@@ -127,6 +141,7 @@ export default function RetentionCompactionDemo() {
     setEntries(INITIAL);
     setNextOffset(5);
     setKey("a");
+    setClock(0);
     setLog(["cleanup.policy=delete · 5 records across keys a, b, c"]);
   }
 
@@ -145,10 +160,11 @@ export default function RetentionCompactionDemo() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — segments here are a fixed {SEGMENT_SIZE} offsets wide and cleanup runs on a button
-        press. What carries over: delete drops whole closed segments by age or size and never looks at keys; compact
-        keeps the latest value per key indefinitely, and a tombstone (null value) is how a delete reaches consumers
-        before it, too, is removed.
+        Simplified for teaching — segments are a fixed {SEGMENT_SIZE} offsets wide, cleanup runs on a button, and
+        delete.retention.ms is measured in clock ticks. What carries over: cleanup only touches closed segments (never
+        the active one); delete drops whole segments by age or size, blind to keys; compact keeps the latest value per
+        key, and a tombstone lingers for delete.retention.ms — so lagging consumers still see the delete — before it
+        too is removed.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -195,20 +211,34 @@ export default function RetentionCompactionDemo() {
         >
           produce tombstone →
         </button>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         {policy === "delete" ? (
           <button
             onClick={ageOutSegment}
-            className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent/50 hover:text-accent sm:ml-auto"
+            className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent/50 hover:text-accent"
           >
             retention elapsed →
           </button>
         ) : (
-          <button
-            onClick={compact}
-            className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent/50 hover:text-accent sm:ml-auto"
-          >
-            run compaction →
-          </button>
+          <>
+            <button
+              onClick={compact}
+              className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent/50 hover:text-accent"
+            >
+              run compaction →
+            </button>
+            <button
+              onClick={advanceTime}
+              className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent/50 hover:text-accent"
+            >
+              time advances →
+            </button>
+            <span className="font-mono text-[11px] text-text-faint">
+              clock {clock} · delete.retention.ms = {DELETE_RETENTION_TICKS} ticks
+            </span>
+          </>
         )}
       </div>
 
@@ -221,31 +251,44 @@ export default function RetentionCompactionDemo() {
         </div>
         <div className="flex flex-wrap gap-1.5">
           {entries.length === 0 && <span className="font-mono text-[11px] text-text-faint">(empty)</span>}
-          {entries.map((e) => (
-            <span
-              key={e.offset}
-              data-testid={`entry-${e.offset}`}
-              className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] ${
-                e.value === null
-                  ? "border-danger/40 bg-danger-soft text-danger"
-                  : segmentOf(e.offset) < activeSegment
-                    ? "border-border-soft bg-bg-elevated text-text-muted"
-                    : "border-accent/30 bg-accent-soft text-text"
-              }`}
-            >
-              <span className="text-text-faint">{e.offset}</span>
-              {e.key}={e.value === null ? "∅" : e.value}
-              {e.expiring && <span className="text-text-faint">·exp</span>}
-            </span>
-          ))}
+          {entries.map((e) => {
+            const inActive = segmentOf(e.offset) >= activeSegment;
+            return (
+              <span
+                key={e.offset}
+                data-testid={`entry-${e.offset}`}
+                className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] ${
+                  e.value === null
+                    ? "border-danger/40 bg-danger-soft text-danger"
+                    : inActive
+                      ? "border-accent/30 bg-accent-soft text-text"
+                      : "border-border-soft bg-bg-elevated text-text-muted"
+                }`}
+              >
+                <span className="text-text-faint">{e.offset}</span>
+                {e.key}={e.value === null ? "∅" : e.value}
+                {e.value === null && e.heldSince !== undefined && (
+                  <span className="text-text-faint">·held {Math.min(clock - e.heldSince, DELETE_RETENTION_TICKS)}/{DELETE_RETENTION_TICKS}</span>
+                )}
+              </span>
+            );
+          })}
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border-soft bg-bg-inset p-3">
-        <Badge tone="stream">full replay reads</Badge>
-        <span data-testid="replay" className="font-mono text-[11px] text-text-muted">
-          {replay(entries)}
-        </span>
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="flex flex-col gap-1 rounded-md border border-border-soft bg-bg-inset p-3">
+          <Badge tone="neutral">raw replay (consumer)</Badge>
+          <span data-testid="raw-replay" className="font-mono text-[11px] text-text-muted">
+            {rawReplay(entries)}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1 rounded-md border border-border-soft bg-bg-inset p-3">
+          <Badge tone="stream">materialized state</Badge>
+          <span data-testid="materialized" className="font-mono text-[11px] text-text-muted">
+            {materialized(entries)}
+          </span>
+        </div>
       </div>
 
       <div className="rounded-md border border-border-soft bg-bg-inset p-3 font-mono text-[11px] leading-relaxed text-text-muted">

@@ -7,8 +7,10 @@ type Scenario = "bandwidth" | "request";
 
 // producer_byte_rate quota, MB/s.
 const BYTE_QUOTA = 6;
-// request_percentage quota — share of one request-handler thread's time.
+// request_percentage quota — share of combined network + I/O thread time.
 const REQUEST_QUOTA_PCT = 150;
+// Above this throttle delay the demo flags a possible client-side timeout.
+const TIMEOUT_RISK_MS = 1200;
 
 function throttleMs(demand: number, quota: number): number {
   // The broker delays responses to bring the measured average back down to the quota.
@@ -19,7 +21,7 @@ function throttleMs(demand: number, quota: number): number {
 export default function QuotaThrottleDemo() {
   const [scenario, setScenario] = useState<Scenario>("bandwidth");
   const [produceRate, setProduceRate] = useState(4); // MB/s
-  const [requestLoadPct, setRequestLoadPct] = useState(100); // % of a handler thread
+  const [requestLoadPct, setRequestLoadPct] = useState(100); // % of combined network + I/O thread time
 
   function reset() {
     setScenario("bandwidth");
@@ -33,6 +35,7 @@ export default function QuotaThrottleDemo() {
   const throttled = demand > quota;
   const delay = throttleMs(demand, quota);
   const effective = Math.min(demand, quota);
+  const timeoutRisk = delay >= TIMEOUT_RISK_MS;
 
   return (
     <div className="rounded-lg border border-border bg-bg-elevated p-5">
@@ -50,23 +53,23 @@ export default function QuotaThrottleDemo() {
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — the throttle delay is a rough function of how far over quota the client is. What
-        carries over: a quota is enforced by <em>delaying the client&apos;s responses</em>, never by failing them, so
-        a throttled client just looks slow; and byte-rate and request-time quotas are separate limits for two
-        different kinds of heavy client.
+        carries over: a quota is enforced by <em>delaying the client&apos;s responses</em>, not by failing them; and
+        producer_byte_rate (throughput) and request_percentage (combined network + I/O thread time) are separate
+        limits for two different kinds of heavy client.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {(["bandwidth", "request"] as const).map((s) => (
+        {(["bandwidth", "request"] as const).map((sc) => (
           <button
-            key={s}
-            onClick={() => setScenario(s)}
+            key={sc}
+            onClick={() => setScenario(sc)}
             className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
-              scenario === s
+              scenario === sc
                 ? "border-accent/50 bg-accent-soft text-accent"
                 : "border-border-soft bg-bg-inset text-text-muted hover:border-accent/40"
             }`}
           >
-            {s === "bandwidth" ? "producer_byte_rate" : "request_percentage"}
+            {sc === "bandwidth" ? "producer_byte_rate" : "request_percentage"}
           </button>
         ))}
       </div>
@@ -85,16 +88,14 @@ export default function QuotaThrottleDemo() {
               className="w-full max-w-xs accent-accent"
             />
           </label>
-          <div className="mt-2 font-mono text-[11px] text-text-faint">
-            producer_byte_rate quota: {BYTE_QUOTA} MB/s
-          </div>
+          <div className="mt-2 font-mono text-[11px] text-text-faint">producer_byte_rate quota: {BYTE_QUOTA} MB/s</div>
         </div>
       ) : (
         <div className="mb-4">
           <label className="flex flex-col gap-1.5 font-mono text-[11px] text-text-faint">
-            request-handler time demanded: <span className="text-text-muted">{requestLoadPct}% of a thread</span>
+            network + I/O thread time demanded: <span className="text-text-muted">{requestLoadPct}% of a thread</span>
             <input
-              aria-label="request-handler time demanded"
+              aria-label="network and I/O thread time demanded"
               type="range"
               min={20}
               max={400}
@@ -114,7 +115,7 @@ export default function QuotaThrottleDemo() {
       <div data-testid="outcome" className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div className="rounded-md border border-border-soft bg-bg-inset p-3">
           <div className="font-mono text-[10px] uppercase tracking-wide text-text-faint">
-            {isBandwidth ? "effective throughput" : "effective handler share"}
+            {isBandwidth ? "effective throughput" : "effective thread share"}
           </div>
           <div data-testid="effective" className="mt-1 font-mono text-sm text-text">
             {effective}
@@ -128,8 +129,8 @@ export default function QuotaThrottleDemo() {
           </div>
         </div>
         <div className="rounded-md border border-border-soft bg-bg-inset p-3">
-          <div className="font-mono text-[10px] uppercase tracking-wide text-text-faint">errors</div>
-          <div className="mt-1 font-mono text-sm text-success">none</div>
+          <div className="font-mono text-[10px] uppercase tracking-wide text-text-faint">broker response</div>
+          <div className="mt-1 font-mono text-sm text-success">delayed, never rejected</div>
         </div>
       </div>
 
@@ -138,12 +139,18 @@ export default function QuotaThrottleDemo() {
         <p className="mt-2">
           {throttled
             ? isBandwidth
-              ? `The client wants ${produceRate} MB/s but the quota is ${BYTE_QUOTA} MB/s. The broker holds each response back ~${delay} ms so the measured average settles at ${BYTE_QUOTA} MB/s. The producer's sends succeed — they just take longer. Only produce-throttle-time-avg tells you this apart from a slow cluster.`
-              : `The client is asking for ${requestLoadPct}% of a request-handler thread against a ${REQUEST_QUOTA_PCT}% quota. Responses are delayed ~${delay} ms to cap its share. No request fails — a metadata storm behind a request quota looks like latency, not errors.`
+              ? `The client wants ${produceRate} MB/s but the quota is ${BYTE_QUOTA} MB/s. The broker holds each response back ~${delay} ms so the measured average settles at ${BYTE_QUOTA} MB/s. The sends still succeed — only produce-throttle-time-avg tells you this apart from a slow cluster.`
+              : `The client is asking for ${requestLoadPct}% of a network + I/O thread against a ${REQUEST_QUOTA_PCT}% quota. Responses are delayed ~${delay} ms to cap its share. No request fails — a metadata storm behind a request quota looks like latency, not errors.`
             : isBandwidth
-              ? `At ${produceRate} MB/s the client is under the ${BYTE_QUOTA} MB/s quota, so nothing is throttled and no latency is added.`
+              ? `At ${produceRate} MB/s the client is under the ${BYTE_QUOTA} MB/s quota — nothing is throttled, no latency added.`
               : `At ${requestLoadPct}% the client is within the ${REQUEST_QUOTA_PCT}% quota — no throttling.`}
         </p>
+        {timeoutRisk && (
+          <p data-testid="timeout-note" className="mt-2 text-danger">
+            A throttle pause of ~{delay} ms can exceed the client&apos;s request.timeout.ms and surface as a
+            client-side timeout — even though the broker delayed rather than rejected anything.
+          </p>
+        )}
       </div>
     </div>
   );

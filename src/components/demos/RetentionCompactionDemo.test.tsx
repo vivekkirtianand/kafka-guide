@@ -3,76 +3,74 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import RetentionCompactionDemo from "./RetentionCompactionDemo";
 
-const replay = () => screen.getByTestId("replay").textContent ?? "";
+const raw = () => screen.getByTestId("raw-replay").textContent ?? "";
+const state = () => screen.getByTestId("materialized").textContent ?? "";
 const partitionLog = () => screen.getByTestId("partition-log");
 
+async function produceKey(user: ReturnType<typeof userEvent.setup>, k: string, times = 1) {
+  await user.click(screen.getByRole("button", { name: k }));
+  for (let i = 0; i < times; i++) {
+    await user.click(screen.getByRole("button", { name: new RegExp(`produce ${k}=`) }));
+  }
+}
+
 describe("RetentionCompactionDemo", () => {
-  it("starts on delete policy with five records and the latest value per key in replay", () => {
+  it("distinguishes a raw replay from materialized state from the start", () => {
     render(<RetentionCompactionDemo />);
-    // a2 supersedes a0 for reads only after compaction; a full replay still sees both.
-    expect(replay()).toBe("a=a0, b=b1, a=a2, c=c3, b=b4");
+    expect(raw()).toBe("a=a0, b=b1, a=a2, c=c3, b=b4");
+    expect(state()).toBe("a=a2, b=b4, c=c3");
   });
 
-  it("delete ages out the oldest closed segment whole, ignoring keys", async () => {
+  it("delete ages out the oldest closed segment whole and never the active one", async () => {
     const user = userEvent.setup();
     render(<RetentionCompactionDemo />);
 
-    // Push offsets up so segment 0 (offsets 0-3) is closed.
-    await user.click(screen.getByRole("button", { name: /produce a=/ }));
-    await user.click(screen.getByRole("button", { name: /produce a=/ }));
-    await user.click(screen.getByRole("button", { name: /produce a=/ }));
-
     await user.click(screen.getByRole("button", { name: "retention elapsed →" }));
-
-    // offsets 0-3 gone (a0, b1, a2, c3), so key a's only surviving early value is gone
-    // but its newer values remain.
+    // segment 0 (offsets 0-3) gone; only offset 4 (active) remains
     expect(screen.queryByTestId("entry-0")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("entry-3")).not.toBeInTheDocument();
     expect(screen.getByTestId("entry-4")).toBeInTheDocument();
     expect(screen.getByText(/dropped 4 record\(s\) whole, regardless of key/)).toBeInTheDocument();
-  });
 
-  it("never deletes the active segment", async () => {
-    const user = userEvent.setup();
-    render(<RetentionCompactionDemo />);
-    // First press clears closed segment 0 (offsets 0-3); only offset 4 is left, in the active segment.
-    await user.click(screen.getByRole("button", { name: "retention elapsed →" }));
     await user.click(screen.getByRole("button", { name: "retention elapsed →" }));
     expect(screen.getByText(/every record is still in the active segment/)).toBeInTheDocument();
   });
 
-  it("compaction keeps only the latest value per key and preserves offsets", async () => {
+  it("compaction leaves the active segment alone even when it holds superseded values", async () => {
     const user = userEvent.setup();
     render(<RetentionCompactionDemo />);
-
     await user.click(screen.getByRole("button", { name: "compact" }));
+
+    // offsets 5 and 6 both land in the active segment (4-7)
+    await produceKey(user, "a", 2);
     await user.click(screen.getByRole("button", { name: "run compaction →" }));
 
-    // a0 and b1 are superseded by a2 / b4; c3 stays.
-    expect(screen.queryByTestId("entry-0")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("entry-1")).not.toBeInTheDocument();
-    expect(screen.getByTestId("entry-2")).toHaveTextContent("2a=a2");
-    expect(screen.getByTestId("entry-3")).toHaveTextContent("3c=c3");
-    expect(screen.getByTestId("entry-4")).toHaveTextContent("4b=b4");
-    expect(replay()).toBe("a=a2, c=c3, b=b4");
+    // both survive — a5 is superseded by a6 but the cleaner doesn't touch the active segment
+    expect(screen.getByTestId("entry-5")).toHaveTextContent("5a=a5");
+    expect(screen.getByTestId("entry-6")).toHaveTextContent("6a=a6");
+    // the closed-segment a2 is collapsed
+    expect(screen.queryByTestId("entry-2")).not.toBeInTheDocument();
   });
 
-  it("a tombstone survives one compaction pass, then is removed on the next", async () => {
+  it("a latest tombstone in a closed segment is retained for delete.retention.ms, then removed", async () => {
     const user = userEvent.setup();
     render(<RetentionCompactionDemo />);
-
     await user.click(screen.getByRole("button", { name: "compact" }));
-    // key defaults to "a" — tombstone it
-    await user.click(screen.getByRole("button", { name: "produce tombstone →" }));
+
+    await produceKey(user, "a", 2); // offsets 5, 6
+    await user.click(screen.getByRole("button", { name: "produce tombstone →" })); // offset 7, key a
+    await produceKey(user, "b"); // offset 8 -> pushes segment 1 (4-7) closed
 
     await user.click(screen.getByRole("button", { name: "run compaction →" }));
-    // tombstone for a is kept, marked expiring; a's value is gone from replay
-    expect(screen.getByText(/kept for one more pass/)).toBeInTheDocument();
-    expect(replay()).toBe("c=c3, b=b4");
+    // tombstone retained; raw replay still shows it, materialized state drops key a
+    expect(raw()).toContain("a=∅");
+    expect(state()).not.toContain("a=");
+    expect(screen.getByText(/retained until delete\.retention\.ms elapses/)).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "time advances →" }));
+    await user.click(screen.getByRole("button", { name: "time advances →" }));
     await user.click(screen.getByRole("button", { name: "run compaction →" }));
-    expect(screen.getByText(/dropped 1 expired tombstone/)).toBeInTheDocument();
-    // key "a" is now completely absent from the log
+
+    expect(screen.getByText(/removed 1 tombstone\(s\) past delete\.retention\.ms/)).toBeInTheDocument();
     expect(partitionLog().textContent).not.toContain("a=");
   });
 });

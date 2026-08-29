@@ -6,98 +6,113 @@ import Badge from "@/components/Badge";
 const BROKER_IDS = [1, 2, 3] as const;
 type BrokerId = (typeof BROKER_IDS)[number];
 
+// "catching-up" = the broker is back but still replicating the backlog, so it is
+// not in the ISR yet.
+type BrokerState = "in-sync" | "catching-up" | "down";
+
 interface State {
-  alive: Record<BrokerId, boolean>;
-  // The current partition leader, or null when every replica is down.
+  broker: Record<BrokerId, BrokerState>;
   leader: BrokerId | null;
   minISR: 1 | 2 | 3;
   log: string[];
 }
 
 const INITIAL: State = {
-  alive: { 1: true, 2: true, 3: true },
+  broker: { 1: "in-sync", 2: "in-sync", 3: "in-sync" },
   leader: 1,
   minISR: 2,
   log: ["partition-0 · replication.factor 3 · leader broker-1 · ISR {1, 2, 3}"],
 };
 
-function isr(alive: Record<BrokerId, boolean>): BrokerId[] {
-  return BROKER_IDS.filter((id) => alive[id]);
-}
+const isr = (b: Record<BrokerId, BrokerState>): BrokerId[] =>
+  BROKER_IDS.filter((id) => b[id] === "in-sync");
 
 export default function ReplicationFloorDemo() {
   const [s, setS] = useState<State>(INITIAL);
 
-  const inSync = isr(s.alive);
+  const inSync = isr(s.broker);
+  const push = (line: string, prev: string[]) => [line, ...prev].slice(0, 6);
 
-  function push(line: string, prev: string[]): string[] {
-    return [line, ...prev].slice(0, 6);
-  }
-
-  function toggleBroker(id: BrokerId) {
+  function stopBroker(id: BrokerId) {
     setS((prev) => {
-      const alive = { ...prev.alive, [id]: !prev.alive[id] };
-      const nowAlive = alive[id];
+      const broker = { ...prev.broker, [id]: "down" as BrokerState };
       let leader = prev.leader;
       let line: string;
-
-      if (!nowAlive) {
-        // Broker stopped — its replica leaves the ISR.
-        if (prev.leader === id) {
-          const candidates = isr(alive);
-          leader = candidates.length > 0 ? candidates[0] : null;
-          line =
-            leader !== null
-              ? `broker-${id} (leader) stopped — controller elects broker-${leader} from the ISR. ISR {${isr(alive).join(", ")}}`
-              : `broker-${id} stopped — no in-sync replica left, partition is offline (no leader).`;
-        } else {
-          line = `broker-${id} stopped — drops out of the ISR. ISR {${isr(alive).join(", ")}}`;
-        }
+      if (prev.leader === id) {
+        const candidates = isr(broker);
+        leader = candidates.length > 0 ? candidates[0] : null;
+        line =
+          leader !== null
+            ? `broker-${id} (leader) stopped — controller elects broker-${leader} from the ISR {${isr(broker).join(", ")}}.`
+            : `broker-${id} stopped — no in-sync replica left, partition is offline.`;
       } else {
-        // Broker restarted — catches up and rejoins the ISR, but does not reclaim leadership.
-        if (leader === null) {
-          leader = id;
-          line = `broker-${id} restarted — it's the only replica up, so it becomes leader. ISR {${id}}`;
-        } else {
-          line = `broker-${id} restarted — caught up and rejoined the ISR (leadership stays with broker-${leader}). ISR {${isr(alive).join(", ")}}`;
-        }
+        line = `broker-${id} stopped — drops out of the ISR {${isr(broker).join(", ")}}.`;
       }
+      return { ...prev, broker, leader, log: push(line, prev.log) };
+    });
+  }
 
-      return { ...prev, alive, leader, log: push(line, prev.log) };
+  function startBroker(id: BrokerId) {
+    setS((prev) => {
+      const broker = { ...prev.broker, [id]: "catching-up" as BrokerState };
+      // If the partition was fully offline, the first broker back becomes leader.
+      const leader = prev.leader ?? id;
+      const line =
+        prev.leader === null
+          ? `broker-${id} restarted as the only replica up — it's leader, still catching up its own log.`
+          : `broker-${id} restarted — replicating the backlog from broker-${leader}. Not in the ISR yet.`;
+      return { ...prev, broker, leader, log: push(line, prev.log) };
+    });
+  }
+
+  function catchUp(id: BrokerId) {
+    setS((prev) => {
+      if (prev.broker[id] !== "catching-up") return prev;
+      const broker = { ...prev.broker, [id]: "in-sync" as BrokerState };
+      return {
+        ...prev,
+        broker,
+        log: push(
+          `broker-${id} caught up — rejoined the ISR {${isr(broker).join(", ")}}. Leadership stays with broker-${prev.leader}.`,
+          prev.log,
+        ),
+      };
     });
   }
 
   function setMinISR(v: 1 | 2 | 3) {
-    setS((prev) => ({
-      ...prev,
-      minISR: v,
-      log: push(`min.insync.replicas set to ${v}.`, prev.log),
-    }));
+    setS((prev) => ({ ...prev, minISR: v, log: push(`min.insync.replicas set to ${v}.`, prev.log) }));
   }
 
   function produce(acks: "1" | "all") {
     setS((prev) => {
-      const live = isr(prev.alive);
+      const live = isr(prev.broker);
       if (prev.leader === null) {
-        return {
-          ...prev,
-          log: push(`produce (acks=${acks}) → partition offline, no leader. Fails with LEADER_NOT_AVAILABLE.`, prev.log),
-        };
+        return { ...prev, log: push(`produce (acks=${acks}) → partition offline, no leader. Fails with LEADER_NOT_AVAILABLE.`, prev.log) };
       }
       if (acks === "1") {
         return {
           ...prev,
           log: push(
-            `produce (acks=1) → leader broker-${prev.leader} wrote it and acknowledged. Not yet on the ${live.length - 1} follower(s) — a leader failure now could lose it.`,
+            `produce (acks=1) → leader broker-${prev.leader} acknowledged without waiting for followers. They may or may not have it yet — a leader failure now could lose it.`,
             prev.log,
           ),
         };
       }
-      if (live.length >= prev.minISR) {
+      if (live.length < prev.minISR) {
         return {
           ...prev,
           log: push(
-            `produce (acks=all) → replicated to all ${live.length} in-sync replica(s) {${live.join(", ")}}, then acknowledged. Durable.`,
+            `produce (acks=all) → ISR is {${live.join(", ")}} (${live.length}), below min.insync.replicas=${prev.minISR}. Rejected with NOT_ENOUGH_REPLICAS before the write is attempted.`,
+            prev.log,
+          ),
+        };
+      }
+      if (live.length === 1) {
+        return {
+          ...prev,
+          log: push(
+            `produce (acks=all) → the ISR is only the leader (broker-${prev.leader}). That meets min.insync.replicas=${prev.minISR}, so acks=all is satisfied — but by a single copy a broker failure would lose.`,
             prev.log,
           ),
         };
@@ -105,7 +120,7 @@ export default function ReplicationFloorDemo() {
       return {
         ...prev,
         log: push(
-          `produce (acks=all) → ISR is {${live.join(", ")}} (${live.length}), below min.insync.replicas=${prev.minISR}. Rejected with NOT_ENOUGH_REPLICAS before the write is attempted.`,
+          `produce (acks=all) → replicated to all ${live.length} in-sync replicas {${live.join(", ")}} and acknowledged — durable across a broker failure.`,
           prev.log,
         ),
       };
@@ -116,8 +131,24 @@ export default function ReplicationFloorDemo() {
     setS(INITIAL);
   }
 
-  const acksAllOk = s.leader !== null && inSync.length >= s.minISR;
+  const online = s.leader !== null;
+  const acksAllOk = online && inSync.length >= s.minISR;
   const tolerance = inSync.length - s.minISR;
+
+  let badgeTone: "success" | "danger" | "accent" = "danger";
+  let badgeLabel = online ? "acks=all failing" : "partition offline";
+  if (acksAllOk) {
+    if (inSync.length === 1) {
+      badgeTone = "accent";
+      badgeLabel = "acks=all OK · single copy";
+    } else if (tolerance > 0) {
+      badgeTone = "success";
+      badgeLabel = `acks=all OK · ${tolerance} more loss tolerated`;
+    } else {
+      badgeTone = "accent";
+      badgeLabel = "acks=all OK · no headroom";
+    }
+  }
 
   return (
     <div className="rounded-lg border border-border bg-bg-elevated p-5">
@@ -134,9 +165,10 @@ export default function ReplicationFloorDemo() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — one partition, replication factor 3, and a follower rejoins the ISR the instant its
-        broker restarts. What carries over: acks=all waits for the whole current ISR, min.insync.replicas is the floor
-        below which the write is refused, and a restarted broker rejoins the ISR without taking leadership back.
+        Simplified for teaching — one partition, replication factor 3, and catch-up is a button rather than a
+        function of how far behind the follower is. What carries over: acks=all waits for the whole current ISR,
+        min.insync.replicas is the floor below which the write is refused, a restarted broker replicates the backlog
+        before rejoining the ISR, and it does not take leadership back on its own.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -158,38 +190,56 @@ export default function ReplicationFloorDemo() {
 
       <div data-testid="brokers" className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         {BROKER_IDS.map((id) => {
-          const alive = s.alive[id];
+          const st = s.broker[id];
           return (
             <div
               key={id}
               data-testid={`broker-${id}`}
               className={`flex flex-col gap-2 rounded-md border p-3 ${
-                alive ? "border-border-soft bg-bg-inset" : "border-danger/40 bg-danger-soft"
+                st === "down"
+                  ? "border-danger/40 bg-danger-soft"
+                  : st === "catching-up"
+                    ? "border-accent/40 bg-accent-soft"
+                    : "border-border-soft bg-bg-inset"
               }`}
             >
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm text-text">broker-{id}</span>
                 {s.leader === id ? (
                   <Badge tone="accent">leader</Badge>
-                ) : alive ? (
+                ) : st === "in-sync" ? (
                   <Badge tone="stream">follower</Badge>
+                ) : st === "catching-up" ? (
+                  <Badge tone="accent">catching up</Badge>
                 ) : (
                   <Badge tone="danger">down</Badge>
                 )}
               </div>
               <div className="font-mono text-[11px] text-text-faint">
-                {alive ? "in ISR" : "out of ISR"}
+                {st === "in-sync" ? "in ISR" : st === "catching-up" ? "replicating backlog" : "out of ISR"}
               </div>
-              <button
-                onClick={() => toggleBroker(id)}
-                className={`rounded border px-2 py-1 font-mono text-[11px] transition-colors ${
-                  alive
-                    ? "border-border text-text-muted hover:border-danger/50 hover:text-danger"
-                    : "border-border text-text-muted hover:border-success/50 hover:text-success"
-                }`}
-              >
-                {alive ? "stop broker" : "start broker"}
-              </button>
+              {st === "in-sync" ? (
+                <button
+                  onClick={() => stopBroker(id)}
+                  className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-danger/50 hover:text-danger"
+                >
+                  stop broker
+                </button>
+              ) : st === "catching-up" ? (
+                <button
+                  onClick={() => catchUp(id)}
+                  className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-success/50 hover:text-success"
+                >
+                  finish catch-up →
+                </button>
+              ) : (
+                <button
+                  onClick={() => startBroker(id)}
+                  className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-success/50 hover:text-success"
+                >
+                  start broker
+                </button>
+              )}
             </div>
           );
         })}
@@ -199,13 +249,7 @@ export default function ReplicationFloorDemo() {
         <span data-testid="isr-summary" className="font-mono text-[11px] text-text-muted">
           ISR {`{${inSync.join(", ")}}`} · leader {s.leader === null ? "none" : `broker-${s.leader}`}
         </span>
-        <Badge tone={acksAllOk ? "success" : "danger"}>
-          {acksAllOk
-            ? tolerance > 0
-              ? `acks=all OK · ${tolerance} more loss tolerated`
-              : "acks=all OK · no headroom"
-            : "acks=all failing"}
-        </Badge>
+        <Badge tone={badgeTone}>{badgeLabel}</Badge>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-3">

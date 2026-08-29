@@ -5,94 +5,161 @@ import Badge from "@/components/Badge";
 
 type Rack = "A" | "B" | "C";
 const RACKS: Rack[] = ["A", "B", "C"];
+type BrokerState = "in-sync" | "catching-up" | "down";
 
 // broker id -> its rack. Two brokers per rack.
 const BROKER_RACK: Record<number, Rack> = { 1: "A", 2: "A", 3: "B", 4: "B", 5: "C", 6: "C" };
 const MIN_ISR = 2;
 const CONSUMER_RACK: Rack = "C";
 
-// The three brokers the assignor picks for this partition's replicas, in preference order.
-function replicaBrokers(rackAware: boolean): number[] {
-  // rack-aware: one replica per rack. Otherwise: lowest broker ids, blind to racks.
-  return rackAware ? [1, 3, 5] : [1, 2, 3];
+// The three brokers the assignor picks when a topic is created / reassigned.
+const replicaBrokers = (rackAware: boolean): number[] => (rackAware ? [1, 3, 5] : [1, 2, 3]);
+
+interface State {
+  rackConfig: boolean; // current broker.rack setting
+  placedRackAware: boolean; // how this partition's replicas were actually placed
+  replicas: number[];
+  leader: number | null;
+  brokerState: Record<number, BrokerState>;
+  rackFetch: boolean;
+  log: string[];
 }
 
-export default function RackPlacementDemo() {
-  const [rackAware, setRackAware] = useState(true);
-  const [rackFetch, setRackFetch] = useState(false);
-  const [failed, setFailed] = useState<Set<Rack>>(new Set());
-  const [log, setLog] = useState<string[]>([
-    "broker.rack set · replicas b1 (A), b3 (B), b5 (C) · consumer in rack C",
-  ]);
+function freshBrokerState(replicas: number[]): Record<number, BrokerState> {
+  const m: Record<number, BrokerState> = {};
+  for (const b of replicas) m[b] = "in-sync";
+  return m;
+}
 
-  function push(line: string) {
-    setLog((l) => [line, ...l].slice(0, 6));
+const INITIAL: State = {
+  rackConfig: true,
+  placedRackAware: true,
+  replicas: [1, 3, 5],
+  leader: 1,
+  brokerState: freshBrokerState([1, 3, 5]),
+  rackFetch: false,
+  log: ["broker.rack set · replicas b1 (A), b3 (B), b5 (C) · consumer in rack C"],
+};
+
+export default function RackPlacementDemo() {
+  const [s, setS] = useState<State>(INITIAL);
+
+  const inSync = s.replicas.filter((b) => s.brokerState[b] === "in-sync");
+  const online = s.leader !== null;
+  const acksAllOk = online && inSync.length >= MIN_ISR;
+  const isrRacks = [...new Set(inSync.map((b) => BROKER_RACK[b]))];
+  const localReplica = inSync.find((b) => BROKER_RACK[b] === CONSUMER_RACK) ?? null;
+  const fetchFrom = s.rackFetch && localReplica !== null ? localReplica : s.leader;
+  const crossRack = fetchFrom !== null && BROKER_RACK[fetchFrom] !== CONSUMER_RACK;
+  const configDrift = s.rackConfig !== s.placedRackAware;
+
+  const push = (line: string, prev: string[]) => [line, ...prev].slice(0, 6);
+
+  function toggleRackConfig() {
+    setS((prev) => ({
+      ...prev,
+      rackConfig: !prev.rackConfig,
+      log: push(
+        `broker.rack ${!prev.rackConfig ? "set" : "unset"} — applies to new topics and reassignments, not this partition. Reassign to move existing replicas.`,
+        prev.log,
+      ),
+    }));
   }
 
-  const replicas = replicaBrokers(rackAware);
-  const aliveReplicas = replicas.filter((b) => !failed.has(BROKER_RACK[b]));
-  const leader = aliveReplicas[0] ?? null;
-  const isrRacks = [...new Set(aliveReplicas.map((b) => BROKER_RACK[b]))];
+  function reassign() {
+    setS((prev) => {
+      const replicas = replicaBrokers(prev.rackConfig);
+      return {
+        ...prev,
+        placedRackAware: prev.rackConfig,
+        replicas,
+        leader: replicas[0],
+        brokerState: freshBrokerState(replicas),
+        log: push(
+          prev.rackConfig
+            ? `partition reassigned — replicas ${replicas.map((b) => `b${b} (${BROKER_RACK[b]})`).join(", ")}, one per rack.`
+            : `partition reassigned — replicas ${replicas.map((b) => `b${b} (${BROKER_RACK[b]})`).join(", ")} — two in rack A.`,
+          prev.log,
+        ),
+      };
+    });
+  }
 
-  const online = leader !== null;
-  const acksAllOk = aliveReplicas.length >= MIN_ISR;
+  function failRack(rack: Rack) {
+    setS((prev) => {
+      const hit = prev.replicas.filter((b) => BROKER_RACK[b] === rack);
+      if (hit.length === 0) {
+        return { ...prev, log: push(`rack ${rack} down — no replica of this partition lives there.`, prev.log) };
+      }
+      const brokerState = { ...prev.brokerState };
+      for (const b of hit) brokerState[b] = "down";
+      let leader = prev.leader;
+      if (prev.leader !== null && hit.includes(prev.leader)) {
+        leader = prev.replicas.find((b) => brokerState[b] === "in-sync") ?? null;
+      }
+      const nextISR = prev.replicas.filter((b) => brokerState[b] === "in-sync");
+      let line: string;
+      if (nextISR.length === 0) {
+        line = `rack ${rack} down — no replica survives. Partition is offline.`;
+      } else if (nextISR.length < MIN_ISR) {
+        line = `rack ${rack} down — only ${nextISR.length} replica left (b${nextISR.join(", b")}). Below min.insync.replicas=${MIN_ISR}: reads continue, acks=all fails.`;
+      } else {
+        line = `rack ${rack} down — ${nextISR.length} replicas still in sync across racks ${[...new Set(nextISR.map((b) => BROKER_RACK[b]))].join(", ")}.`;
+      }
+      return { ...prev, brokerState, leader, log: push(line, prev.log) };
+    });
+  }
 
-  // Where the rack-C consumer fetches from.
-  const localReplica = aliveReplicas.find((b) => BROKER_RACK[b] === CONSUMER_RACK) ?? null;
-  const fetchFrom =
-    rackFetch && localReplica !== null ? localReplica : leader;
-  const crossRack = fetchFrom !== null && BROKER_RACK[fetchFrom] !== CONSUMER_RACK;
+  function restoreRack(rack: Rack) {
+    setS((prev) => {
+      const hit = prev.replicas.filter((b) => BROKER_RACK[b] === rack && prev.brokerState[b] === "down");
+      if (hit.length === 0) return prev;
+      const brokerState = { ...prev.brokerState };
+      for (const b of hit) brokerState[b] = "catching-up";
+      // If the partition was fully offline, the first replica back leads.
+      let leader = prev.leader;
+      let line: string;
+      if (leader === null) {
+        leader = hit[0];
+        line = `rack ${rack} back — b${hit[0]} is the only replica up, so it leads (still catching up its own log).`;
+      } else {
+        line = `rack ${rack} back — its replica(s) replicate the backlog. Not in the ISR until caught up; leadership stays with b${leader}.`;
+      }
+      return { ...prev, brokerState, leader, log: push(line, prev.log) };
+    });
+  }
 
-  function toggleRackAware() {
-    const next = !rackAware;
-    setRackAware(next);
-    setFailed(new Set());
-    const r = replicaBrokers(next);
-    push(
-      next
-        ? `broker.rack set — assignor spreads replicas one per rack: ${r.map((b) => `b${b} (${BROKER_RACK[b]})`).join(", ")}.`
-        : `broker.rack unset — assignor picks by broker id, blind to racks: ${r.map((b) => `b${b} (${BROKER_RACK[b]})`).join(", ")} — two in rack A.`,
-    );
+  function catchUp(brokerId: number) {
+    setS((prev) => {
+      if (prev.brokerState[brokerId] !== "catching-up") return prev;
+      const brokerState = { ...prev.brokerState, [brokerId]: "in-sync" as BrokerState };
+      const nextISR = prev.replicas.filter((b) => brokerState[b] === "in-sync");
+      return {
+        ...prev,
+        brokerState,
+        log: push(
+          `b${brokerId} caught up — rejoined the ISR {b${nextISR.join(", b")}}. Leadership unchanged (b${prev.leader}).`,
+          prev.log,
+        ),
+      };
+    });
   }
 
   function toggleRackFetch() {
-    const next = !rackFetch;
-    setRackFetch(next);
-    push(
-      next
-        ? "rack-aware fetching on (replica.selector.class + client.rack=C) — the consumer prefers an in-sync replica in its own rack."
-        : "rack-aware fetching off — the consumer always fetches from the partition leader.",
-    );
-  }
-
-  function toggleRack(rack: Rack) {
-    const next = new Set(failed);
-    const failing = !next.has(rack);
-    if (failing) next.add(rack);
-    else next.delete(rack);
-    setFailed(next);
-
-    const nextAlive = replicas.filter((b) => !next.has(BROKER_RACK[b]));
-    if (!failing) {
-      push(`rack ${rack} back up — its replica rejoins the ISR.`);
-    } else if (nextAlive.length === 0) {
-      push(`rack ${rack} down — no replica of this partition survives. Partition is offline.`);
-    } else if (nextAlive.length < MIN_ISR) {
-      push(
-        `rack ${rack} down — only ${nextAlive.length} replica left (b${nextAlive.join(", b")}). Below min.insync.replicas=${MIN_ISR}: reads continue, acks=all writes fail.`,
-      );
-    } else {
-      push(
-        `rack ${rack} down — ${nextAlive.length} replicas still in sync across racks ${[...new Set(nextAlive.map((b) => BROKER_RACK[b]))].join(", ")}. Partition healthy.`,
-      );
-    }
+    setS((prev) => ({
+      ...prev,
+      rackFetch: !prev.rackFetch,
+      log: push(
+        !prev.rackFetch
+          ? "rack-aware fetching on (replica.selector.class + client.rack=C) — the consumer prefers an in-sync replica in its own rack."
+          : "rack-aware fetching off — the consumer always fetches from the partition leader.",
+        prev.log,
+      ),
+    }));
   }
 
   function reset() {
-    setRackAware(true);
-    setRackFetch(false);
-    setFailed(new Set());
-    setLog(["broker.rack set · replicas b1 (A), b3 (B), b5 (C) · consumer in rack C"]);
+    setS(INITIAL);
   }
 
   return (
@@ -111,46 +178,59 @@ export default function RackPlacementDemo() {
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — six brokers, two per rack, one partition with replication factor 3, and a consumer
-        pinned to rack C. What carries over: broker.rack makes the assignor spread replicas across racks so one rack
-        can fail without dropping below min.insync.replicas; rack-aware fetching needs both the broker selector and
-        the consumer&apos;s client.rack, and only helps when an in-sync replica shares the consumer&apos;s rack.
+        pinned to rack C. What carries over: broker.rack only steers new placement, so an existing partition needs a
+        reassignment to spread across racks; a restored replica catches up before rejoining the ISR and doesn&apos;t
+        take leadership back; and rack-aware fetching needs both the broker selector and the consumer&apos;s
+        client.rack, and only helps when an in-sync replica shares the consumer&apos;s rack.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
-          onClick={toggleRackAware}
+          onClick={toggleRackConfig}
           className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
-            rackAware
+            s.rackConfig
               ? "border-success/50 bg-success-soft text-success"
               : "border-danger/50 bg-danger-soft text-danger"
           }`}
         >
-          broker.rack {rackAware ? "set" : "unset"}
+          broker.rack {s.rackConfig ? "set" : "unset"}
+        </button>
+        <button
+          onClick={reassign}
+          className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-text-muted hover:border-accent/50 hover:text-accent"
+        >
+          reassign partition →
         </button>
         <button
           onClick={toggleRackFetch}
           className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
-            rackFetch
+            s.rackFetch
               ? "border-stream/50 bg-stream-soft text-stream"
               : "border-border-soft bg-bg-inset text-text-muted hover:border-stream/40"
           }`}
         >
-          rack-aware fetching {rackFetch ? "on" : "off"}
+          rack-aware fetching {s.rackFetch ? "on" : "off"}
         </button>
+        {configDrift && (
+          <span data-testid="config-drift" className="font-mono text-[11px] text-accent">
+            broker.rack changed — reassign to apply to this partition
+          </span>
+        )}
       </div>
 
       <div data-testid="racks" className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         {RACKS.map((rack) => {
-          const down = failed.has(rack);
           const brokersHere = Object.entries(BROKER_RACK)
             .filter(([, r]) => r === rack)
             .map(([b]) => Number(b));
+          const replicaHere = brokersHere.filter((b) => s.replicas.includes(b));
+          const anyDown = replicaHere.some((b) => s.brokerState[b] === "down");
           return (
             <div
               key={rack}
               data-testid={`rack-${rack}`}
               className={`flex flex-col gap-2 rounded-md border p-3 ${
-                down ? "border-danger/40 bg-danger-soft" : "border-border-soft bg-bg-inset"
+                anyDown ? "border-danger/40 bg-danger-soft" : "border-border-soft bg-bg-inset"
               }`}
             >
               <div className="flex items-center justify-between">
@@ -159,34 +239,58 @@ export default function RackPlacementDemo() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {brokersHere.map((b) => {
-                  const hasReplica = replicas.includes(b);
-                  const isLeader = leader === b;
+                  const isReplica = s.replicas.includes(b);
+                  const st = s.brokerState[b];
+                  const isLeader = s.leader === b;
                   return (
                     <span
                       key={b}
                       data-testid={`broker-${b}`}
                       className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] ${
-                        !hasReplica
+                        !isReplica
                           ? "border-border-soft text-text-faint"
-                          : down
+                          : st === "down"
                             ? "border-danger/40 text-danger line-through"
-                            : isLeader
+                            : st === "catching-up"
                               ? "border-accent/40 bg-accent-soft text-accent"
-                              : "border-stream/40 bg-stream-soft text-stream"
+                              : isLeader
+                                ? "border-accent/40 bg-accent-soft text-accent"
+                                : "border-stream/40 bg-stream-soft text-stream"
                       }`}
                     >
                       b{b}
-                      {hasReplica && (isLeader ? " ·L" : " ·F")}
+                      {isReplica && (isLeader ? " ·L" : st === "catching-up" ? " ·↑" : st === "down" ? "" : " ·F")}
                     </span>
                   );
                 })}
               </div>
-              <button
-                onClick={() => toggleRack(rack)}
-                className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-danger/50 hover:text-danger"
-              >
-                {down ? "restore rack" : "fail rack"}
-              </button>
+              {replicaHere.some((b) => s.brokerState[b] === "catching-up") ? (
+                replicaHere
+                  .filter((b) => s.brokerState[b] === "catching-up")
+                  .map((b) => (
+                    <button
+                      key={b}
+                      onClick={() => catchUp(b)}
+                      className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-success/50 hover:text-success"
+                    >
+                      b{b} finish catch-up →
+                    </button>
+                  ))
+              ) : anyDown ? (
+                <button
+                  onClick={() => restoreRack(rack)}
+                  className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-success/50 hover:text-success"
+                >
+                  restore rack
+                </button>
+              ) : (
+                <button
+                  onClick={() => failRack(rack)}
+                  className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-danger/50 hover:text-danger"
+                >
+                  fail rack
+                </button>
+              )}
             </div>
           );
         })}
@@ -196,7 +300,7 @@ export default function RackPlacementDemo() {
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-soft bg-bg-inset p-3">
           <span data-testid="partition-status" className="font-mono text-[11px] text-text-muted">
             {online
-              ? `online · ISR ${aliveReplicas.length} across rack${isrRacks.length === 1 ? "" : "s"} ${isrRacks.join(", ")}`
+              ? `online · ISR ${inSync.length} across rack${isrRacks.length === 1 ? "" : "s"} ${isrRacks.join(", ")}`
               : "offline · no surviving replica"}
           </span>
           <Badge tone={acksAllOk ? "success" : "danger"}>
@@ -218,7 +322,7 @@ export default function RackPlacementDemo() {
       </div>
 
       <div className="rounded-md border border-border-soft bg-bg-inset p-3 font-mono text-[11px] leading-relaxed text-text-muted">
-        {log.map((line, i) => (
+        {s.log.map((line, i) => (
           <div key={i} className={i === 0 ? "text-text" : ""}>
             {line}
           </div>
