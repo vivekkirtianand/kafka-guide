@@ -6,9 +6,11 @@ import Badge from "@/components/Badge";
 const BROKER_IDS = [1, 2, 3] as const;
 type BrokerId = (typeof BROKER_IDS)[number];
 
-// "catching-up" = the broker is back but still replicating the backlog, so it is
-// not in the ISR yet.
-type BrokerState = "in-sync" | "catching-up" | "down";
+// "catching-up"  = up, replicating the backlog from a leader, not in the ISR yet.
+// "ineligible"    = recovered its own log, but there is no leader and it wasn't in the
+//                   last ISR — it can neither join the ISR nor lead until an eligible
+//                   replica is back.
+type BrokerState = "in-sync" | "catching-up" | "ineligible" | "down";
 
 interface State {
   broker: Record<BrokerId, BrokerState>;
@@ -54,8 +56,10 @@ export default function ReplicationFloorDemo() {
           leader !== null
             ? `broker-${id} (leader) stopped — controller elects broker-${leader} from the ISR {${nextISR.join(", ")}}.`
             : `broker-${id} stopped — no in-sync replica left. Partition offline; last ISR was {${lastISR.join(", ")}}.`;
-      } else {
+      } else if (prev.broker[id] === "in-sync") {
         line = `broker-${id} stopped — drops out of the ISR {${nextISR.join(", ")}}.`;
+      } else {
+        line = `broker-${id} stopped.`;
       }
       return { ...prev, broker, leader, lastISR, log: push(line, prev.log) };
     });
@@ -73,56 +77,67 @@ export default function ReplicationFloorDemo() {
     });
   }
 
+  // When a leader is (re)elected, any recovered-but-ineligible replica now has a
+  // leader to sync from, so it moves to "catching-up" and must catch up separately.
+  function releaseIneligible(broker: Record<BrokerId, BrokerState>): Record<BrokerId, BrokerState> {
+    const next = { ...broker };
+    for (const b of BROKER_IDS) if (next[b] === "ineligible") next[b] = "catching-up";
+    return next;
+  }
+
   function catchUp(id: BrokerId) {
     setS((prev) => {
       if (prev.broker[id] !== "catching-up") return prev;
-      const broker = { ...prev.broker, [id]: "in-sync" as BrokerState };
-      const nextISR = isr(broker);
 
-      // Partial recovery — the partition still has a leader.
+      // Partial recovery — the partition still has a leader to catch up from.
       if (prev.leader !== null) {
+        const broker = { ...prev.broker, [id]: "in-sync" as BrokerState };
+        const nextISR = isr(broker);
         return {
           ...prev,
           broker,
           lastISR: nextISR,
           log: push(
-            `broker-${id} caught up — rejoined the ISR {${nextISR.join(", ")}}. Leadership stays with broker-${prev.leader}.`,
+            `broker-${id} caught up from leader broker-${prev.leader} — rejoined the ISR {${nextISR.join(", ")}}.`,
             prev.log,
           ),
         };
       }
 
-      // Full outage — leadership goes only to a replica from the last ISR.
+      // Full outage, no leader yet.
       if (prev.lastISR.includes(id)) {
+        const broker = releaseIneligible({ ...prev.broker, [id]: "in-sync" });
         return {
           ...prev,
           broker,
           leader: id,
-          lastISR: nextISR,
+          lastISR: [id],
           log: push(
-            `broker-${id} caught up and took leadership — it was in the last ISR {${prev.lastISR.join(", ")}}, so no acknowledged data is lost. Partition back online.`,
+            `broker-${id} recovered and took leadership — it was in the last ISR {${prev.lastISR.join(", ")}}, so no acknowledged data is lost. Partition back online; other recovered replicas now catch up from it.`,
             prev.log,
           ),
         };
       }
       if (prev.unclean) {
+        const broker = releaseIneligible({ ...prev.broker, [id]: "in-sync" });
         return {
           ...prev,
           broker,
           leader: id,
           dataLoss: true,
-          lastISR: nextISR,
+          lastISR: [id],
           log: push(
             `unclean leader election — broker-${id} was NOT in the last ISR {${prev.lastISR.join(", ")}}, so it leads from behind. Records that only those replicas held are lost.`,
             prev.log,
           ),
         };
       }
+      // Recovered its own log, but can't join the ISR or lead: no leader, not last-ISR.
       return {
         ...prev,
-        broker,
+        broker: { ...prev.broker, [id]: "ineligible" },
         log: push(
-          `broker-${id} caught up but was not in the last ISR {${prev.lastISR.join(", ")}}. With unclean.leader.election.enable=false it can't lead — the partition stays offline until a last-ISR replica is back.`,
+          `broker-${id} recovered its log but was not in the last ISR {${prev.lastISR.join(", ")}}. It stays out of the ISR until a last-ISR replica returns to lead (or unclean.leader.election.enable is set).`,
           prev.log,
         ),
       };
@@ -266,7 +281,7 @@ export default function ReplicationFloorDemo() {
               className={`flex flex-col gap-2 rounded-md border p-3 ${
                 st === "down"
                   ? "border-danger/40 bg-danger-soft"
-                  : st === "catching-up"
+                  : st === "catching-up" || st === "ineligible"
                     ? "border-accent/40 bg-accent-soft"
                     : "border-border-soft bg-bg-inset"
               }`}
@@ -279,14 +294,22 @@ export default function ReplicationFloorDemo() {
                   <Badge tone="stream">follower</Badge>
                 ) : st === "catching-up" ? (
                   <Badge tone="accent">catching up</Badge>
+                ) : st === "ineligible" ? (
+                  <Badge tone="accent">recovered — ineligible</Badge>
                 ) : (
                   <Badge tone="danger">down</Badge>
                 )}
               </div>
               <div className="font-mono text-[11px] text-text-faint">
-                {st === "in-sync" ? "in ISR" : st === "catching-up" ? "replicating backlog" : "out of ISR"}
+                {st === "in-sync"
+                  ? "in ISR"
+                  : st === "catching-up"
+                    ? "replicating backlog"
+                    : st === "ineligible"
+                      ? "out of ISR — no eligible leader"
+                      : "out of ISR"}
               </div>
-              {st === "in-sync" ? (
+              {st === "in-sync" || st === "ineligible" ? (
                 <button
                   onClick={() => stopBroker(id)}
                   className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-danger/50 hover:text-danger"

@@ -5,7 +5,9 @@ import Badge from "@/components/Badge";
 
 type Rack = "A" | "B" | "C";
 const RACKS: Rack[] = ["A", "B", "C"];
-type BrokerState = "in-sync" | "catching-up" | "down";
+// "ineligible" = recovered its own log, but no leader exists and it wasn't in the last
+// ISR — it can't join the ISR or lead until an eligible replica is back.
+type BrokerState = "in-sync" | "catching-up" | "ineligible" | "down";
 
 // broker id -> its rack. Two brokers per rack.
 const BROKER_RACK: Record<number, Rack> = { 1: "A", 2: "A", 3: "B", 4: "B", 5: "C", 6: "C" };
@@ -53,6 +55,7 @@ export default function RackPlacementDemo() {
   const [s, setS] = useState<State>(INITIAL);
 
   const inSync = s.replicas.filter((b) => s.brokerState[b] === "in-sync");
+  const ineligibleCount = s.replicas.filter((b) => s.brokerState[b] === "ineligible").length;
   const online = s.leader !== null;
   const acksAllOk = online && inSync.length >= MIN_ISR;
   const isrRacks = [...new Set(inSync.map((b) => BROKER_RACK[b]))];
@@ -144,44 +147,55 @@ export default function RackPlacementDemo() {
     });
   }
 
+  // When a leader is elected, recovered-but-ineligible replicas now have a leader to
+  // sync from, so they move to "catching-up" and must catch up separately.
+  function releaseIneligible(bs: Record<number, BrokerState>): Record<number, BrokerState> {
+    const next = { ...bs };
+    for (const b of Object.keys(next).map(Number)) if (next[b] === "ineligible") next[b] = "catching-up";
+    return next;
+  }
+
   function catchUp(brokerId: number) {
     setS((prev) => {
       if (prev.brokerState[brokerId] !== "catching-up") return prev;
-      const brokerState = { ...prev.brokerState, [brokerId]: "in-sync" as BrokerState };
-      const nextISR = prev.replicas.filter((b) => brokerState[b] === "in-sync");
 
+      // Partial recovery — there is a leader to catch up from.
       if (prev.leader !== null) {
+        const brokerState = { ...prev.brokerState, [brokerId]: "in-sync" as BrokerState };
+        const nextISR = prev.replicas.filter((b) => brokerState[b] === "in-sync");
         return {
           ...prev,
           brokerState,
           lastISR: nextISR,
           log: push(
-            `b${brokerId} caught up — rejoined the ISR {b${nextISR.join(", b")}}. Leadership unchanged (b${prev.leader}).`,
+            `b${brokerId} caught up from leader b${prev.leader} — rejoined the ISR {b${nextISR.join(", b")}}.`,
             prev.log,
           ),
         };
       }
 
-      // Full outage — leadership only to a replica from the last ISR.
+      // Full outage, no leader yet.
       if (prev.lastISR.includes(brokerId)) {
+        const brokerState = releaseIneligible({ ...prev.brokerState, [brokerId]: "in-sync" });
         return {
           ...prev,
           brokerState,
           leader: brokerId,
-          lastISR: nextISR,
+          lastISR: [brokerId],
           log: push(
-            `b${brokerId} caught up and took leadership — it was in the last ISR {b${prev.lastISR.join(", b")}}, so no acknowledged data is lost. Partition back online.`,
+            `b${brokerId} recovered and took leadership — it was in the last ISR {b${prev.lastISR.join(", b")}}, so no acknowledged data is lost. Other recovered replicas now catch up from it.`,
             prev.log,
           ),
         };
       }
       if (prev.unclean) {
+        const brokerState = releaseIneligible({ ...prev.brokerState, [brokerId]: "in-sync" });
         return {
           ...prev,
           brokerState,
           leader: brokerId,
           dataLoss: true,
-          lastISR: nextISR,
+          lastISR: [brokerId],
           log: push(
             `unclean leader election — b${brokerId} was NOT in the last ISR {b${prev.lastISR.join(", b")}}, so it leads from behind. Records only those replicas held are lost.`,
             prev.log,
@@ -190,9 +204,9 @@ export default function RackPlacementDemo() {
       }
       return {
         ...prev,
-        brokerState,
+        brokerState: { ...prev.brokerState, [brokerId]: "ineligible" },
         log: push(
-          `b${brokerId} caught up but was not in the last ISR {b${prev.lastISR.join(", b")}}. With unclean.leader.election.enable=false it can't lead — the partition stays offline.`,
+          `b${brokerId} recovered its log but was not in the last ISR {b${prev.lastISR.join(", b")}}. It stays out of the ISR until a last-ISR replica returns to lead.`,
           prev.log,
         ),
       };
@@ -324,7 +338,7 @@ export default function RackPlacementDemo() {
                           ? "border-border-soft text-text-faint"
                           : st === "down"
                             ? "border-danger/40 text-danger line-through"
-                            : st === "catching-up"
+                            : st === "catching-up" || st === "ineligible"
                               ? "border-accent/40 bg-accent-soft text-accent"
                               : isLeader
                                 ? "border-accent/40 bg-accent-soft text-accent"
@@ -332,7 +346,16 @@ export default function RackPlacementDemo() {
                       }`}
                     >
                       b{b}
-                      {isReplica && (isLeader ? " ·L" : st === "catching-up" ? " ·↑" : st === "down" ? "" : " ·F")}
+                      {isReplica &&
+                        (isLeader
+                          ? " ·L"
+                          : st === "catching-up"
+                            ? " ·↑"
+                            : st === "ineligible"
+                              ? " ·!"
+                              : st === "down"
+                                ? ""
+                                : " ·F")}
                     </span>
                   );
                 })}
@@ -372,7 +395,9 @@ export default function RackPlacementDemo() {
           <span data-testid="partition-status" className="font-mono text-[11px] text-text-muted">
             {online
               ? `online · ISR ${inSync.length} across rack${isrRacks.length === 1 ? "" : "s"} ${isrRacks.join(", ")}`
-              : "offline · no surviving replica"}
+              : ineligibleCount > 0
+                ? "offline · recovered replica ineligible to lead"
+                : "offline · no surviving replica"}
           </span>
           <Badge tone={acksAllOk ? "success" : "danger"}>
             {acksAllOk ? "acks=all OK" : "acks=all failing"}

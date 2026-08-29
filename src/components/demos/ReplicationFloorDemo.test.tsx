@@ -76,10 +76,10 @@ describe("ReplicationFloorDemo", () => {
 
     await user.click(brokerBtn(1, "finish catch-up →"));
     expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {1, 2, 3} · leader broker-2");
-    expect(firstLogLine()).toMatch(/Leadership stays with broker-2/);
+    expect(firstLogLine()).toMatch(/broker-1 caught up from leader broker-2/);
   });
 
-  it("after a full outage the first broker back does not lead while still catching up", async () => {
+  it("after a full outage a last-ISR replica recovers and leads cleanly", async () => {
     const user = userEvent.setup();
     render(<ReplicationFloorDemo />);
 
@@ -91,14 +91,13 @@ describe("ReplicationFloorDemo", () => {
 
     await user.click(brokerBtn(3, "start broker"));
     expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {} · leader none");
-    expect(screen.getByText("partition offline")).toBeInTheDocument();
 
     await user.click(brokerBtn(3, "finish catch-up →"));
     expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {3} · leader broker-3");
     expect(firstLogLine()).toMatch(/it was in the last ISR \{3\}, so no acknowledged data is lost/);
   });
 
-  it("a replica outside the last ISR cannot lead unless unclean.leader.election.enable is set", async () => {
+  it("a stale replica recovers as ineligible — outside the ISR with no leader — until an eligible leader returns", async () => {
     const user = userEvent.setup();
     render(<ReplicationFloorDemo />);
 
@@ -106,13 +105,32 @@ describe("ReplicationFloorDemo", () => {
     await user.click(brokerBtn(2, "stop broker"));
     await user.click(brokerBtn(3, "stop broker")); // last ISR was {3}
 
-    // broker-1 was not in {3}
+    // broker-1 was not in {3}: it recovers, but does not enter the ISR and there is no leader
     await user.click(brokerBtn(1, "start broker"));
     await user.click(brokerBtn(1, "finish catch-up →"));
-    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {1} · leader none");
-    expect(firstLogLine()).toMatch(/was not in the last ISR \{3\}.*can't lead/);
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {} · leader none");
+    expect(within(screen.getByTestId("broker-1")).getByText("recovered — ineligible")).toBeInTheDocument();
+    expect(firstLogLine()).toMatch(/recovered its log but was not in the last ISR \{3\}/);
 
-    // enable unclean election, catch broker-2 (also not in {3}) — now it can lead, with data loss
+    // broker-3 (the eligible one) comes back and leads; broker-1 must now catch up from it
+    await user.click(brokerBtn(3, "start broker"));
+    await user.click(brokerBtn(3, "finish catch-up →"));
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {3} · leader broker-3");
+    expect(within(screen.getByTestId("broker-1")).getByText("catching up")).toBeInTheDocument();
+
+    await user.click(brokerBtn(1, "finish catch-up →"));
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {1, 3} · leader broker-3");
+    expect(firstLogLine()).toMatch(/broker-1 caught up from leader broker-3/);
+  });
+
+  it("unclean.leader.election.enable lets a stale replica lead, with a data-loss badge", async () => {
+    const user = userEvent.setup();
+    render(<ReplicationFloorDemo />);
+
+    await user.click(brokerBtn(1, "stop broker"));
+    await user.click(brokerBtn(2, "stop broker"));
+    await user.click(brokerBtn(3, "stop broker")); // last ISR was {3}
+
     await user.click(screen.getByRole("button", { name: /unclean\.leader\.election\.enable=false/ }));
     await user.click(brokerBtn(2, "start broker"));
     await user.click(brokerBtn(2, "finish catch-up →"));

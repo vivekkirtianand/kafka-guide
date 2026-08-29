@@ -66,7 +66,7 @@ describe("RackPlacementDemo", () => {
     expect(within(screen.getByTestId("broker-3")).getByText("b3 ·L")).toBeInTheDocument();
   });
 
-  it("after a full outage only a last-ISR replica may lead; others need unclean election", async () => {
+  it("a stale replica recovers as ineligible and only catches up once an eligible leader is back", async () => {
     const user = userEvent.setup();
     render(<RackPlacementDemo />);
 
@@ -76,17 +76,22 @@ describe("RackPlacementDemo", () => {
     await user.click(rackBtn("C", "fail rack"));
     expect(status()).toMatch(/offline · no surviving replica/);
 
-    // b3 was not in the last ISR {b5}
+    // b3 was not in the last ISR {b5}: recovers as ineligible, still offline, no leader
     await user.click(rackBtn("B", "restore rack"));
     await user.click(rackBtn("B", "b3 finish catch-up →"));
-    expect(status()).toMatch(/offline · no surviving replica/);
+    expect(status()).toMatch(/offline · recovered replica ineligible to lead/);
+    expect(within(screen.getByTestId("broker-3")).getByText("b3 ·!")).toBeInTheDocument();
     expect(fetchStatus()).toMatch(/partition offline/);
 
-    // bring b5 back — it was the last ISR, so it leads cleanly
+    // b5 (eligible) comes back and leads; b3 must now catch up from it
     await user.click(rackBtn("C", "restore rack"));
     await user.click(rackBtn("C", "b5 finish catch-up →"));
-    expect(status()).toMatch(/online · ISR/);
-    expect(screen.getByText(/no acknowledged data is lost/)).toBeInTheDocument();
+    expect(status()).toMatch(/online · ISR 1/);
+    expect(within(screen.getByTestId("broker-3")).getByText("b3 ·↑")).toBeInTheDocument();
+
+    await user.click(rackBtn("B", "b3 finish catch-up →"));
+    expect(status()).toMatch(/online · ISR 2/);
+    expect(screen.getByText(/b3 caught up from leader b5/)).toBeInTheDocument();
   });
 
   it("unclean.leader.election.enable lets a stale replica lead, with a data-loss badge", async () => {
