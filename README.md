@@ -52,6 +52,14 @@ src/
       CommitCrashDemo.tsx           Module 4 activity: crashing before vs. after a commit
       OffsetResetDemo.tsx           Module 4 activity: offset reset (--to-earliest/--shift-by/…) and replay
       PoisonMessageDemo.tsx         Module 4 activity: poison messages, retry topics, dead-letter topics
+      ReplicationFloorDemo.tsx      Module 5 activity: shrink the ISR below min.insync.replicas
+      RetentionCompactionDemo.tsx  Module 5 activity: delete vs. compact cleanup on a keyed log
+      RackPlacementDemo.tsx         Module 5 activity: spread replicas across racks, then fail a rack
+      QuotaThrottleDemo.tsx         Module 5 activity: a client past its byte-rate quota slows, not errors
+      BottleneckDiagnosis.tsx       Module 6 activity: read an unlabeled dashboard, name the bottleneck
+      RequestLatencyBreakdown.tsx   Module 6 activity: split a request-latency total into its phases
+      LagSlopeVsAbsolute.tsx        Module 6 activity: runaway lag slope vs. flat-but-breaching backlog
+      IsrChurnDemo.tsx              Module 6 activity: localize ISR churn to one broker vs. a shared cause
       IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
   lib/
     types.ts                        Shared content types
@@ -75,13 +83,19 @@ src/
   max.poll.interval.ms, consumer-group scaling and rebalances, automatic vs. manual
   commits, crashing before/after a commit, offset reset and replay, and poison-message
   handling with retry and dead-letter topics.
+- **Module 5 (Broker and topic configuration)** is built: scannable Topic explorer content
+  for all 11 topics plus 4 interactive demos (ISR floor vs. min.insync.replicas, delete vs.
+  compact cleanup, rack placement and rack failure, client quota throttling).
+- **Module 6 (Observability)** is built: Topic explorer content for all 11 signals plus 4
+  interactive demos (unlabeled-dashboard bottleneck diagnosis, request-latency phase
+  breakdown, lag slope vs. absolute value, ISR-churn localization).
 - **The incident simulator's "slow broker" incident** is fully built out (reveal clues,
   pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
-- **Config explorer** ships with 31 real settings across producer/consumer/broker/topic
+- **Config explorer** ships with real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
 - **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
   the plan, searchable.
-- Modules 5–7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
+- Module 7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
   clues, categories) but their content/interactivity is not yet written — they render a
   "planned" state so the whole app is navigable today. Module 2's page is the exception: it
   links out to the local cluster lab below instead of showing that placeholder, since the
