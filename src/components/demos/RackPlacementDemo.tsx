@@ -214,11 +214,30 @@ export default function RackPlacementDemo() {
   }
 
   function toggleUnclean() {
-    setS((prev) => ({
-      ...prev,
-      unclean: !prev.unclean,
-      log: push(`unclean.leader.election.enable set to ${!prev.unclean}.`, prev.log),
-    }));
+    setS((prev) => {
+      const on = !prev.unclean;
+      // Turning it on while the partition is stuck offline behind an ineligible replica
+      // triggers the unclean election that catchUp would otherwise have skipped.
+      if (on && prev.leader === null) {
+        const candidate = prev.replicas.find((b) => prev.brokerState[b] === "ineligible");
+        if (candidate !== undefined) {
+          const brokerState = releaseIneligible({ ...prev.brokerState, [candidate]: "in-sync" });
+          return {
+            ...prev,
+            brokerState,
+            unclean: true,
+            leader: candidate,
+            dataLoss: true,
+            lastISR: [candidate],
+            log: push(
+              `unclean.leader.election.enable set to true — no eligible replica, so the controller elects b${candidate} from behind the last ISR {b${prev.lastISR.join(", b")}}. Records only those replicas held are lost.`,
+              prev.log,
+            ),
+          };
+        }
+      }
+      return { ...prev, unclean: on, log: push(`unclean.leader.election.enable set to ${on}.`, prev.log) };
+    });
   }
 
   function toggleRackFetch() {

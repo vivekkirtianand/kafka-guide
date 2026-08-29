@@ -149,11 +149,30 @@ export default function ReplicationFloorDemo() {
   }
 
   function toggleUnclean() {
-    setS((prev) => ({
-      ...prev,
-      unclean: !prev.unclean,
-      log: push(`unclean.leader.election.enable set to ${!prev.unclean}.`, prev.log),
-    }));
+    setS((prev) => {
+      const on = !prev.unclean;
+      // Turning it on while the partition is stuck offline behind an ineligible replica
+      // triggers the unclean election that catchUp would otherwise have skipped.
+      if (on && prev.leader === null) {
+        const candidate = BROKER_IDS.find((b) => prev.broker[b] === "ineligible");
+        if (candidate !== undefined) {
+          const broker = releaseIneligible({ ...prev.broker, [candidate]: "in-sync" });
+          return {
+            ...prev,
+            broker,
+            unclean: true,
+            leader: candidate,
+            dataLoss: true,
+            lastISR: [candidate],
+            log: push(
+              `unclean.leader.election.enable set to true — with no eligible replica, the controller elects broker-${candidate} from behind the last ISR {${prev.lastISR.join(", ")}}. Records only those replicas held are lost.`,
+              prev.log,
+            ),
+          };
+        }
+      }
+      return { ...prev, unclean: on, log: push(`unclean.leader.election.enable set to ${on}.`, prev.log) };
+    });
   }
 
   function produce(acks: "1" | "all") {

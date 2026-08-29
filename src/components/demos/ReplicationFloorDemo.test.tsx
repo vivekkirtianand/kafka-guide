@@ -138,4 +138,25 @@ describe("ReplicationFloorDemo", () => {
     expect(screen.getByText("unclean election — data lost")).toBeInTheDocument();
     expect(firstLogLine()).toMatch(/unclean leader election.*Records that only those replicas held are lost/);
   });
+
+  it("enabling unclean election after a replica is already ineligible elects it instead of staying offline", async () => {
+    const user = userEvent.setup();
+    render(<ReplicationFloorDemo />);
+
+    await user.click(brokerBtn(1, "stop broker"));
+    await user.click(brokerBtn(2, "stop broker"));
+    await user.click(brokerBtn(3, "stop broker")); // last ISR was {3}
+
+    // broker-1 recovers first and is ineligible (unclean still off)
+    await user.click(brokerBtn(1, "start broker"));
+    await user.click(brokerBtn(1, "finish catch-up →"));
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {} · leader none");
+    expect(within(screen.getByTestId("broker-1")).getByText("recovered — ineligible")).toBeInTheDocument();
+
+    // now flip the toggle — the stuck partition elects the ineligible replica
+    await user.click(screen.getByRole("button", { name: /unclean\.leader\.election\.enable=false/ }));
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {1} · leader broker-1");
+    expect(screen.getByText("unclean election — data lost")).toBeInTheDocument();
+    expect(firstLogLine()).toMatch(/with no eligible replica, the controller elects broker-1/);
+  });
 });

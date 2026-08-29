@@ -111,6 +111,26 @@ describe("RackPlacementDemo", () => {
     expect(screen.getByText(/leads from behind\. Records only those replicas held are lost/)).toBeInTheDocument();
   });
 
+  it("enabling unclean election after a replica is already ineligible elects it instead of staying offline", async () => {
+    const user = userEvent.setup();
+    render(<RackPlacementDemo />);
+
+    await user.click(rackBtn("A", "fail rack"));
+    await user.click(rackBtn("B", "fail rack"));
+    await user.click(rackBtn("C", "fail rack")); // last ISR {b5}
+
+    // b1 recovers first and is ineligible (unclean still off)
+    await user.click(rackBtn("A", "restore rack"));
+    await user.click(rackBtn("A", "b1 finish catch-up →"));
+    expect(status()).toMatch(/offline · recovered replica ineligible to lead/);
+
+    // flip the toggle — the stuck partition elects the ineligible replica
+    await user.click(screen.getByRole("button", { name: /unclean\.leader\.election\.enable=false/ }));
+    expect(status()).toMatch(/online · ISR 1 across rack A/);
+    expect(screen.getByText("unclean election — data lost")).toBeInTheDocument();
+    expect(screen.getByText(/no eligible replica, so the controller elects b1/)).toBeInTheDocument();
+  });
+
   it("rack-aware fetching removes cross-rack transfer for a same-rack replica", async () => {
     const user = userEvent.setup();
     render(<RackPlacementDemo />);
