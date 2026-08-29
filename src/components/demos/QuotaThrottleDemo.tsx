@@ -9,8 +9,6 @@ type Scenario = "bandwidth" | "request";
 const BYTE_QUOTA = 6;
 // request_percentage quota — share of combined network + I/O thread time.
 const REQUEST_QUOTA_PCT = 150;
-// Above this throttle delay the demo flags a possible client-side timeout.
-const TIMEOUT_RISK_MS = 1200;
 
 function throttleMs(demand: number, quota: number): number {
   // The broker delays responses to bring the measured average back down to the quota.
@@ -22,11 +20,13 @@ export default function QuotaThrottleDemo() {
   const [scenario, setScenario] = useState<Scenario>("bandwidth");
   const [produceRate, setProduceRate] = useState(4); // MB/s
   const [requestLoadPct, setRequestLoadPct] = useState(100); // % of combined network + I/O thread time
+  const [requestTimeoutMs, setRequestTimeoutMs] = useState(1500);
 
   function reset() {
     setScenario("bandwidth");
     setProduceRate(4);
     setRequestLoadPct(100);
+    setRequestTimeoutMs(1500);
   }
 
   const isBandwidth = scenario === "bandwidth";
@@ -35,7 +35,7 @@ export default function QuotaThrottleDemo() {
   const throttled = demand > quota;
   const delay = throttleMs(demand, quota);
   const effective = Math.min(demand, quota);
-  const timeoutRisk = delay >= TIMEOUT_RISK_MS;
+  const wouldTimeOut = delay >= requestTimeoutMs;
 
   return (
     <div className="rounded-lg border border-border bg-bg-elevated p-5">
@@ -52,10 +52,11 @@ export default function QuotaThrottleDemo() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — the throttle delay is a rough function of how far over quota the client is. What
-        carries over: a quota is enforced by <em>delaying the client&apos;s responses</em>, not by failing them; and
-        producer_byte_rate (throughput) and request_percentage (combined network + I/O thread time) are separate
-        limits for two different kinds of heavy client.
+        Simplified for teaching — the throttle delay is a rough function of how far over quota the client is, and
+        request.timeout.ms is scaled down to the same range. What carries over: a quota is enforced by
+        <em> delaying the client&apos;s responses</em>, not by failing them; producer_byte_rate (throughput) and
+        request_percentage (combined network + I/O thread time) are separate limits; and a throttle pause that
+        outlasts the client&apos;s own request.timeout.ms still surfaces as a client-side timeout.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -112,6 +113,22 @@ export default function QuotaThrottleDemo() {
         </div>
       )}
 
+      <div className="mb-4">
+        <label className="flex flex-col gap-1.5 font-mono text-[11px] text-text-faint">
+          client request.timeout.ms: <span className="text-text-muted">{requestTimeoutMs} ms</span>
+          <input
+            aria-label="client request.timeout.ms"
+            type="range"
+            min={200}
+            max={3000}
+            step={100}
+            value={requestTimeoutMs}
+            onChange={(e) => setRequestTimeoutMs(Number(e.target.value))}
+            className="w-full max-w-xs accent-accent"
+          />
+        </label>
+      </div>
+
       <div data-testid="outcome" className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <div className="rounded-md border border-border-soft bg-bg-inset p-3">
           <div className="font-mono text-[10px] uppercase tracking-wide text-text-faint">
@@ -130,7 +147,12 @@ export default function QuotaThrottleDemo() {
         </div>
         <div className="rounded-md border border-border-soft bg-bg-inset p-3">
           <div className="font-mono text-[10px] uppercase tracking-wide text-text-faint">broker response</div>
-          <div className="mt-1 font-mono text-sm text-success">delayed, never rejected</div>
+          <div
+            data-testid="broker-response"
+            className={`mt-1 font-mono text-sm ${throttled ? "text-accent" : "text-success"}`}
+          >
+            {throttled ? "delayed, never rejected" : "immediate"}
+          </div>
         </div>
       </div>
 
@@ -145,10 +167,10 @@ export default function QuotaThrottleDemo() {
               ? `At ${produceRate} MB/s the client is under the ${BYTE_QUOTA} MB/s quota — nothing is throttled, no latency added.`
               : `At ${requestLoadPct}% the client is within the ${REQUEST_QUOTA_PCT}% quota — no throttling.`}
         </p>
-        {timeoutRisk && (
+        {wouldTimeOut && (
           <p data-testid="timeout-note" className="mt-2 text-danger">
-            A throttle pause of ~{delay} ms can exceed the client&apos;s request.timeout.ms and surface as a
-            client-side timeout — even though the broker delayed rather than rejected anything.
+            The ~{delay} ms throttle pause exceeds this client&apos;s request.timeout.ms ({requestTimeoutMs} ms), so
+            the request times out client-side — even though the broker only delayed, never rejected.
           </p>
         )}
       </div>

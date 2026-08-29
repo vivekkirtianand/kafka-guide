@@ -78,4 +78,24 @@ describe("ReplicationFloorDemo", () => {
     expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {1, 2, 3} · leader broker-2");
     expect(firstLogLine()).toMatch(/Leadership stays with broker-2/);
   });
+
+  it("after a full outage the first broker back does not lead while still catching up", async () => {
+    const user = userEvent.setup();
+    render(<ReplicationFloorDemo />);
+
+    await user.click(brokerBtn(1, "stop broker"));
+    await user.click(brokerBtn(2, "stop broker"));
+    await user.click(brokerBtn(3, "stop broker"));
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {} · leader none");
+
+    await user.click(brokerBtn(1, "start broker"));
+    // still no leader — no "leader + empty ISR"
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {} · leader none");
+    expect(screen.getByText("partition offline")).toBeInTheDocument();
+    expect(firstLogLine()).toMatch(/partition stays offline until a replica has caught up/);
+
+    await user.click(brokerBtn(1, "finish catch-up →"));
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {1} · leader broker-1");
+    expect(firstLogLine()).toMatch(/caught up and took leadership/);
+  });
 });

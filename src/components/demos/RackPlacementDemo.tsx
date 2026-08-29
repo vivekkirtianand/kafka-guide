@@ -21,6 +21,7 @@ interface State {
   replicas: number[];
   leader: number | null;
   brokerState: Record<number, BrokerState>;
+  failedRacks: Set<Rack>; // tracked independently of which replicas are placed
   rackFetch: boolean;
   log: string[];
 }
@@ -37,6 +38,7 @@ const INITIAL: State = {
   replicas: [1, 3, 5],
   leader: 1,
   brokerState: freshBrokerState([1, 3, 5]),
+  failedRacks: new Set<Rack>(),
   rackFetch: false,
   log: ["broker.rack set · replicas b1 (A), b3 (B), b5 (C) · consumer in rack C"],
 };
@@ -69,16 +71,22 @@ export default function RackPlacementDemo() {
   function reassign() {
     setS((prev) => {
       const replicas = replicaBrokers(prev.rackConfig);
+      // A replica whose rack is still down comes up as "down", not magically in sync.
+      const brokerState: Record<number, BrokerState> = {};
+      for (const b of replicas) brokerState[b] = prev.failedRacks.has(BROKER_RACK[b]) ? "down" : "in-sync";
+      const isr = replicas.filter((b) => brokerState[b] === "in-sync");
+      const leader = isr[0] ?? null;
+      const downNote = replicas.some((b) => brokerState[b] === "down")
+        ? ` Replicas in down racks (${replicas.filter((b) => brokerState[b] === "down").map((b) => `b${b}`).join(", ")}) start out of the ISR.`
+        : "";
       return {
         ...prev,
         placedRackAware: prev.rackConfig,
         replicas,
-        leader: replicas[0],
-        brokerState: freshBrokerState(replicas),
+        leader,
+        brokerState,
         log: push(
-          prev.rackConfig
-            ? `partition reassigned — replicas ${replicas.map((b) => `b${b} (${BROKER_RACK[b]})`).join(", ")}, one per rack.`
-            : `partition reassigned — replicas ${replicas.map((b) => `b${b} (${BROKER_RACK[b]})`).join(", ")} — two in rack A.`,
+          `partition reassigned — replicas ${replicas.map((b) => `b${b} (${BROKER_RACK[b]})`).join(", ")}.${downNote}`,
           prev.log,
         ),
       };
@@ -87,10 +95,8 @@ export default function RackPlacementDemo() {
 
   function failRack(rack: Rack) {
     setS((prev) => {
+      const failedRacks = new Set(prev.failedRacks).add(rack);
       const hit = prev.replicas.filter((b) => BROKER_RACK[b] === rack);
-      if (hit.length === 0) {
-        return { ...prev, log: push(`rack ${rack} down — no replica of this partition lives there.`, prev.log) };
-      }
       const brokerState = { ...prev.brokerState };
       for (const b of hit) brokerState[b] = "down";
       let leader = prev.leader;
@@ -99,33 +105,34 @@ export default function RackPlacementDemo() {
       }
       const nextISR = prev.replicas.filter((b) => brokerState[b] === "in-sync");
       let line: string;
-      if (nextISR.length === 0) {
+      if (hit.length === 0) {
+        line = `rack ${rack} down — no replica of this partition lives there.`;
+      } else if (nextISR.length === 0) {
         line = `rack ${rack} down — no replica survives. Partition is offline.`;
       } else if (nextISR.length < MIN_ISR) {
         line = `rack ${rack} down — only ${nextISR.length} replica left (b${nextISR.join(", b")}). Below min.insync.replicas=${MIN_ISR}: reads continue, acks=all fails.`;
       } else {
         line = `rack ${rack} down — ${nextISR.length} replicas still in sync across racks ${[...new Set(nextISR.map((b) => BROKER_RACK[b]))].join(", ")}.`;
       }
-      return { ...prev, brokerState, leader, log: push(line, prev.log) };
+      return { ...prev, failedRacks, brokerState, leader, log: push(line, prev.log) };
     });
   }
 
   function restoreRack(rack: Rack) {
     setS((prev) => {
+      const failedRacks = new Set(prev.failedRacks);
+      failedRacks.delete(rack);
       const hit = prev.replicas.filter((b) => BROKER_RACK[b] === rack && prev.brokerState[b] === "down");
-      if (hit.length === 0) return prev;
       const brokerState = { ...prev.brokerState };
       for (const b of hit) brokerState[b] = "catching-up";
-      // If the partition was fully offline, the first replica back leads.
-      let leader = prev.leader;
-      let line: string;
-      if (leader === null) {
-        leader = hit[0];
-        line = `rack ${rack} back — b${hit[0]} is the only replica up, so it leads (still catching up its own log).`;
-      } else {
-        line = `rack ${rack} back — its replica(s) replicate the backlog. Not in the ISR until caught up; leadership stays with b${leader}.`;
-      }
-      return { ...prev, brokerState, leader, log: push(line, prev.log) };
+      // Leadership is never handed to a replica that is still catching up.
+      const line =
+        hit.length === 0
+          ? `rack ${rack} back up.`
+          : prev.leader === null
+            ? `rack ${rack} back — b${hit.join(", b")} recovering. The partition stays offline until a replica catches up.`
+            : `rack ${rack} back — its replica(s) replicate the backlog. Not in the ISR until caught up; leadership stays with b${prev.leader}.`;
+      return { ...prev, failedRacks, brokerState, log: push(line, prev.log) };
     });
   }
 
@@ -134,6 +141,15 @@ export default function RackPlacementDemo() {
       if (prev.brokerState[brokerId] !== "catching-up") return prev;
       const brokerState = { ...prev.brokerState, [brokerId]: "in-sync" as BrokerState };
       const nextISR = prev.replicas.filter((b) => brokerState[b] === "in-sync");
+      // First replica back after a full outage takes leadership now that it's in sync.
+      if (prev.leader === null) {
+        return {
+          ...prev,
+          brokerState,
+          leader: brokerId,
+          log: push(`b${brokerId} caught up and took leadership — partition back online. ISR {b${nextISR.join(", b")}}`, prev.log),
+        };
+      }
       return {
         ...prev,
         brokerState,
@@ -224,13 +240,14 @@ export default function RackPlacementDemo() {
             .filter(([, r]) => r === rack)
             .map(([b]) => Number(b));
           const replicaHere = brokersHere.filter((b) => s.replicas.includes(b));
-          const anyDown = replicaHere.some((b) => s.brokerState[b] === "down");
+          const rackDown = s.failedRacks.has(rack);
+          const catchingUpHere = replicaHere.filter((b) => s.brokerState[b] === "catching-up");
           return (
             <div
               key={rack}
               data-testid={`rack-${rack}`}
               className={`flex flex-col gap-2 rounded-md border p-3 ${
-                anyDown ? "border-danger/40 bg-danger-soft" : "border-border-soft bg-bg-inset"
+                rackDown ? "border-danger/40 bg-danger-soft" : "border-border-soft bg-bg-inset"
               }`}
             >
               <div className="flex items-center justify-between">
@@ -264,19 +281,17 @@ export default function RackPlacementDemo() {
                   );
                 })}
               </div>
-              {replicaHere.some((b) => s.brokerState[b] === "catching-up") ? (
-                replicaHere
-                  .filter((b) => s.brokerState[b] === "catching-up")
-                  .map((b) => (
-                    <button
-                      key={b}
-                      onClick={() => catchUp(b)}
-                      className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-success/50 hover:text-success"
-                    >
-                      b{b} finish catch-up →
-                    </button>
-                  ))
-              ) : anyDown ? (
+              {catchingUpHere.length > 0 ? (
+                catchingUpHere.map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => catchUp(b)}
+                    className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-success/50 hover:text-success"
+                  >
+                    b{b} finish catch-up →
+                  </button>
+                ))
+              ) : rackDown ? (
                 <button
                   onClick={() => restoreRack(rack)}
                   className="rounded border border-border px-2 py-1 font-mono text-[11px] text-text-muted hover:border-success/50 hover:text-success"

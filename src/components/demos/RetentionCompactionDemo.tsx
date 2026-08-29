@@ -9,9 +9,9 @@ interface Entry {
   offset: number;
   key: string;
   value: string | null; // null = tombstone
-  // The clock tick at which compaction first retained this tombstone as the latest
-  // value for its key. Its delete.retention.ms window runs from here.
-  heldSince?: number;
+  // For a tombstone, the clock tick it was produced at — its delete.retention.ms
+  // window runs from here, not from when compaction first sees it.
+  producedAt?: number;
 }
 
 const KEYS = ["a", "b", "c"] as const;
@@ -56,11 +56,19 @@ export default function RetentionCompactionDemo() {
   const activeSegment = segmentOf(nextOffset);
 
   function produce(tombstone: boolean) {
-    setEntries((e) => [...e, { offset: nextOffset, key, value: tombstone ? null : `${key}${nextOffset}` }]);
+    setEntries((e) => [
+      ...e,
+      {
+        offset: nextOffset,
+        key,
+        value: tombstone ? null : `${key}${nextOffset}`,
+        ...(tombstone ? { producedAt: clock } : {}),
+      },
+    ]);
     setNextOffset((n) => n + 1);
     push(
       tombstone
-        ? `produced tombstone for key ${key} at offset ${nextOffset} (value = null).`
+        ? `produced tombstone for key ${key} at offset ${nextOffset} — its delete.retention.ms clock starts now (tick ${clock}).`
         : `produced ${key}=${key}${nextOffset} at offset ${nextOffset}.`,
     );
   }
@@ -112,14 +120,15 @@ export default function RetentionCompactionDemo() {
         continue;
       }
       if (e.value === null) {
-        const heldSince = e.heldSince ?? clock;
-        if (clock - heldSince >= DELETE_RETENTION_TICKS) {
+        // The retention window runs from when the tombstone was produced.
+        const producedAt = e.producedAt ?? clock;
+        if (clock - producedAt >= DELETE_RETENTION_TICKS) {
           tombstonesDropped++;
           continue;
         }
-        next.push({ ...e, heldSince });
+        next.push({ ...e, producedAt });
       } else {
-        next.push({ ...e, heldSince: undefined });
+        next.push(e);
       }
     }
 
@@ -127,8 +136,8 @@ export default function RetentionCompactionDemo() {
     const parts: string[] = [];
     if (superseded > 0) parts.push(`collapsed ${superseded} superseded record(s)`);
     if (tombstonesDropped > 0) parts.push(`removed ${tombstonesDropped} tombstone(s) past delete.retention.ms`);
-    const held = next.filter((e) => e.value === null && e.heldSince !== undefined).length;
-    if (held > 0) parts.push(`${held} tombstone(s) retained until delete.retention.ms elapses`);
+    const held = next.filter((e) => e.value === null).length;
+    if (held > 0) parts.push(`${held} tombstone(s) still inside delete.retention.ms`);
     push(
       parts.length > 0
         ? `compaction pass over the closed segments — ${parts.join("; ")}.`
@@ -267,8 +276,10 @@ export default function RetentionCompactionDemo() {
               >
                 <span className="text-text-faint">{e.offset}</span>
                 {e.key}={e.value === null ? "∅" : e.value}
-                {e.value === null && e.heldSince !== undefined && (
-                  <span className="text-text-faint">·held {Math.min(clock - e.heldSince, DELETE_RETENTION_TICKS)}/{DELETE_RETENTION_TICKS}</span>
+                {e.value === null && e.producedAt !== undefined && (
+                  <span className="text-text-faint">
+                    ·retain {Math.min(clock - e.producedAt, DELETE_RETENTION_TICKS)}/{DELETE_RETENTION_TICKS}
+                  </span>
                 )}
               </span>
             );

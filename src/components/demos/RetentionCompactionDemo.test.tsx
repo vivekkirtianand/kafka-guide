@@ -51,25 +51,30 @@ describe("RetentionCompactionDemo", () => {
     expect(screen.queryByTestId("entry-2")).not.toBeInTheDocument();
   });
 
-  it("a latest tombstone in a closed segment is retained for delete.retention.ms, then removed", async () => {
+  it("the tombstone retention clock starts when it is produced, not at the first compaction", async () => {
     const user = userEvent.setup();
     render(<RetentionCompactionDemo />);
     await user.click(screen.getByRole("button", { name: "compact" }));
 
+    // advance time *before* producing the tombstone
+    await user.click(screen.getByRole("button", { name: "time advances →" }));
+    await user.click(screen.getByRole("button", { name: "time advances →" }));
+
     await produceKey(user, "a", 2); // offsets 5, 6
     await user.click(screen.getByRole("button", { name: "produce tombstone →" })); // offset 7, key a
-    await produceKey(user, "b"); // offset 8 -> pushes segment 1 (4-7) closed
+    await produceKey(user, "b"); // offset 8 -> segment 1 (4-7) closed
+    expect(screen.getByText(/its delete\.retention\.ms clock starts now \(tick 2\)/)).toBeInTheDocument();
 
+    // one compaction while still inside the window (clock 2, producedAt 2)
     await user.click(screen.getByRole("button", { name: "run compaction →" }));
-    // tombstone retained; raw replay still shows it, materialized state drops key a
     expect(raw()).toContain("a=∅");
     expect(state()).not.toContain("a=");
-    expect(screen.getByText(/retained until delete\.retention\.ms elapses/)).toBeInTheDocument();
+    expect(screen.getByText(/still inside delete\.retention\.ms/)).toBeInTheDocument();
 
+    // two more ticks put it past delete.retention.ms; next pass drops it
     await user.click(screen.getByRole("button", { name: "time advances →" }));
     await user.click(screen.getByRole("button", { name: "time advances →" }));
     await user.click(screen.getByRole("button", { name: "run compaction →" }));
-
     expect(screen.getByText(/removed 1 tombstone\(s\) past delete\.retention\.ms/)).toBeInTheDocument();
     expect(partitionLog().textContent).not.toContain("a=");
   });

@@ -55,13 +55,12 @@ export default function ReplicationFloorDemo() {
   function startBroker(id: BrokerId) {
     setS((prev) => {
       const broker = { ...prev.broker, [id]: "catching-up" as BrokerState };
-      // If the partition was fully offline, the first broker back becomes leader.
-      const leader = prev.leader ?? id;
+      // Leadership is never handed to a replica that is still catching up.
       const line =
         prev.leader === null
-          ? `broker-${id} restarted as the only replica up — it's leader, still catching up its own log.`
-          : `broker-${id} restarted — replicating the backlog from broker-${leader}. Not in the ISR yet.`;
-      return { ...prev, broker, leader, log: push(line, prev.log) };
+          ? `broker-${id} restarted — recovering its own log. The partition stays offline until a replica has caught up enough to lead.`
+          : `broker-${id} restarted — replicating the backlog from broker-${prev.leader}. Not in the ISR yet.`;
+      return { ...prev, broker, log: push(line, prev.log) };
     });
   }
 
@@ -69,6 +68,15 @@ export default function ReplicationFloorDemo() {
     setS((prev) => {
       if (prev.broker[id] !== "catching-up") return prev;
       const broker = { ...prev.broker, [id]: "in-sync" as BrokerState };
+      // The first replica back after a full outage becomes leader only now that it's in sync.
+      if (prev.leader === null) {
+        return {
+          ...prev,
+          broker,
+          leader: id,
+          log: push(`broker-${id} caught up and took leadership — the partition is back online. ISR {${id}}`, prev.log),
+        };
+      }
       return {
         ...prev,
         broker,
