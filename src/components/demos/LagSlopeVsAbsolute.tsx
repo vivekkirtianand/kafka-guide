@@ -80,7 +80,10 @@ export default function LagSlopeVsAbsolute() {
     } else {
       verdict = "Step the clock to watch how each partition's lag moves — the slope, not just the number.";
     }
-  } else if (stuck && !overCap) {
+  } else if (stuck && overCap) {
+    tone = "danger";
+    verdict = `Two independent problems, two different slopes. Partition 0 is stuck — it climbs at the full ${produce} records/s produce rate. Partitions 1 and 2 climb more slowly, by produce minus the ${CONSUME_CAP} records/s ceiling, because production alone outpaces consumption. Fixing the stuck consumer does nothing for the under-provisioned partitions, and vice versa — treat them separately.`;
+  } else if (stuck) {
     tone = "danger";
     verdict =
       "The group total is rising, but the rise is entirely partition 0 — one consumer stuck retrying a bad record forever makes no progress there while the healthy partitions sit flat. A dashboard showing only group-total lag would still look like a slow, uniform slope. Always break lag down per partition.";

@@ -57,6 +57,19 @@ describe("LagSlopeVsAbsolute", () => {
     expect(verdict()).toMatch(/adding consumers won't help: you can't split a partition/);
   });
 
+  it("stuck + over-ceiling is two problems with two different slopes, not one uniform slope", async () => {
+    const user = userEvent.setup();
+    render(<LagSlopeVsAbsolute />);
+    fireEvent.change(rate(), { target: { value: "160" } });
+    await user.click(stuckToggle());
+    await user.click(advance());
+    // p0 climbs at the full 160/s (1,600 in 10s); p1/p2 only by 160−120 = 40/s (400)
+    expect(within(screen.getByTestId("lag-p0")).getByText(/lag 1,600/)).toBeInTheDocument();
+    expect(within(screen.getByTestId("lag-p1")).getByText(/lag 400 /)).toBeInTheDocument();
+    expect(verdict()).toMatch(/Two independent problems, two different slopes/);
+    expect(verdict()).toMatch(/Partition 0 is stuck — it climbs at the full 160 records\/s/);
+  });
+
   it("locks the produce rate once the clock has started", async () => {
     const user = userEvent.setup();
     render(<LagSlopeVsAbsolute />);

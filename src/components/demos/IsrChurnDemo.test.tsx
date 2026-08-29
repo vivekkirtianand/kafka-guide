@@ -31,6 +31,8 @@ describe("IsrChurnDemo", () => {
     expect(removed(1)).toMatch(/removed 0×/);
     expect(verdict()).toMatch(/meters fire on brokers 1 and 2/);
     expect(verdict()).toMatch(/removed every single time is broker-3/);
+    // the removed-replica tally is a derived signal, not a live partition field
+    expect(screen.getByText(/derived from ISR-snapshot diffs \/ shrink log lines, not a live field/)).toBeInTheDocument();
   });
 
   it("the saturated-fabric scenario spreads the removed replica across the cluster", async () => {

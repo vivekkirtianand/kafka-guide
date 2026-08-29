@@ -157,7 +157,7 @@ const SCENARIOS: Scenario[] = [
     ),
     cause: "consumer",
     explain:
-      "Lag is climbing while the broker, network, disk, and the downstream call (25 ms) are all healthy. Poll processing time (380 s) has crossed max.poll.interval.ms (300 s), so the group rebalances every cycle and barely makes progress. This is the consumer's own loop — too much work per poll, or fewer consumers than partitions. Raise the interval, cut max.poll.records, or add consumers.",
+      "Lag is climbing while the broker, network, disk, and the downstream call (25 ms) are all healthy. Poll processing time (380 s) has crossed max.poll.interval.ms (300 s): a dynamic member is dropped and the group rebalances every cycle; a static member (group.instance.id) keeps its partitions until the session timeout, but either way it isn't polling, so it barely makes progress. This is the consumer's own loop — too much work per poll, or fewer consumers than partitions. Raise the interval, cut max.poll.records, or add consumers.",
   },
   {
     brief: "Page: consumer group lag climbing. The owning team says the consumers look fine.",

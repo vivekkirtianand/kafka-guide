@@ -7,9 +7,11 @@ import Badge from "@/components/Badge";
 // (ReplicaManager, per broker) are incremented by the broker LEADING the affected
 // partition when it drops or re-adds a replica — never by the follower that fell
 // behind. So a single slow follower lights up the meters of the brokers that lead
-// its partitions. To localize, you have to look at WHICH replica was removed
-// (ISR membership / kafka-topics --describe), not the broker-level counters.
-// The demo steps a one-minute clock and accumulates the events.
+// its partitions. To localize you need the WHICH-replica-left signal, which is not
+// a current partition-state field — the ISR shows full again once the replica
+// rejoins. It's derived: diff frequent ISR snapshots, or parse the controller /
+// broker logs for the shrink lines. The demo steps a one-minute clock and
+// accumulates both the meters and that derived tally.
 
 const BROKERS = [1, 2, 3, 4] as const;
 const MAX_STEPS = 6;
@@ -186,8 +188,9 @@ export default function IsrChurnDemo() {
         Simplified for teaching — four brokers, a fixed partition layout, a one-minute clock you step by hand, and
         every fallen-behind follower rejoins within the same minute. What carries over: the IsrShrinks / IsrExpands
         meters are incremented by the <em>leader</em> of the affected partition, not by the follower that lagged — so
-        one slow broker lights up its <em>leaders&apos;</em> meters. To localize, look at which replica was removed
-        from the ISR, not at which broker&apos;s meter moved.
+        one slow broker lights up its <em>leaders&apos;</em> meters. To localize you need which replica keeps
+        leaving the ISR — not a live field (the ISR reads full again once it rejoins), but derived by diffing
+        frequent ISR snapshots or parsing the controller/broker shrink log lines.
       </p>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -267,7 +270,7 @@ export default function IsrChurnDemo() {
       </div>
 
       <div className="mb-2 font-mono text-[10px] uppercase tracking-wide text-text-faint">
-        Replica removed from the ISR — from partition state, not a meter
+        Replica removed from the ISR — derived from ISR-snapshot diffs / shrink log lines, not a live field
       </div>
       <div data-testid="isrc-removed" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {BROKERS.map((b) => {

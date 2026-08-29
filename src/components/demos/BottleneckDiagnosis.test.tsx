@@ -49,6 +49,7 @@ describe("BottleneckDiagnosis", () => {
     await user.click(cause("Consumer application"));
     expect(screen.getByText("correct")).toBeInTheDocument();
     expect(feedback()).toMatch(/crossed max\.poll\.interval\.ms/);
+    expect(feedback()).toMatch(/a static member \(group\.instance\.id\) keeps its partitions until the session timeout/);
 
     await user.click(dashboard(6));
     expect(screen.queryByTestId("bd-feedback")).not.toBeInTheDocument(); // pick reset on switch
