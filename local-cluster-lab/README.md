@@ -214,9 +214,9 @@ docker compose down -v     # also remove data volumes (fresh cluster next time)
   `kafka-storage.sh random-uuid`) so all three brokers agree on cluster identity across
   restarts. Only regenerate it if you want a genuinely fresh cluster instead of reusing
   the data volumes.
-- `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` is intentional — the point of activity 1 is to
-  create topics explicitly and see the replica/ISR assignment Kafka makes, which
-  auto-creation would hide.
+- `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` is intentional — topic creation and its
+  settings (partitions, replication factor, configs) stay deliberate, and a mistyped
+  topic name fails loudly instead of silently spawning a topic with broker defaults.
 - Ports `29092`–`29094` (not the usual `9092`) are used for the host-facing listener so the
   lab doesn't collide with a Kafka broker you might already have running locally.
 - Every published port is bound to `127.0.0.1` explicitly (`"127.0.0.1:PORT:PORT"`, not

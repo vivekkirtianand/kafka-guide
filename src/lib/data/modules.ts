@@ -210,6 +210,160 @@ export const modules: Module[] = [
       "Metrics collection with Prometheus and Grafana",
       "Optional Schema Registry and Kafka Connect",
     ],
+    topicDetail: {
+      "Three Kafka brokers in KRaft mode": {
+        summary:
+          "Three Apache Kafka 4.0.2 nodes, each also a KRaft controller — no ZooKeeper. The smallest cluster where replication and leader election behave like production.",
+        configs: ["min.insync.replicas"],
+        points: [
+          {
+            term: "Why three",
+            detail:
+              "The lab defaults topics to 3 partitions, replication factor 3, min.insync.replicas=2 — so one broker can go down and acks=all writes still succeed.",
+          },
+          {
+            term: "Combined mode",
+            detail:
+              "Each container is a broker and a KRaft controller at once. Fine for a lab; production usually runs controllers as separate nodes.",
+          },
+          {
+            term: "Pinned to 4.0.2",
+            detail:
+              "Not 4.0.0 or 4.0.1 — those carry CVE-2026-35554, a producer buffer-pool race that can silently corrupt or misroute records.",
+          },
+          {
+            term: "Reachable from the host",
+            detail:
+              "localhost:29092, :29093, :29094 — deliberately not the usual 9092, so the lab doesn't collide with a Kafka broker you might already run locally.",
+          },
+        ],
+        watchOut:
+          "Auto topic creation is turned off on purpose — topic creation and its settings (partitions, replication factor, configs) stay deliberate, and a mistyped topic name fails instead of silently spawning a topic with broker defaults.",
+      },
+      "Kafka CLI tools": {
+        summary:
+          "The standard kafka-*.sh scripts, run via docker exec into a broker container — no local Kafka install needed.",
+        points: [
+          {
+            term: "How you run them",
+            detail:
+              "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh …, pointed at the in-network listener kafka-1:19092. Any healthy broker works as the entry point.",
+          },
+          {
+            term: "The ones the labs use",
+            detail:
+              "kafka-topics.sh (create / describe), kafka-console-producer.sh and kafka-console-consumer.sh, kafka-consumer-groups.sh (offsets and lag), kafka-configs.sh (dynamic config).",
+          },
+          {
+            term: "--describe is the workhorse",
+            detail:
+              "kafka-topics.sh --describe prints each partition's leader, full replica set, and ISR — the three columns that move when you stop a broker.",
+          },
+        ],
+        watchOut:
+          "The host-facing bootstrap (localhost:29092…) and the in-container one (kafka-1:19092) are different listeners — CLI run inside a container must use the latter.",
+      },
+      "A simple producer and consumer": {
+        summary:
+          "The console producer and consumer — the fastest way to watch keys, partitions, and offsets behave.",
+        points: [
+          {
+            term: "Without a key",
+            detail:
+              "Records spread across partitions batch-wise, with no ordering guarantee between them.",
+          },
+          {
+            term: "With a key",
+            detail:
+              "--property parse.key=true --property key.separator=: — the same key always maps to the same partition, so records sharing a key stay ordered.",
+          },
+          {
+            term: "Seeing where records landed",
+            detail:
+              "Consume with --property print.key=true --property print.partition=true to watch the key-to-partition mapping.",
+          },
+          {
+            term: "A named group",
+            detail:
+              "--group order-processors makes the consumer commit offsets, so you can describe and reset them afterward.",
+          },
+        ],
+      },
+      "Kafka UI": {
+        summary:
+          "provectuslabs/kafka-ui at localhost:8080 — browse topics, partitions, messages, and consumer groups without the CLI.",
+        points: [
+          {
+            term: "What it shows",
+            detail:
+              "Topic detail with per-partition leader and ISR, a message browser, and consumer-group lag — the same data as kafka-topics.sh --describe and kafka-consumer-groups.sh, rendered visually.",
+          },
+          {
+            term: "You can also write through it",
+            detail:
+              "Create topics, produce messages, and edit dynamic config from the UI.",
+          },
+        ],
+        watchOut:
+          "No authentication — bound to 127.0.0.1 for local-only use, and its dynamic-config editing is unauthenticated too.",
+      },
+      "Metrics collection with Prometheus and Grafana": {
+        summary:
+          "kafka-exporter feeds Prometheus, Grafana renders a pre-provisioned dashboard. No JMX agent needed.",
+        points: [
+          {
+            term: "kafka-exporter",
+            detail:
+              "Translates cluster and consumer-group state into Prometheus kafka_* metrics without a JMX agent. Prometheus scrapes it every 10s.",
+          },
+          {
+            term: "Prometheus",
+            detail:
+              "localhost:9090 — useful for ad-hoc queries against the raw kafka_* metrics.",
+          },
+          {
+            term: "Grafana",
+            detail:
+              "localhost:3001, anonymous access (admin role, local lab). Dashboards → \"Kafka lab overview\": brokers reporting, under-replicated partitions, consumer-group lag by group, per-topic write rate, and in-sync vs total replicas per partition.",
+          },
+          {
+            term: "The lag panel vs the CLI",
+            detail:
+              "It graphs total lag per consumer group and topic over time — the CLI's LAG column summed across partitions. CURRENT-OFFSET, LOG-END-OFFSET, and the per-partition breakdown stay CLI-only.",
+          },
+        ],
+        watchOut:
+          "kafka-exporter surfaces cluster and consumer-group state, not JVM internals — no heap, GC, or request-handler metrics. Those need a JMX exporter, which this lab skips.",
+      },
+      "Optional Schema Registry and Kafka Connect": {
+        summary:
+          "Off by default; bring them up with the extras profile when a lab needs schemas or connectors.",
+        points: [
+          {
+            term: "How to enable",
+            detail:
+              "docker compose --profile extras up -d.",
+          },
+          {
+            term: "Schema Registry (localhost:8081)",
+            detail:
+              "Stores Avro / Protobuf / JSON schemas and enforces compatibility, so producers and consumers agree on record shape.",
+          },
+          {
+            term: "Kafka Connect (localhost:8083)",
+            detail:
+              "A REST API that runs source and sink connectors to move data between Kafka and external systems without writing a producer or consumer.",
+          },
+          {
+            term: "Why off by default",
+            detail:
+              "Keeps the base lab light — they're only needed for the schema and connector topics.",
+          },
+        ],
+        watchOut:
+          "Both REST APIs are unauthenticated and bound to 127.0.0.1 — local use only.",
+      },
+    },
     activities: [
       "Create and inspect topics",
       "Produce records with and without keys",
