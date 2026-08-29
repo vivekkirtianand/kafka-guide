@@ -862,7 +862,7 @@ export const modules: Module[] = [
           {
             term: "replication.factor",
             detail:
-              "The number of copies of each partition, on that many distinct brokers. 3 is the common production choice — it survives one broker loss with a majority intact. Set per topic at creation, or defaulted by default.replication.factor.",
+              "The number of copies of each partition, on that many distinct brokers. Partitions use a leader plus its ISR, not quorum voting (that's KRaft metadata). 3 is the common production choice: lose one broker and two replicas remain — enough for min.insync.replicas=2 to keep acks=all writes flowing, as long as those survivors are in sync. Set per topic at creation, or via default.replication.factor.",
           },
           {
             term: "min.insync.replicas",
@@ -1102,7 +1102,7 @@ export const modules: Module[] = [
           },
         ],
         watchOut:
-          "Rack awareness only affects new assignments. Adding broker.rack to a running cluster doesn't move existing replicas — that needs a partition reassignment.",
+          "Rack-aware placement only affects new assignments — adding broker.rack to a running cluster won't spread existing replicas across racks without a partition reassignment. Rack-aware fetching, by contrast, starts working on existing partitions as soon as replica.selector.class and client.rack are set.",
       },
       "Automatic topic creation and defaults": {
         summary:
@@ -1212,9 +1212,9 @@ export const modules: Module[] = [
               "An overloaded or slow-disk broker, a saturated inter-broker network, or a GC-pausing follower. Churn is the early warning before under-replication becomes chronic.",
           },
           {
-            term: "It's almost always one broker",
+            term: "Localize it first",
             detail:
-              "ISR churn localizes to the broker whose followers keep falling behind, or that leads a partition producing faster than followers can fetch.",
+              "Often it's one broker — the one whose followers keep falling behind, or that leads a hot partition. But shared causes (a saturated network fabric, a common storage backend, correlated GC under a load spike) churn ISRs across many brokers at once. Check whether it's one broker or several before diagnosing.",
           },
         ],
         watchOut:
@@ -1273,7 +1273,7 @@ export const modules: Module[] = [
           {
             term: "Capacity",
             detail:
-              "Kafka writes until the disk is full, then the affected log directory goes offline — taking that broker's replicas of those partitions with it, not the partitions themselves. They stay available as long as another in-sync replica survives. Alert on free space with enough headroom to act; retention won't free it fast enough.",
+              "Kafka writes until the disk is full, then the affected log directory goes offline — taking that broker's replicas of those partitions with it, not the partitions themselves. Reads and acks=1 writes continue from a surviving replica, but acks=all writes still fail if the remaining ISR drops below min.insync.replicas. Alert on free space with enough headroom to act; retention won't free it fast enough.",
           },
           {
             term: "Latency",
@@ -1301,7 +1301,7 @@ export const modules: Module[] = [
           {
             term: "BytesInPerSec / BytesOutPerSec",
             detail:
-              "Per-broker and per-topic. Compare the total against the NIC line rate; sustained use above ~70% is where latency climbs.",
+              "Per-broker and per-topic; compare against the NIC's usable line rate. There's no universal safe percentage — pair it with retransmits, drops, and queue depth, and set a headroom target tested for your environment. Latency climbing as byte rate climbs is the real tell.",
           },
           {
             term: "Replication traffic is separate",
