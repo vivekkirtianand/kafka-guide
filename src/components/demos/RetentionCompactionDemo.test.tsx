@@ -56,8 +56,9 @@ describe("RetentionCompactionDemo", () => {
     render(<RetentionCompactionDemo />);
     await user.click(screen.getByRole("button", { name: "compact" }));
 
-    // advance time *before* producing the tombstone
+    // advance time *before* producing the tombstone — the window stays fixed
     await user.click(screen.getByRole("button", { name: "time advances →" }));
+    expect(screen.getByText(/clock advanced to tick 1\. delete\.retention\.ms stays 2 ticks/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "time advances →" }));
 
     await produceKey(user, "a", 2); // offsets 5, 6

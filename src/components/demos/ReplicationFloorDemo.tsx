@@ -14,6 +14,11 @@ interface State {
   broker: Record<BrokerId, BrokerState>;
   leader: BrokerId | null;
   minISR: 1 | 2 | 3;
+  unclean: boolean; // unclean.leader.election.enable
+  // The ISR as of the last moment it was non-empty — the replicas that can lead
+  // without losing acknowledged data.
+  lastISR: BrokerId[];
+  dataLoss: boolean; // an unclean election has happened
   log: string[];
 }
 
@@ -21,6 +26,9 @@ const INITIAL: State = {
   broker: { 1: "in-sync", 2: "in-sync", 3: "in-sync" },
   leader: 1,
   minISR: 2,
+  unclean: false,
+  lastISR: [1, 2, 3],
+  dataLoss: false,
   log: ["partition-0 · replication.factor 3 · leader broker-1 · ISR {1, 2, 3}"],
 };
 
@@ -36,19 +44,20 @@ export default function ReplicationFloorDemo() {
   function stopBroker(id: BrokerId) {
     setS((prev) => {
       const broker = { ...prev.broker, [id]: "down" as BrokerState };
+      const nextISR = isr(broker);
+      const lastISR = nextISR.length > 0 ? nextISR : prev.lastISR;
       let leader = prev.leader;
       let line: string;
       if (prev.leader === id) {
-        const candidates = isr(broker);
-        leader = candidates.length > 0 ? candidates[0] : null;
+        leader = nextISR.length > 0 ? nextISR[0] : null;
         line =
           leader !== null
-            ? `broker-${id} (leader) stopped — controller elects broker-${leader} from the ISR {${isr(broker).join(", ")}}.`
-            : `broker-${id} stopped — no in-sync replica left, partition is offline.`;
+            ? `broker-${id} (leader) stopped — controller elects broker-${leader} from the ISR {${nextISR.join(", ")}}.`
+            : `broker-${id} stopped — no in-sync replica left. Partition offline; last ISR was {${lastISR.join(", ")}}.`;
       } else {
-        line = `broker-${id} stopped — drops out of the ISR {${isr(broker).join(", ")}}.`;
+        line = `broker-${id} stopped — drops out of the ISR {${nextISR.join(", ")}}.`;
       }
-      return { ...prev, broker, leader, log: push(line, prev.log) };
+      return { ...prev, broker, leader, lastISR, log: push(line, prev.log) };
     });
   }
 
@@ -68,20 +77,52 @@ export default function ReplicationFloorDemo() {
     setS((prev) => {
       if (prev.broker[id] !== "catching-up") return prev;
       const broker = { ...prev.broker, [id]: "in-sync" as BrokerState };
-      // The first replica back after a full outage becomes leader only now that it's in sync.
-      if (prev.leader === null) {
+      const nextISR = isr(broker);
+
+      // Partial recovery — the partition still has a leader.
+      if (prev.leader !== null) {
+        return {
+          ...prev,
+          broker,
+          lastISR: nextISR,
+          log: push(
+            `broker-${id} caught up — rejoined the ISR {${nextISR.join(", ")}}. Leadership stays with broker-${prev.leader}.`,
+            prev.log,
+          ),
+        };
+      }
+
+      // Full outage — leadership goes only to a replica from the last ISR.
+      if (prev.lastISR.includes(id)) {
         return {
           ...prev,
           broker,
           leader: id,
-          log: push(`broker-${id} caught up and took leadership — the partition is back online. ISR {${id}}`, prev.log),
+          lastISR: nextISR,
+          log: push(
+            `broker-${id} caught up and took leadership — it was in the last ISR {${prev.lastISR.join(", ")}}, so no acknowledged data is lost. Partition back online.`,
+            prev.log,
+          ),
+        };
+      }
+      if (prev.unclean) {
+        return {
+          ...prev,
+          broker,
+          leader: id,
+          dataLoss: true,
+          lastISR: nextISR,
+          log: push(
+            `unclean leader election — broker-${id} was NOT in the last ISR {${prev.lastISR.join(", ")}}, so it leads from behind. Records that only those replicas held are lost.`,
+            prev.log,
+          ),
         };
       }
       return {
         ...prev,
         broker,
         log: push(
-          `broker-${id} caught up — rejoined the ISR {${isr(broker).join(", ")}}. Leadership stays with broker-${prev.leader}.`,
+          `broker-${id} caught up but was not in the last ISR {${prev.lastISR.join(", ")}}. With unclean.leader.election.enable=false it can't lead — the partition stays offline until a last-ISR replica is back.`,
           prev.log,
         ),
       };
@@ -90,6 +131,14 @@ export default function ReplicationFloorDemo() {
 
   function setMinISR(v: 1 | 2 | 3) {
     setS((prev) => ({ ...prev, minISR: v, log: push(`min.insync.replicas set to ${v}.`, prev.log) }));
+  }
+
+  function toggleUnclean() {
+    setS((prev) => ({
+      ...prev,
+      unclean: !prev.unclean,
+      log: push(`unclean.leader.election.enable set to ${!prev.unclean}.`, prev.log),
+    }));
   }
 
   function produce(acks: "1" | "all") {
@@ -176,7 +225,8 @@ export default function ReplicationFloorDemo() {
         Simplified for teaching — one partition, replication factor 3, and catch-up is a button rather than a
         function of how far behind the follower is. What carries over: acks=all waits for the whole current ISR,
         min.insync.replicas is the floor below which the write is refused, a restarted broker replicates the backlog
-        before rejoining the ISR, and it does not take leadership back on its own.
+        before rejoining the ISR, and after a full outage only a replica from the last ISR can lead without
+        unclean.leader.election.enable and the data loss it implies.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -194,6 +244,16 @@ export default function ReplicationFloorDemo() {
             {v}
           </button>
         ))}
+        <button
+          onClick={toggleUnclean}
+          className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
+            s.unclean
+              ? "border-danger/50 bg-danger-soft text-danger"
+              : "border-border-soft bg-bg-inset text-text-muted hover:border-danger/40"
+          }`}
+        >
+          unclean.leader.election.enable={String(s.unclean)}
+        </button>
       </div>
 
       <div data-testid="brokers" className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -258,6 +318,7 @@ export default function ReplicationFloorDemo() {
           ISR {`{${inSync.join(", ")}}`} · leader {s.leader === null ? "none" : `broker-${s.leader}`}
         </span>
         <Badge tone={badgeTone}>{badgeLabel}</Badge>
+        {s.dataLoss && <Badge tone="danger">unclean election — data lost</Badge>}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-3">
@@ -275,7 +336,10 @@ export default function ReplicationFloorDemo() {
         </button>
       </div>
 
-      <div className="rounded-md border border-border-soft bg-bg-inset p-3 font-mono text-[11px] leading-relaxed text-text-muted">
+      <div
+        data-testid="event-log"
+        className="rounded-md border border-border-soft bg-bg-inset p-3 font-mono text-[11px] leading-relaxed text-text-muted"
+      >
         {s.log.map((line, i) => (
           <div key={i} className={i === 0 ? "text-text" : ""}>
             {line}

@@ -80,7 +80,7 @@ export default function RetentionCompactionDemo() {
 
   function advanceTime() {
     setClock((c) => c + 1);
-    push(`time advances — delete.retention.ms window is now ${clock + 1} tick(s) wide.`);
+    push(`clock advanced to tick ${clock + 1}. delete.retention.ms stays ${DELETE_RETENTION_TICKS} ticks.`);
   }
 
   function ageOutSegment() {

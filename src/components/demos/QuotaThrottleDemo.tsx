@@ -54,9 +54,9 @@ export default function QuotaThrottleDemo() {
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — the throttle delay is a rough function of how far over quota the client is, and
         request.timeout.ms is scaled down to the same range. What carries over: a quota is enforced by
-        <em> delaying the client&apos;s responses</em>, not by failing them; producer_byte_rate (throughput) and
-        request_percentage (combined network + I/O thread time) are separate limits; and a throttle pause that
-        outlasts the client&apos;s own request.timeout.ms still surfaces as a client-side timeout.
+        <em> delaying the client&apos;s responses</em>, never by failing them; producer_byte_rate (throughput) and
+        request_percentage (combined network + I/O thread time) are separate limits; and a throttle pause longer
+        than request.timeout.ms makes each attempt time out and retry — the final verdict is delivery.timeout.ms.
       </p>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -161,16 +161,23 @@ export default function QuotaThrottleDemo() {
         <p className="mt-2">
           {throttled
             ? isBandwidth
-              ? `The client wants ${produceRate} MB/s but the quota is ${BYTE_QUOTA} MB/s. The broker holds each response back ~${delay} ms so the measured average settles at ${BYTE_QUOTA} MB/s. The sends still succeed — only produce-throttle-time-avg tells you this apart from a slow cluster.`
-              : `The client is asking for ${requestLoadPct}% of a network + I/O thread against a ${REQUEST_QUOTA_PCT}% quota. Responses are delayed ~${delay} ms to cap its share. No request fails — a metadata storm behind a request quota looks like latency, not errors.`
+              ? `The client wants ${produceRate} MB/s but the quota is ${BYTE_QUOTA} MB/s. The broker holds each response back ~${delay} ms so the measured average settles at ${BYTE_QUOTA} MB/s. The broker never rejects — only produce-throttle-time-avg tells this apart from a slow cluster.`
+              : `The client is asking for ${requestLoadPct}% of a network + I/O thread against a ${REQUEST_QUOTA_PCT}% quota. Responses are delayed ~${delay} ms to cap its share. The broker never rejects — a metadata storm behind a request quota looks like latency, not errors.`
             : isBandwidth
               ? `At ${produceRate} MB/s the client is under the ${BYTE_QUOTA} MB/s quota — nothing is throttled, no latency added.`
               : `At ${requestLoadPct}% the client is within the ${REQUEST_QUOTA_PCT}% quota — no throttling.`}
         </p>
+        {throttled && !wouldTimeOut && (
+          <p className="mt-2">
+            The ~{delay} ms pause stays under request.timeout.ms ({requestTimeoutMs} ms), so each send just runs
+            slower and still completes.
+          </p>
+        )}
         {wouldTimeOut && (
           <p data-testid="timeout-note" className="mt-2 text-danger">
-            The ~{delay} ms throttle pause exceeds this client&apos;s request.timeout.ms ({requestTimeoutMs} ms), so
-            the request times out client-side — even though the broker only delayed, never rejected.
+            The ~{delay} ms pause exceeds this client&apos;s request.timeout.ms ({requestTimeoutMs} ms), so each
+            attempt times out and the producer retries. The send fails for good only if the retries run past
+            delivery.timeout.ms — the broker still only delayed, never rejected.
           </p>
         )}
       </div>

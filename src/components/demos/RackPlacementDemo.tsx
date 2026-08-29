@@ -22,6 +22,9 @@ interface State {
   leader: number | null;
   brokerState: Record<number, BrokerState>;
   failedRacks: Set<Rack>; // tracked independently of which replicas are placed
+  unclean: boolean; // unclean.leader.election.enable
+  lastISR: number[]; // last non-empty ISR — the replicas that can lead safely
+  dataLoss: boolean;
   rackFetch: boolean;
   log: string[];
 }
@@ -39,6 +42,9 @@ const INITIAL: State = {
   leader: 1,
   brokerState: freshBrokerState([1, 3, 5]),
   failedRacks: new Set<Rack>(),
+  unclean: false,
+  lastISR: [1, 3, 5],
+  dataLoss: false,
   rackFetch: false,
   log: ["broker.rack set · replicas b1 (A), b3 (B), b5 (C) · consumer in rack C"],
 };
@@ -85,6 +91,7 @@ export default function RackPlacementDemo() {
         replicas,
         leader,
         brokerState,
+        lastISR: isr.length > 0 ? isr : prev.lastISR,
         log: push(
           `partition reassigned — replicas ${replicas.map((b) => `b${b} (${BROKER_RACK[b]})`).join(", ")}.${downNote}`,
           prev.log,
@@ -104,17 +111,18 @@ export default function RackPlacementDemo() {
         leader = prev.replicas.find((b) => brokerState[b] === "in-sync") ?? null;
       }
       const nextISR = prev.replicas.filter((b) => brokerState[b] === "in-sync");
+      const lastISR = nextISR.length > 0 ? nextISR : prev.lastISR;
       let line: string;
       if (hit.length === 0) {
         line = `rack ${rack} down — no replica of this partition lives there.`;
       } else if (nextISR.length === 0) {
-        line = `rack ${rack} down — no replica survives. Partition is offline.`;
+        line = `rack ${rack} down — no replica survives. Partition offline; last ISR was {b${lastISR.join(", b")}}.`;
       } else if (nextISR.length < MIN_ISR) {
         line = `rack ${rack} down — only ${nextISR.length} replica left (b${nextISR.join(", b")}). Below min.insync.replicas=${MIN_ISR}: reads continue, acks=all fails.`;
       } else {
         line = `rack ${rack} down — ${nextISR.length} replicas still in sync across racks ${[...new Set(nextISR.map((b) => BROKER_RACK[b]))].join(", ")}.`;
       }
-      return { ...prev, failedRacks, brokerState, leader, log: push(line, prev.log) };
+      return { ...prev, failedRacks, brokerState, leader, lastISR, log: push(line, prev.log) };
     });
   }
 
@@ -141,24 +149,62 @@ export default function RackPlacementDemo() {
       if (prev.brokerState[brokerId] !== "catching-up") return prev;
       const brokerState = { ...prev.brokerState, [brokerId]: "in-sync" as BrokerState };
       const nextISR = prev.replicas.filter((b) => brokerState[b] === "in-sync");
-      // First replica back after a full outage takes leadership now that it's in sync.
-      if (prev.leader === null) {
+
+      if (prev.leader !== null) {
+        return {
+          ...prev,
+          brokerState,
+          lastISR: nextISR,
+          log: push(
+            `b${brokerId} caught up — rejoined the ISR {b${nextISR.join(", b")}}. Leadership unchanged (b${prev.leader}).`,
+            prev.log,
+          ),
+        };
+      }
+
+      // Full outage — leadership only to a replica from the last ISR.
+      if (prev.lastISR.includes(brokerId)) {
         return {
           ...prev,
           brokerState,
           leader: brokerId,
-          log: push(`b${brokerId} caught up and took leadership — partition back online. ISR {b${nextISR.join(", b")}}`, prev.log),
+          lastISR: nextISR,
+          log: push(
+            `b${brokerId} caught up and took leadership — it was in the last ISR {b${prev.lastISR.join(", b")}}, so no acknowledged data is lost. Partition back online.`,
+            prev.log,
+          ),
+        };
+      }
+      if (prev.unclean) {
+        return {
+          ...prev,
+          brokerState,
+          leader: brokerId,
+          dataLoss: true,
+          lastISR: nextISR,
+          log: push(
+            `unclean leader election — b${brokerId} was NOT in the last ISR {b${prev.lastISR.join(", b")}}, so it leads from behind. Records only those replicas held are lost.`,
+            prev.log,
+          ),
         };
       }
       return {
         ...prev,
         brokerState,
         log: push(
-          `b${brokerId} caught up — rejoined the ISR {b${nextISR.join(", b")}}. Leadership unchanged (b${prev.leader}).`,
+          `b${brokerId} caught up but was not in the last ISR {b${prev.lastISR.join(", b")}}. With unclean.leader.election.enable=false it can't lead — the partition stays offline.`,
           prev.log,
         ),
       };
     });
+  }
+
+  function toggleUnclean() {
+    setS((prev) => ({
+      ...prev,
+      unclean: !prev.unclean,
+      log: push(`unclean.leader.election.enable set to ${!prev.unclean}.`, prev.log),
+    }));
   }
 
   function toggleRackFetch() {
@@ -226,6 +272,16 @@ export default function RackPlacementDemo() {
           }`}
         >
           rack-aware fetching {s.rackFetch ? "on" : "off"}
+        </button>
+        <button
+          onClick={toggleUnclean}
+          className={`rounded border px-3 py-1.5 font-mono text-[11px] transition-colors ${
+            s.unclean
+              ? "border-danger/50 bg-danger-soft text-danger"
+              : "border-border-soft bg-bg-inset text-text-muted hover:border-danger/40"
+          }`}
+        >
+          unclean.leader.election.enable={String(s.unclean)}
         </button>
         {configDrift && (
           <span data-testid="config-drift" className="font-mono text-[11px] text-accent">
@@ -321,6 +377,7 @@ export default function RackPlacementDemo() {
           <Badge tone={acksAllOk ? "success" : "danger"}>
             {acksAllOk ? "acks=all OK" : "acks=all failing"}
           </Badge>
+          {s.dataLoss && <Badge tone="danger">unclean election — data lost</Badge>}
         </div>
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-border-soft bg-bg-inset p-3">
           <span data-testid="fetch-status" className="font-mono text-[11px] text-text-muted">
@@ -330,7 +387,7 @@ export default function RackPlacementDemo() {
           </span>
           {fetchFrom !== null && (
             <Badge tone={crossRack ? "accent" : "success"}>
-              {crossRack ? "cross-rack transfer" : "same-rack, no transfer cost"}
+              {crossRack ? "cross-rack transfer" : "same-rack — no cross-rack transfer"}
             </Badge>
           )}
         </div>

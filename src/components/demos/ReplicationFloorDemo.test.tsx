@@ -3,8 +3,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ReplicationFloorDemo from "./ReplicationFloorDemo";
 
-const log = () => screen.getByText(/partition-0 · replication\.factor 3/).parentElement as HTMLElement;
-const firstLogLine = () => (log().firstElementChild as HTMLElement).textContent ?? "";
+const firstLogLine = () =>
+  (screen.getByTestId("event-log").firstElementChild as HTMLElement)?.textContent ?? "";
 const brokerBtn = (id: number, name: string | RegExp) =>
   within(screen.getByTestId(`broker-${id}`)).getByRole("button", { name });
 
@@ -83,19 +83,41 @@ describe("ReplicationFloorDemo", () => {
     const user = userEvent.setup();
     render(<ReplicationFloorDemo />);
 
+    // stop 1, then 2, then 3 — the last non-empty ISR is {3}
     await user.click(brokerBtn(1, "stop broker"));
     await user.click(brokerBtn(2, "stop broker"));
     await user.click(brokerBtn(3, "stop broker"));
     expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {} · leader none");
 
-    await user.click(brokerBtn(1, "start broker"));
-    // still no leader — no "leader + empty ISR"
+    await user.click(brokerBtn(3, "start broker"));
     expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {} · leader none");
     expect(screen.getByText("partition offline")).toBeInTheDocument();
-    expect(firstLogLine()).toMatch(/partition stays offline until a replica has caught up/);
 
+    await user.click(brokerBtn(3, "finish catch-up →"));
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {3} · leader broker-3");
+    expect(firstLogLine()).toMatch(/it was in the last ISR \{3\}, so no acknowledged data is lost/);
+  });
+
+  it("a replica outside the last ISR cannot lead unless unclean.leader.election.enable is set", async () => {
+    const user = userEvent.setup();
+    render(<ReplicationFloorDemo />);
+
+    await user.click(brokerBtn(1, "stop broker"));
+    await user.click(brokerBtn(2, "stop broker"));
+    await user.click(brokerBtn(3, "stop broker")); // last ISR was {3}
+
+    // broker-1 was not in {3}
+    await user.click(brokerBtn(1, "start broker"));
     await user.click(brokerBtn(1, "finish catch-up →"));
-    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {1} · leader broker-1");
-    expect(firstLogLine()).toMatch(/caught up and took leadership/);
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("ISR {1} · leader none");
+    expect(firstLogLine()).toMatch(/was not in the last ISR \{3\}.*can't lead/);
+
+    // enable unclean election, catch broker-2 (also not in {3}) — now it can lead, with data loss
+    await user.click(screen.getByRole("button", { name: /unclean\.leader\.election\.enable=false/ }));
+    await user.click(brokerBtn(2, "start broker"));
+    await user.click(brokerBtn(2, "finish catch-up →"));
+    expect(screen.getByTestId("isr-summary")).toHaveTextContent("leader broker-2");
+    expect(screen.getByText("unclean election — data lost")).toBeInTheDocument();
+    expect(firstLogLine()).toMatch(/unclean leader election.*Records that only those replicas held are lost/);
   });
 });

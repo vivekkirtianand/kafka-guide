@@ -37,11 +37,16 @@ describe("QuotaThrottleDemo", () => {
 
     // drop request.timeout.ms below the throttle delay -> the warning appears
     fireEvent.change(screen.getByLabelText("client request.timeout.ms"), { target: { value: "300" } });
-    expect(screen.getByTestId("timeout-note")).toHaveTextContent(/exceeds this client's request\.timeout\.ms \(300 ms\)/);
+    const note = screen.getByTestId("timeout-note");
+    expect(note).toHaveTextContent(/exceeds this client's request\.timeout\.ms \(300 ms\)/);
+    // request timeout triggers a retry; delivery.timeout.ms is the final verdict
+    expect(note).toHaveTextContent(/each attempt times out and the producer retries/);
+    expect(note).toHaveTextContent(/only if the retries run past delivery\.timeout\.ms/);
 
     // raise it back above the delay -> gone again
     fireEvent.change(screen.getByLabelText("client request.timeout.ms"), { target: { value: "1500" } });
     expect(screen.queryByTestId("timeout-note")).not.toBeInTheDocument();
+    expect(screen.getByText(/stays under request\.timeout\.ms.*still completes/)).toBeInTheDocument();
   });
 
   it("the request quota is combined network + I/O thread time, throttled the same way", async () => {
