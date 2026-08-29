@@ -1083,7 +1083,7 @@ export const modules: Module[] = [
       "Rack awareness": {
         summary:
           "Tell each broker its failure domain so a partition's replicas are spread across domains rather than stacked in one.",
-        configs: ["broker.rack", "replica.selector.class"],
+        configs: ["broker.rack", "replica.selector.class", "client.rack"],
         points: [
           {
             term: "broker.rack",
@@ -1098,7 +1098,7 @@ export const modules: Module[] = [
           {
             term: "Rack-aware fetching",
             detail:
-              "With replica.selector.class set to the rack-aware selector, a consumer can fetch from an in-sync follower in its own rack instead of the leader — cutting cross-zone transfer cost.",
+              "Two settings, both required: the broker's replica.selector.class set to the rack-aware selector, and each consumer's client.rack set to its zone. The consumer can then fetch from an in-sync follower in its own rack instead of the leader, cutting cross-zone transfer cost.",
           },
         ],
         watchOut:
@@ -1204,12 +1204,12 @@ export const modules: Module[] = [
           {
             term: "IsrShrinksPerSec / IsrExpandsPerSec",
             detail:
-              "A shrink means a follower fell behind replica.lag.time.max.ms; an expand means it caught back up. Occasional pairs under load spikes are normal.",
+              "A shrink means a follower fell behind replica.lag.time.max.ms; an expand means it caught back up. One pair around an isolated event — a broker restart, a brief network blip — is expected. Repeated shrink/expand under normal load is not: it means a follower that can't sustain the load.",
           },
           {
-            term: "Frequent churn means trouble",
+            term: "What's behind it",
             detail:
-              "A follower that repeatedly can't keep up — an overloaded or slow-disk broker, saturated inter-broker network, a GC-pausing follower. It's an early warning before under-replication becomes chronic.",
+              "An overloaded or slow-disk broker, a saturated inter-broker network, or a GC-pausing follower. Churn is the early warning before under-replication becomes chronic.",
           },
           {
             term: "It's almost always one broker",
@@ -1264,7 +1264,7 @@ export const modules: Module[] = [
           },
         ],
         watchOut:
-          "A low, steady NOT_LEADER_OR_FOLLOWER rate is normal churn; a sustained spike means metadata isn't propagating — look at the controller.",
+          "NOT_LEADER_OR_FOLLOWER should be a brief burst around a leader election, then back to zero. A continuous low rate is not background noise — clients are persistently acting on stale metadata, so check metadata propagation and the controller.",
       },
       "Disk usage and disk latency": {
         summary:
@@ -1273,7 +1273,7 @@ export const modules: Module[] = [
           {
             term: "Capacity",
             detail:
-              "Kafka writes until the disk is full, then the affected log directory goes offline and its partitions with it. Alert on free space with enough headroom to act — retention won't free space fast enough.",
+              "Kafka writes until the disk is full, then the affected log directory goes offline — taking that broker's replicas of those partitions with it, not the partitions themselves. They stay available as long as another in-sync replica survives. Alert on free space with enough headroom to act; retention won't free it fast enough.",
           },
           {
             term: "Latency",
@@ -1296,7 +1296,7 @@ export const modules: Module[] = [
           {
             term: "Where the bytes go",
             detail:
-              "Each record is written once by the producer, then copied to every other replica over the inter-broker network — replication.factor − 1 more times, regardless of acks (acks only controls whether the producer waits). Reads add one copy per consumer group, not per consumer. RF 3 with 3 independent groups is roughly 3x in and 3x out.",
+              "Each record enters the cluster once from the producer, then each follower fetches it to replicate (replication.factor − 1 copies — regardless of acks; acks only controls whether the producer waits). On the read side each consumer group fetches it once, not each consumer. Cluster-wide with RF 3 and 3 consumer groups: roughly 3x the produce rate inbound (1 produce + 2 replication fetches) and 5x outbound (2 replication sends + 3 group reads).",
           },
           {
             term: "BytesInPerSec / BytesOutPerSec",
@@ -1402,7 +1402,7 @@ export const modules: Module[] = [
           },
         ],
         watchOut:
-          "A crashed log-cleaner thread is silent: every compacted topic (including __consumer_offsets) just stops compacting and grows. Alert on max-dirty-percent and on the cleaner thread being alive.",
+          "A crashed cleaner thread is silent. With the default log.cleaner.threads=1 it stops compaction entirely — every compacted topic (including __consumer_offsets) just grows; with more threads it only cuts throughput. Alert on max-dirty-percent and on live cleaner threads.",
       },
     },
     activities: [
