@@ -223,6 +223,22 @@ verified rendering and interacting in-browser.
 | [P2] The removed-replica tally read as directly observable — Kafka exposes only the *current* ISR; `kafka-topics --describe` after a replica rejoins shows a full ISR and can't reconstruct the removal | ✅ Done | `IsrChurnDemo`'s section header, disclaimer, and source comment now label it a derived signal: diff frequent ISR snapshots, or parse the controller/broker shrink log lines. |
 | [P2] The consumer diagnosis assumed dynamic membership — exceeding `max.poll.interval.ms` doesn't immediately reassign a *static* member's partitions; they hold until the session timeout | ✅ Done | `BottleneckDiagnosis` dashboard 5's explain now splits the two paths (dynamic member dropped and rebalancing every cycle vs. static member holding its partitions to the session timeout), consistent with Module 4; either way the consumer isn't polling. |
 
+## Module 7 — Troubleshooting scenarios
+
+Module 7's plan describes it as "a searchable symptom → evidence → cause → resolution
+catalog" — which is exactly what the standalone [/troubleshooting](src/app/troubleshooting/page.tsx)
+page already was, in skeleton form. Rather than duplicate that content as module prose, PR
+#12 **enriched the shared catalog** and pointed the module page at it, so both surfaces
+improve together and there's one source of truth.
+
+| Item | Status | Notes |
+|---|---|---|
+| `TroubleshootingEntry` enriched | ✅ Done | [types.ts](src/lib/types.ts) — each cause is now a `{ cause, evidence }` pair (the specific metric, log line, or command output that confirms or rules it out, not "check the logs"), plus an `overview` framing sentence, optional `keyConfigs` chips, and a `watchOut` — the durability setting you could lower to make the error vanish while making the system worse. |
+| All 10 entries written to full depth | ✅ Done | [troubleshooting.ts](src/lib/data/troubleshooting.ts) — consumer lag, frequent rebalances, NOT_ENOUGH_REPLICAS (incl. the before-append vs. `_AFTER_APPEND` distinction), under-replicated partitions (incl. the stale-replication-throttle cause), timeout errors (each timeout named by its config + exception), disk usage growth, large-message failures (the four independent size limits), hot partitions, data/duplicates/ordering (three separate diagnostic paths), connectivity/auth (bootstrap vs. after-bootstrap split). |
+| `TroubleshootingCatalog` component | ✅ Done | [TroubleshootingCatalog.tsx](src/components/TroubleshootingCatalog.tsx) — renders the overview, cause→evidence pairs, resolution flow, monospace config chips, and the watch-out callout (styled like the Topic explorer's). Search now matches symptom, overview, cause, evidence, and config-key text. `data-testid` on the container and each entry row. |
+| Module 7 page | ✅ Done | [page.tsx](src/app/modules/%5Bslug%5D/page.tsx) — `mod.slug === "troubleshooting-scenarios"` renders a short orientation paragraph + the embedded `<TroubleshootingCatalog />` instead of the bullet-outline fallback. `Module.status` flipped `planned` → `available`. `activities` stays empty by design — the catalog is the interaction. |
+| Tests | ✅ Done | `troubleshooting.test.ts` (data shape: 10 entries, unique slugs, every cause has evidence, slug lookup, the NOT_ENOUGH_REPLICAS "repair the follower first" ordering) + `TroubleshootingCatalog.test.tsx` (default-open first entry, toggle, evidence + chip rendering, filter by symptom/cause/evidence/config, no-match state). Suite 148 → 158. |
+
 ## Test infrastructure
 
 | Item | Status | Notes |
@@ -264,7 +280,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 | Item | Status | Notes |
 |---|---|---|
-| Module 7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); the page renders a "planned" placeholder today. |
+| Module 7 content/interactivity | ✅ Done | Enriched the shared troubleshooting catalog (per-cause evidence, key configs, watch-outs) and embedded it on the Module 7 page; `status: "available"`. See the Module 7 section above. |
 | Module 3 (Producer configuration) | ✅ Done | Full topic narrative + 4 interactive activities. See the Module 3 section above. |
 | Module 4 (Consumer configuration) | ✅ Done | Full topic narrative (7 topics) + 6 interactive activities. See the Module 4 section above. |
 | Module 5 (Broker and topic configuration) | ✅ Done | Topic explorer content (11 topics) + 4 interactive demos. See the Module 5 section above. |
@@ -279,7 +295,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 148/148 passing
+- `npx vitest run` — 158/158 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's
