@@ -28,7 +28,7 @@ export const modules: Module[] = [
           {
             term: "Offsets",
             detail:
-              "Each record gets a monotonically increasing integer offset that is its permanent position in that partition. Offsets are per-partition, never global.",
+              "The broker assigns each record an integer offset on append — its permanent position in that partition, per-partition and never global. Offsets only move forward, but they aren't always gapless: compacted-away records and transaction markers leave holes a consumer just skips.",
           },
           {
             term: "Reading doesn't consume",
@@ -61,12 +61,12 @@ export const modules: Module[] = [
           {
             term: "Partition → replicas",
             detail:
-              "Each partition has a replication factor R: R copies on R different brokers. One replica is the leader, the rest are followers that copy from it.",
+              "Each partition has a replication factor R: R copies on R different brokers, so the cluster needs at least R brokers to host it. One replica is the leader, the rest are followers that copy from it.",
           },
           {
             term: "Key picks the partition",
             detail:
-              "A record's key is hashed to choose its partition, so all records with the same key land in the same partition and stay ordered. No key spreads records across partitions.",
+              "A record's key is hashed (murmur2, modulo the partition count) to choose its partition, so all records with the same key land in the same partition and stay ordered. A record with no key is spread across partitions instead — in batches, not strictly one record at a time.",
           },
         ],
         watchOut:
@@ -75,7 +75,7 @@ export const modules: Module[] = [
       "Leaders, followers, ISR, and controllers": {
         summary:
           "Every partition has one leader that handles all of its reads and writes; the controller decides which broker that is.",
-        configs: ["acks", "min.insync.replicas"],
+        configs: ["acks", "min.insync.replicas", "replica.lag.time.max.ms"],
         points: [
           {
             term: "Leader",
@@ -85,7 +85,7 @@ export const modules: Module[] = [
           {
             term: "ISR — in-sync replicas",
             detail:
-              "The replicas currently caught up with the leader. A follower that falls too far behind is dropped from the ISR and rejoins once it catches up.",
+              "The replicas currently caught up with the leader. A follower that hasn't kept pace within replica.lag.time.max.ms (30s by default) is dropped from the ISR, and rejoins once it has caught back up.",
           },
           {
             term: "Why the ISR matters",
@@ -147,7 +147,7 @@ export const modules: Module[] = [
           {
             term: "Retries can reorder",
             detail:
-              "With more than one in-flight request per connection, a failed-and-retried request can land after a later one that already succeeded. enable.idempotence=true lets the broker restore order (and dedupe) for up to 5 in-flight requests.",
+              "With more than one in-flight request per connection, a failed-and-retried request can land after a later one that already succeeded. enable.idempotence=true (on by default) holds order across retries for up to 5 in-flight requests: the producer stamps each batch with a per-partition sequence number, the broker rejects any batch that arrives out of order (or is a duplicate), and the producer resends from there.",
           },
           {
             term: "The consumer can give it up",
