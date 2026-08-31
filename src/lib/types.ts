@@ -98,13 +98,37 @@ export function configIsEarlyAccess(entry: ConfigEntry, version: KafkaVersion): 
   );
 }
 
+// A piece of evidence the operator can choose to reveal during an incident. `label` is the
+// investigation step (matches one of the incident's `clues` categories); `evidence` is what
+// that check turns up in this scenario.
+export interface IncidentClue {
+  label: string;
+  evidence: string;
+}
+
+// One candidate root cause. Exactly one option per incident has `correct: true`. `feedback`
+// explains why it is right, or — for the wrong options — what that cause's real signature
+// would look like and why the evidence doesn't match it.
+export interface IncidentDiagnosisOption {
+  label: string;
+  correct: boolean;
+  feedback: string;
+}
+
 export interface Incident {
   slug: string;
   title: string;
   briefing: string;
   symptoms: string[];
+  // High-level categories of evidence available, shown even before the scenario is built.
   clues: string[];
   scoring: string[];
+  // The built-out fault: the concrete clue evidence and the diagnosis choices. Present once
+  // the scenario is playable; absent while it is still `status: "planned"`.
+  investigation?: {
+    clues: IncidentClue[];
+    options: IncidentDiagnosisOption[];
+  };
   status: "available" | "planned";
 }
 

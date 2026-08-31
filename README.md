@@ -89,17 +89,21 @@ src/
 - **Module 6 (Observability)** is built: Topic explorer content for all 11 signals plus 4
   interactive demos (unlabeled-dashboard bottleneck diagnosis, request-latency phase
   breakdown, lag slope vs. absolute value, ISR-churn localization).
-- **The incident simulator's "slow broker" incident** is fully built out (reveal clues,
-  pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
+- **The incident simulator** has all 10 scenarios built out (reveal clues, pick a
+  diagnosis, get scored feedback): slow broker, full broker disk, incorrect advertised
+  listener, poison message, rebalance storm, hot partition, replica falling out of ISR,
+  compaction not reclaiming space, producer timeouts from an unavailable partition, and TLS
+  certificate expiration. Each wrong answer explains what that cause's real signature would
+  look like.
 - **Config explorer** ships with real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
 - **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
   the plan, searchable.
-- Module 7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
-  clues, categories) but their content/interactivity is not yet written — they render a
-  "planned" state so the whole app is navigable today. Module 2's page is the exception: it
-  links out to the local cluster lab below instead of showing that placeholder, since the
-  content itself lives outside the Next.js app.
+- Module 7 and the 14 runbooks are scoped (titles, topics, categories) but their
+  content is not yet written — they render a "planned" state so the whole app is navigable
+  today. Module 2's page is the exception: it links out to the local cluster lab below
+  instead of showing that placeholder, since the content itself lives outside the Next.js
+  app.
 - The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
   containers) described in the plan is a separate, non-web deliverable — not part of this
   Next.js app. It's built out at [`local-cluster-lab/`](local-cluster-lab/) (its own
