@@ -69,11 +69,12 @@ src/
 
 ## What's scaffolded vs. what's next
 
-- **Module 1 (Kafka mental model)**'s four planned interactive activities are all built
-  (producer → partition → consumer flow, partition-count/ordering, broker failure/leader
-  election), as the pattern to repeat for the rest of the modules. The topic list itself
-  is still just a bullet outline, though — the explanatory lesson content for each topic
-  hasn't been written yet. See [PLAN.md](PLAN.md) for the detailed status.
+- **Module 1 (Kafka mental model)** is built: scannable Topic explorer content for all 6
+  topics (append-only log, brokers/partitions/replicas, leaders/ISR/controllers,
+  producers/consumers/offsets/groups, ordering guarantees, delivery semantics) plus the
+  four interactive activities — producer → partition → consumer flow, partition-count vs.
+  ordering, broker failure and leader election, and predict-before-reveal. See
+  [PLAN.md](PLAN.md) for the detailed status.
 - **Module 3 (Producer configuration)** is fully built: real lesson prose for all 7
   topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
   demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout

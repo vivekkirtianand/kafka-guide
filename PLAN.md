@@ -4,15 +4,13 @@ Tracks work against the guide plan referenced in [README.md](README.md). Statuse
 
 ## Module 1 — Kafka mental model
 
-All four planned **activities** are built out, as the interactive pattern to repeat for
-modules 2–7. The **topic list itself is still only a bullet outline** — it names the
-concepts (append-only log, controllers, consumer groups, offsets, delivery semantics) but
-does not yet contain the explanatory lesson prose to actually teach them. Don't read
-"activities done" as "module done."
+All four planned **activities** are built out, and all 6 topics have real Topic explorer
+content (`topicDetail` — summary, mechanics points, config chips, watch-out), the same
+scannable format as Modules 3–6. `status: "available"`.
 
 | Item | Status | Notes |
 |---|---|---|
-| Topics — narrative/lesson content | ⭕ Planned | The page renders a bullet-point outline of topic names only (see [modules.ts](src/lib/data/modules.ts) `topics` array and [page.tsx](src/app/modules/%5Bslug%5D/page.tsx)); no explanatory prose has been written yet for any topic. |
+| Topics — Topic explorer content (6 topics) | ✅ Done | Authored in PR #7 (`b8c7218`, "Module 1: write the mental-model topics as Topic explorer content" + one Kafka-accuracy review round `42e5bdf`): append-only log, brokers/topics/partitions/replicas, leaders/followers/ISR/controllers, producers/consumers/offsets/groups, ordering guarantees, delivery semantics. A second review pass (this PR) tightened five points — offsets aren't gapless (compaction + txn markers), `replica.lag.time.max.ms` names the ISR-drop clock, murmur2/mod for key→partition, null-key spread is per-batch not per-record, and idempotent-producer ordering is sequence-number rejection (the broker doesn't reorder). `modules.test.ts` locks these in. |
 | Activity: animate producer → partition → consumer | ✅ Done | [RecordFlowDemo.tsx](src/components/demos/RecordFlowDemo.tsx) — includes a predict-before-reveal step (guess the partition, then produce). |
 | Activity: change partition count, observe ordering | ✅ Done | [PartitionOrderingDemo.tsx](src/components/demos/PartitionOrderingDemo.tsx) — toggle 1–4 partitions, step through a fixed keyed-event sequence. |
 | Activity: simulate broker failure and leader election | ✅ Done | [LeaderElectionDemo.tsx](src/components/demos/LeaderElectionDemo.tsx) — pre-existing, reworked (see Fixes below). |
@@ -68,13 +66,15 @@ just patched from the description):
 
 ## Module 3 — Producer configuration
 
-Unlike Module 1 and 2, this module is "fully" done in the sense flagged as a gap
-everywhere else in this file: all 7 topics have real lesson prose, not just a bullet
-outline, in addition to the 4 interactive activities below. `Module.topicNarrative`
-(new, optional field on `Module` in [types.ts](src/lib/types.ts)) carries this content,
-rendered by [page.tsx](src/app/modules/%5Bslug%5D/page.tsx) as full prose sections when
-present, falling back to the old bullet-outline layout otherwise — Modules 1 and 4–7
-are unaffected and still render as bullets.
+At the time this module shipped it was the first with real lesson content: all 7 topics
+written as prose, not just a bullet outline, in addition to the 4 interactive activities
+below. `Module.topicNarrative` (new, optional field on `Module` in
+[types.ts](src/lib/types.ts)) carries this content, rendered by
+[page.tsx](src/app/modules/%5Bslug%5D/page.tsx) as full prose sections when present.
+(Every module was later moved to the scannable `topicDetail` Topic explorer format, which
+takes precedence over `topicNarrative` — so no module uses `topicNarrative` today. Module 7
+embeds the troubleshooting catalog instead. The bullet-outline layout is now only the
+fallback for an unbuilt module.)
 
 | Item | Status | Notes |
 |---|---|---|
@@ -335,7 +335,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 | Module 4 (Consumer configuration) | ✅ Done | Full topic narrative (7 topics) + 6 interactive activities. See the Module 4 section above. |
 | Module 5 (Broker and topic configuration) | ✅ Done | Topic explorer content (11 topics) + 4 interactive demos. See the Module 5 section above. |
 | Module 6 (Observability) | ✅ Done | Topic explorer content (11 signals) + 4 interactive demos. See the Module 6 section above. |
-| Module 1's topic narrative content | ⭕ Planned | Still a bullet outline, unlike Module 3 — see the Module 1 section above. |
+| Module 1's topic content | ✅ Done | All 6 topics have Topic explorer content (PR #7) plus a second accuracy review pass. See the Module 1 section above. |
 | Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
 | 9 remaining incident-simulator scenarios | ✅ Done | All 10 incidents now have a full `investigation` (clues + diagnosis options) and are `status: "available"`. See the Incident simulator section above. |
 | 14 production runbooks | ✅ Done | All 14 written to full content (prechecks/execution/validation/rollback/escalation) with a `/runbooks/[slug]` detail page each. See the Production operations runbooks section above. |
@@ -345,7 +345,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 178/178 passing
+- `npx vitest run` — 186/186 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's
