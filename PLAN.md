@@ -234,7 +234,16 @@ index. This PR writes all 14 to full content and gives each its own page.
 | All 14 runbooks written | ✅ Done | [runbooks.ts](src/lib/data/runbooks.ts) — topic creation review, increasing partitions, adding/removing brokers, partition reassignment, rolling app deployments, rolling broker restarts, certificate/credential rotation, capacity planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery, handling a full disk, handling broker/AZ failures. KRaft-era throughout (controller quorum, `kafka-features.sh` metadata-version bump, no ZooKeeper). Each section is 3–6 concrete steps with the real commands and metric names. `getRunbook(slug)` helper added. |
 | `/runbooks/[slug]` detail route | ✅ Done | [page.tsx](src/app/runbooks/%5Bslug%5D/page.tsx) — `generateStaticParams` over all 14; renders the summary, a "when to use this" callout, and the five step sections each behind a colour-coded `Badge` (prechecks/execution/validation → accent/stream/success, rollback → neutral, escalation → danger). Mirrors the async-`params` pattern from `incident-simulator/[slug]` and `modules/[slug]`. |
 | Index page | ✅ Done | [runbooks/page.tsx](src/app/runbooks/page.tsx) — category-grouped cards are now links to the detail pages and show the `summary`; the "planned" badge and the "ready to write" description are gone. |
-| Tests | ✅ Done | `runbooks.test.ts` — 14 unique slugs, every runbook has a summary/when/category and all five step sections non-empty, slugs are url-safe and resolve via `getRunbook`, categories are from the known set. Suite 148 → 153. |
+| Tests | ✅ Done | `runbooks.test.ts` — 14 unique slugs, every runbook has a summary/when/category and all five step sections non-empty, slugs are url-safe and resolve via `getRunbook`, categories from the known set, retention.bytes framed per-partition, no cross-partition compaction claim. Suite 148 → 155. |
+
+**Review findings addressed (round 1)** (PR #14):
+
+| Finding | Status | Fix |
+|---|---|---|
+| "Increasing partitions" claimed compaction would eventually remove a key's stale value from its old partition — compaction operates independently *within* each partition, so under compact-only cleanup the old value stays there indefinitely unless a newer record or a tombstone is written to that same partition | ✅ Done | The execution step now states compaction is per-partition and the stale copy persists forever on a compact-only topic without a tombstone; `cleanup.policy=delete` (or `delete,compact`) ages it out with retention. The ordering-impact precheck reworded to match (brief with time/size retention, indefinite compact-only). |
+| `retention.bytes` described as a topic-wide cap — Kafka enforces it per partition; topic footprint ≈ `retention.bytes` × partitions × replication factor | ✅ Done | Corrected in all four runbooks that reference it as a sizing limit: topic-creation review, capacity planning, handling a full disk (validation), and the precheck wording. |
+
+
 
 ## Test infrastructure
 
@@ -292,7 +301,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 153/153 passing
+- `npx vitest run` — 155/155 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's

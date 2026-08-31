@@ -22,7 +22,7 @@ const seeds: RunbookSeed[] = [
         "Estimate peak throughput and the consumer parallelism you need — that sets the partition count. You can add partitions later, but not without breaking keyed ordering.",
         "Choose the replication factor (3 for anything durable) and confirm the cluster has enough brokers across enough racks to place it.",
         "Choose cleanup.policy (delete, compact, or both) deliberately — switching later can drop data or take a long compaction pass.",
-        "Size retention.ms and retention.bytes against the disk budget; always set retention.bytes so one topic cannot fill a disk on its own.",
+        "Size retention against the disk budget. retention.bytes is enforced per partition, so a topic's on-disk footprint is roughly retention.bytes × partitions × replication factor — compute it that way and set it so no single topic can fill a disk.",
         "Set min.insync.replicas to 2 for an RF-3 durable topic and confirm producers will use acks=all.",
       ],
       execution: [
@@ -55,7 +55,7 @@ const seeds: RunbookSeed[] = [
     steps: {
       prechecks: [
         "Confirm partition count is really the bottleneck — see the consumer-lag and hot-partitions troubleshooting entries first.",
-        "Understand the ordering impact: existing keys will hash to different partitions afterward, and a consumer may briefly see one key on two partitions around the cutover.",
+        "Understand the ordering impact: existing keys hash to different partitions afterward, so a consumer may see one key on two partitions after the change — briefly on a time- or size-retention topic, indefinitely on a compact-only topic until a tombstone is written to the old partition.",
         "Check anything that assumes a fixed partition count: custom partitioners, external offset tracking, partition-pinned state, Kafka Streams topologies.",
         "Confirm you cannot instead add consumers (only possible while consumers < partitions) — that is cheaper and lossless.",
         "Pick a low-traffic window.",
@@ -63,7 +63,7 @@ const seeds: RunbookSeed[] = [
       execution: [
         "kafka-topics.sh --alter --topic … --partitions N, where N is greater than the current count. Partitions can only be added, never removed.",
         "New partitions start empty; producers route to them after their next metadata refresh.",
-        "On a compacted topic, expect a key to exist on both its old and new partition until the old copy ages or compacts away.",
+        "Compaction won't clean this up: it operates independently within each partition, so on a compact-only topic the key's old value stays on its original partition forever unless a newer record or a tombstone is written to that same partition. With cleanup.policy=delete (or delete,compact) the stale copy ages out with retention instead.",
       ],
       validation: [
         "--describe shows the new partitions with a leader and full ISR.",
@@ -260,7 +260,7 @@ const seeds: RunbookSeed[] = [
         "Decide failure headroom: the cluster must absorb the loss of one availability zone without exceeding your disk and NIC targets.",
       ],
       execution: [
-        "Disk: sized so a full-AZ outage still leaves headroom; set retention.bytes per topic as a backstop.",
+        "Disk: sized so a full-AZ outage still leaves headroom; set retention.bytes as a backstop, remembering it is a per-partition limit (topic footprint ≈ retention.bytes × partitions × RF).",
         "Partitions: max(throughput ÷ per-partition ceiling, required consumer parallelism); keep per-broker partition counts within tested limits.",
         "Memory: a modest heap (commonly ~6 GB), the rest left to the OS page cache, which should hold the hot tail of the log.",
         "CPU: budget for TLS termination and compression, the main consumers.",
@@ -428,7 +428,7 @@ const seeds: RunbookSeed[] = [
       validation: [
         "Free space is back above the alert threshold with headroom.",
         "Any offline log directory is back online and UnderReplicatedPartitions returns to 0 as it catches up.",
-        "retention.bytes is now set on the large topics as a standing backstop.",
+        "retention.bytes (a per-partition cap — size it as retention.bytes × partitions × RF) is now set on the large topics as a standing backstop.",
       ],
       rollback: [
         "Restore the original retention values once capacity is genuinely fixed — do not leave an emergency short retention in place and forget it.",
