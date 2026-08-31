@@ -98,21 +98,59 @@ export function configIsEarlyAccess(entry: ConfigEntry, version: KafkaVersion): 
   );
 }
 
+// A piece of evidence the operator can choose to reveal during an incident. `label` is the
+// investigation step (matches one of the incident's `clues` categories); `evidence` is what
+// that check turns up in this scenario.
+export interface IncidentClue {
+  label: string;
+  evidence: string;
+}
+
+// One candidate root cause. Exactly one option per incident has `correct: true`. `feedback`
+// explains why it is right, or — for the wrong options — what that cause's real signature
+// would look like and why the evidence doesn't match it.
+export interface IncidentDiagnosisOption {
+  label: string;
+  correct: boolean;
+  feedback: string;
+}
+
 export interface Incident {
   slug: string;
   title: string;
   briefing: string;
   symptoms: string[];
+  // High-level categories of evidence available, shown even before the scenario is built.
   clues: string[];
   scoring: string[];
+  // The built-out fault: the concrete clue evidence and the diagnosis choices. Present once
+  // the scenario is playable; absent while it is still `status: "planned"`.
+  investigation?: {
+    clues: IncidentClue[];
+    options: IncidentDiagnosisOption[];
+  };
   status: "available" | "planned";
+}
+
+export interface TroubleshootingCause {
+  // The candidate cause, short.
+  cause: string;
+  // The specific metric, log line, or command output that confirms this cause or rules it
+  // out — what to look at, not just "check the logs".
+  evidence: string;
 }
 
 export interface TroubleshootingEntry {
   slug: string;
   symptom: string;
-  causes: string[];
+  // One or two sentences of framing: what the symptom actually means and the trap to avoid.
+  overview: string;
+  causes: TroubleshootingCause[];
   resolutionFlow: string[];
+  // Config keys that show up in the diagnosis or the fix — rendered as monospace chips.
+  keyConfigs?: string[];
+  // The mistake that makes the symptom disappear while making the system worse.
+  watchOut?: string;
 }
 
 export interface Runbook {

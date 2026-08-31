@@ -1437,7 +1437,7 @@ export const modules: Module[] = [
       "Connectivity and authentication",
     ],
     activities: [],
-    status: "planned",
+    status: "available",
   },
 ];
 

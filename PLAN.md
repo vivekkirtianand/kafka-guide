@@ -223,6 +223,52 @@ verified rendering and interacting in-browser.
 | [P2] The removed-replica tally read as directly observable — Kafka exposes only the *current* ISR; `kafka-topics --describe` after a replica rejoins shows a full ISR and can't reconstruct the removal | ✅ Done | `IsrChurnDemo`'s section header, disclaimer, and source comment now label it a derived signal: diff frequent ISR snapshots, or parse the controller/broker shrink log lines. |
 | [P2] The consumer diagnosis assumed dynamic membership — exceeding `max.poll.interval.ms` doesn't immediately reassign a *static* member's partitions; they hold until the session timeout | ✅ Done | `BottleneckDiagnosis` dashboard 5's explain now splits the two paths (dynamic member dropped and rebalancing every cycle vs. static member holding its partitions to the session timeout), consistent with Module 4; either way the consumer isn't polling. |
 
+## Module 7 — Troubleshooting scenarios
+
+Module 7's plan describes it as "a searchable symptom → evidence → cause → resolution
+catalog" — which is exactly what the standalone [/troubleshooting](src/app/troubleshooting/page.tsx)
+page already was, in skeleton form. Rather than duplicate that content as module prose, PR
+#12 **enriched the shared catalog** and pointed the module page at it, so both surfaces
+improve together and there's one source of truth.
+
+| Item | Status | Notes |
+|---|---|---|
+| `TroubleshootingEntry` enriched | ✅ Done | [types.ts](src/lib/types.ts) — each cause is now a `{ cause, evidence }` pair (the specific metric, log line, or command output that confirms or rules it out, not "check the logs"), plus an `overview` framing sentence, optional `keyConfigs` chips, and a `watchOut` — the durability setting you could lower to make the error vanish while making the system worse. |
+| All 10 entries written to full depth | ✅ Done | [troubleshooting.ts](src/lib/data/troubleshooting.ts) — consumer lag, frequent rebalances, NOT_ENOUGH_REPLICAS (incl. the before-append vs. `_AFTER_APPEND` distinction), under-replicated partitions (incl. the stale-replication-throttle cause), timeout errors (each timeout named by its config + exception), disk usage growth, large-message failures (the four independent size limits), hot partitions, data/duplicates/ordering (three separate diagnostic paths), connectivity/auth (bootstrap vs. after-bootstrap split). |
+| `TroubleshootingCatalog` component | ✅ Done | [TroubleshootingCatalog.tsx](src/components/TroubleshootingCatalog.tsx) — renders the overview, cause→evidence pairs, resolution flow, monospace config chips, and the watch-out callout (styled like the Topic explorer's). Search now matches symptom, overview, cause, evidence, and config-key text. `data-testid` on the container and each entry row. |
+| Module 7 page | ✅ Done | [page.tsx](src/app/modules/%5Bslug%5D/page.tsx) — `mod.slug === "troubleshooting-scenarios"` renders a short orientation paragraph + the embedded `<TroubleshootingCatalog />` instead of the bullet-outline fallback. `Module.status` flipped `planned` → `available`. `activities` stays empty by design — the catalog is the interaction. |
+| Tests | ✅ Done | `troubleshooting.test.ts` (data shape: 10 entries, unique slugs, every cause has evidence, slug lookup, the NOT_ENOUGH_REPLICAS "repair the follower first" ordering, large-message fetch-limit framing, retention.bytes per-partition) + `TroubleshootingCatalog.test.tsx` (default-open first entry, toggle, evidence + chip rendering, filter by symptom/cause/evidence/resolution/config/watch-out, no-match state). Suite 148 → 161. |
+
+**Review findings addressed (round 1)** (PR #12):
+
+| Finding | Status | Fix |
+|---|---|---|
+| Large-message guidance was wrong for Kafka 4.0 — replica and modern consumer fetch limits are *soft* (an over-sized first batch is returned to guarantee progress), so they don't wedge the ISR or stall consumers; only producer / broker / topic admission limits reject the batch | ✅ Done | `large-message-failures` rewritten around exactly three admission limits (`max.request.size`, `message.max.bytes`, `max.message.bytes`). The former "replica fetch limit" / "consumer fetch limits" causes are replaced by one "Not the fetch limits" entry that states they are soft and to rule them out as a hard failure. `replica.fetch.max.bytes` dropped from `keyConfigs`; resolution flow no longer tells you to line up four limits. |
+| `retention.bytes` described as a topic-wide cap — Kafka enforces it per partition (topic size ≈ `retention.bytes` × partitions × RF) | ✅ Done | `disk-usage-growth` cause evidence and resolution step 1 corrected. (This misconception also appeared in PR #14's runbooks — fixed there too.) |
+| `watchOut` was rendered but not searchable, contradicting the stated enrichment | ✅ Done | `TroubleshootingCatalog` filter now also matches `resolutionFlow` steps and `watchOut` text (both are rendered content). Module 7 intro and a new test updated to match. |
+
+## Incident simulator — the remaining 9 scenarios
+
+The "slow broker" incident was the only one built out; the other 9 rendered a "planned"
+stub listing their scoped clue categories. This PR builds all 9 to the same shape as slow
+broker: a concrete `investigation` — three clues with real evidence, and three candidate
+root causes (one correct, two plausible-but-wrong, each with feedback that explains the
+right answer or what the wrong cause's real signature would look like).
+
+| Item | Status | Notes |
+|---|---|---|
+| `Incident` type | ✅ Done | [types.ts](src/lib/types.ts) gained `IncidentClue`, `IncidentDiagnosisOption`, and an optional `Incident.investigation` (`{ clues, options }`). `IncidentDiagnosis.tsx` now imports those shared types instead of redefining them locally. |
+| Clue + diagnosis data moved into `incidents.ts` | ✅ Done | The slow-broker clue/option constants were hardcoded in the page; they and the 9 new scenarios now live in [incidents.ts](src/lib/data/incidents.ts). The `[slug]` page just reads `incident.investigation`. |
+| 9 scenarios written | ✅ Done | full-broker-disk (traffic + time-only retention → full disk → offline log dir), bad-advertised-listener (bootstrap OK, per-broker names NXDOMAIN from a new region), poison-message (unbounded seek-back on a deserialization failure, frozen committed offset), rebalance-storm (no static membership + eager RangeAssignor → 2 rebalances per pod × 12), hot-partition (one merchant = 55% of traffic, one consumer at 100% CPU), replica-out-of-isr (oversized 24 GB heap → multi-second GC pauses → replica ages past `replica.lag.time.max.ms`), compaction-not-reclaiming (broker-3's only `log.cleaner` thread OOMed 9 days ago), producer-timeouts-unavailable-partition (RF 2, both replicas in the same maintenance window, unclean election off), tls-certificate-expiration (broker keystore cert expired at 00:00 UTC, inter-broker PLAINTEXT listener unaffected). |
+| `[slug]` page | ✅ Done | [page.tsx](src/app/incident-simulator/%5Bslug%5D/page.tsx) renders `IncidentDiagnosis` + a "scored on" panel when `investigation` is present, and keeps the "planned" stub as the fallback for any future un-built incident. All 10 are now `status: "available"`. |
+| Tests | ✅ Done | `incidents.test.ts` (10 unique slugs, every incident built + available, each investigation has evidence-bearing clues and exactly one correct option, clue labels map to a scoped category, compaction-failure is broker-scoped) + `IncidentDiagnosis.test.tsx` (clue reveal, correct/wrong feedback, "N of M clues checked", option lock + reset). Adds 10 tests (161 → 171). |
+
+**Review findings addressed (round 1)** (PR #13):
+
+| Finding | Status | Fix |
+|---|---|---|
+| `compaction-not-reclaiming` presented a dead cleaner thread as cluster-wide — `log.cleaner.threads` creates cleaner workers *on each broker*, so losing the only cleaner on one broker stops cleaning *that broker's local replicas*, not every compacted topic across the cluster | ✅ Done | Reworked the scenario around broker-3: briefing, symptoms, and all three clues now localize the growth to one broker; the correct-option feedback states `log.cleaner.threads` is per broker and that every other broker keeps compacting the same partitions normally. The two wrong options now also lean on the "one broker, not all" distinction. |
+
 ## Production operations runbooks
 
 The 14 runbooks were slug + category stubs with empty `steps` and a "planned" badge on the
@@ -234,7 +280,7 @@ index. This PR writes all 14 to full content and gives each its own page.
 | All 14 runbooks written | ✅ Done | [runbooks.ts](src/lib/data/runbooks.ts) — topic creation review, increasing partitions, adding/removing brokers, partition reassignment, rolling app deployments, rolling broker restarts, certificate/credential rotation, capacity planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery, handling a full disk, handling broker/AZ failures. KRaft-era throughout (controller quorum, `kafka-features.sh` metadata-version bump, no ZooKeeper). Each section is 3–6 concrete steps with the real commands and metric names. `getRunbook(slug)` helper added. |
 | `/runbooks/[slug]` detail route | ✅ Done | [page.tsx](src/app/runbooks/%5Bslug%5D/page.tsx) — `generateStaticParams` over all 14; renders the summary, a "when to use this" callout, and the five step sections each behind a colour-coded `Badge` (prechecks/execution/validation → accent/stream/success, rollback → neutral, escalation → danger). Mirrors the async-`params` pattern from `incident-simulator/[slug]` and `modules/[slug]`. |
 | Index page | ✅ Done | [runbooks/page.tsx](src/app/runbooks/page.tsx) — category-grouped cards are now links to the detail pages and show the `summary`; the "planned" badge and the "ready to write" description are gone. |
-| Tests | ✅ Done | `runbooks.test.ts` — 14 unique slugs, every runbook has a summary/when/category and all five step sections non-empty, slugs are url-safe and resolve via `getRunbook`, categories from the known set, retention.bytes framed per-partition, no cross-partition compaction claim. Suite 148 → 155. |
+| Tests | ✅ Done | `runbooks.test.ts` — 14 unique slugs, every runbook has a summary/when/category and all five step sections non-empty, slugs are url-safe and resolve via `getRunbook`, categories from the known set, retention.bytes framed per-partition, no cross-partition compaction claim. Adds 7 tests (171 → 178). |
 
 **Review findings addressed (round 1)** (PR #14):
 
@@ -242,8 +288,6 @@ index. This PR writes all 14 to full content and gives each its own page.
 |---|---|---|
 | "Increasing partitions" claimed compaction would eventually remove a key's stale value from its old partition — compaction operates independently *within* each partition, so under compact-only cleanup the old value stays there indefinitely unless a newer record or a tombstone is written to that same partition | ✅ Done | The execution step now states compaction is per-partition and the stale copy persists forever on a compact-only topic without a tombstone; `cleanup.policy=delete` (or `delete,compact`) ages it out with retention. The ordering-impact precheck reworded to match (brief with time/size retention, indefinite compact-only). |
 | `retention.bytes` described as a topic-wide cap — Kafka enforces it per partition; topic footprint ≈ `retention.bytes` × partitions × replication factor | ✅ Done | Corrected in all four runbooks that reference it as a sizing limit: topic-creation review, capacity planning, handling a full disk (validation), and the precheck wording. |
-
-
 
 ## Test infrastructure
 
@@ -286,14 +330,14 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 | Item | Status | Notes |
 |---|---|---|
-| Module 7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); the page renders a "planned" placeholder today. |
+| Module 7 content/interactivity | ✅ Done | Enriched the shared troubleshooting catalog (per-cause evidence, key configs, watch-outs) and embedded it on the Module 7 page; `status: "available"`. See the Module 7 section above. |
 | Module 3 (Producer configuration) | ✅ Done | Full topic narrative + 4 interactive activities. See the Module 3 section above. |
 | Module 4 (Consumer configuration) | ✅ Done | Full topic narrative (7 topics) + 6 interactive activities. See the Module 4 section above. |
 | Module 5 (Broker and topic configuration) | ✅ Done | Topic explorer content (11 topics) + 4 interactive demos. See the Module 5 section above. |
 | Module 6 (Observability) | ✅ Done | Topic explorer content (11 signals) + 4 interactive demos. See the Module 6 section above. |
 | Module 1's topic narrative content | ⭕ Planned | Still a bullet outline, unlike Module 3 — see the Module 1 section above. |
 | Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
-| 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
+| 9 remaining incident-simulator scenarios | ✅ Done | All 10 incidents now have a full `investigation` (clues + diagnosis options) and are `status: "available"`. See the Incident simulator section above. |
 | 14 production runbooks | ✅ Done | All 14 written to full content (prechecks/execution/validation/rollback/escalation) with a `/runbooks/[slug]` detail page each. See the Production operations runbooks section above. |
 | Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ✅ Done | Built at [local-cluster-lab/](local-cluster-lab/) — explicitly out of scope for the Next.js app per README, a separate deliverable. See Module 2 section below for what was built and verified. |
 
@@ -301,7 +345,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 155/155 passing
+- `npx vitest run` — 178/178 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's

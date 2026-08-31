@@ -4,6 +4,7 @@ import { modules, getModule } from "@/lib/data/modules";
 import SectionHeading from "@/components/SectionHeading";
 import Badge from "@/components/Badge";
 import TopicExplorer from "@/components/TopicExplorer";
+import TroubleshootingCatalog from "@/components/TroubleshootingCatalog";
 import LeaderElectionDemo from "@/components/demos/LeaderElectionDemo";
 import RecordFlowDemo from "@/components/demos/RecordFlowDemo";
 import PartitionOrderingDemo from "@/components/demos/PartitionOrderingDemo";
@@ -59,7 +60,18 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         description={mod.summary}
       />
 
-      {mod.topicDetail ? (
+      {mod.slug === "troubleshooting-scenarios" ? (
+        <div className="flex flex-col gap-6">
+          <p className="text-sm leading-relaxed text-text-muted">
+            Each entry moves from a symptom to the specific evidence that confirms or rules out
+            each cause, then to a resolution flow. The search matches every field — symptoms,
+            causes, evidence, resolution steps, config keys, and the watch-outs. The recurring
+            theme: reducing a durability setting can make an error disappear while making the
+            underlying problem worse.
+          </p>
+          <TroubleshootingCatalog />
+        </div>
+      ) : mod.topicDetail ? (
         <div className="flex flex-col gap-8">
           <TopicExplorer topics={mod.topics} detail={mod.topicDetail} />
           {activitiesBlock}

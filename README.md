@@ -89,22 +89,29 @@ src/
 - **Module 6 (Observability)** is built: Topic explorer content for all 11 signals plus 4
   interactive demos (unlabeled-dashboard bottleneck diagnosis, request-latency phase
   breakdown, lag slope vs. absolute value, ISR-churn localization).
-- **The incident simulator's "slow broker" incident** is fully built out (reveal clues,
-  pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
+- **The incident simulator** has all 10 scenarios built out (reveal clues, pick a
+  diagnosis, get scored feedback): slow broker, full broker disk, incorrect advertised
+  listener, poison message, rebalance storm, hot partition, replica falling out of ISR,
+  compaction not reclaiming space, producer timeouts from an unavailable partition, and TLS
+  certificate expiration. Each wrong answer explains what that cause's real signature would
+  look like.
 - **Config explorer** ships with real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
-- **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
-  the plan, searchable.
+- **Module 7 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
+  content: all 10 symptom entries, each with an overview, cause → evidence pairs (the
+  specific metric/log/command that confirms or rules out each cause), a resolution flow,
+  key config chips, and a "watch out" — the durability setting you could lower to make the
+  error disappear while making the system worse. Searchable by symptom, cause, evidence, or
+  config key. The Module 7 page embeds the catalog; `/troubleshooting` is the standalone
+  reference view.
 - **Production runbooks** ships all 14 written to full content — prechecks, execution,
   validation, rollback, and escalation criteria — each on its own `/runbooks/[slug]` page:
   topic creation review, increasing partitions, adding/removing brokers, partition
   reassignment, rolling app and broker restarts, certificate/credential rotation, capacity
   planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery,
   handling a full disk, and broker/AZ failures.
-- Module 7 is scoped (topics named) but its lesson content is not yet written — it renders
-  a "planned" state so the whole app is navigable today. Module 2's page is the exception:
-  it links out to the local cluster lab below instead of showing that placeholder, since
-  the content itself lives outside the Next.js app.
+- Module 2's page links out to the local cluster lab below instead of showing an in-app
+  page, since that content lives outside the Next.js app.
 - The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
   containers) described in the plan is a separate, non-web deliverable — not part of this
   Next.js app. It's built out at [`local-cluster-lab/`](local-cluster-lab/) (its own
