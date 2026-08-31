@@ -247,6 +247,28 @@ improve together and there's one source of truth.
 | `retention.bytes` described as a topic-wide cap — Kafka enforces it per partition (topic size ≈ `retention.bytes` × partitions × RF) | ✅ Done | `disk-usage-growth` cause evidence and resolution step 1 corrected. (This misconception also appeared in PR #14's runbooks — fixed there too.) |
 | `watchOut` was rendered but not searchable, contradicting the stated enrichment | ✅ Done | `TroubleshootingCatalog` filter now also matches `resolutionFlow` steps and `watchOut` text (both are rendered content). Module 7 intro and a new test updated to match. |
 
+## Incident simulator — the remaining 9 scenarios
+
+The "slow broker" incident was the only one built out; the other 9 rendered a "planned"
+stub listing their scoped clue categories. This PR builds all 9 to the same shape as slow
+broker: a concrete `investigation` — three clues with real evidence, and three candidate
+root causes (one correct, two plausible-but-wrong, each with feedback that explains the
+right answer or what the wrong cause's real signature would look like).
+
+| Item | Status | Notes |
+|---|---|---|
+| `Incident` type | ✅ Done | [types.ts](src/lib/types.ts) gained `IncidentClue`, `IncidentDiagnosisOption`, and an optional `Incident.investigation` (`{ clues, options }`). `IncidentDiagnosis.tsx` now imports those shared types instead of redefining them locally. |
+| Clue + diagnosis data moved into `incidents.ts` | ✅ Done | The slow-broker clue/option constants were hardcoded in the page; they and the 9 new scenarios now live in [incidents.ts](src/lib/data/incidents.ts). The `[slug]` page just reads `incident.investigation`. |
+| 9 scenarios written | ✅ Done | full-broker-disk (traffic + time-only retention → full disk → offline log dir), bad-advertised-listener (bootstrap OK, per-broker names NXDOMAIN from a new region), poison-message (unbounded seek-back on a deserialization failure, frozen committed offset), rebalance-storm (no static membership + eager RangeAssignor → 2 rebalances per pod × 12), hot-partition (one merchant = 55% of traffic, one consumer at 100% CPU), replica-out-of-isr (oversized 24 GB heap → multi-second GC pauses → replica ages past `replica.lag.time.max.ms`), compaction-not-reclaiming (broker-3's only `log.cleaner` thread OOMed 9 days ago), producer-timeouts-unavailable-partition (RF 2, both replicas in the same maintenance window, unclean election off), tls-certificate-expiration (broker keystore cert expired at 00:00 UTC, inter-broker PLAINTEXT listener unaffected). |
+| `[slug]` page | ✅ Done | [page.tsx](src/app/incident-simulator/%5Bslug%5D/page.tsx) renders `IncidentDiagnosis` + a "scored on" panel when `investigation` is present, and keeps the "planned" stub as the fallback for any future un-built incident. All 10 are now `status: "available"`. |
+| Tests | ✅ Done | `incidents.test.ts` (10 unique slugs, every incident built + available, each investigation has evidence-bearing clues and exactly one correct option, clue labels map to a scoped category, compaction-failure is broker-scoped) + `IncidentDiagnosis.test.tsx` (clue reveal, correct/wrong feedback, "N of M clues checked", option lock + reset). Adds 10 tests (161 → 171). |
+
+**Review findings addressed (round 1)** (PR #13):
+
+| Finding | Status | Fix |
+|---|---|---|
+| `compaction-not-reclaiming` presented a dead cleaner thread as cluster-wide — `log.cleaner.threads` creates cleaner workers *on each broker*, so losing the only cleaner on one broker stops cleaning *that broker's local replicas*, not every compacted topic across the cluster | ✅ Done | Reworked the scenario around broker-3: briefing, symptoms, and all three clues now localize the growth to one broker; the correct-option feedback states `log.cleaner.threads` is per broker and that every other broker keeps compacting the same partitions normally. The two wrong options now also lean on the "one broker, not all" distinction. |
+
 ## Test infrastructure
 
 | Item | Status | Notes |
@@ -295,7 +317,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 | Module 6 (Observability) | ✅ Done | Topic explorer content (11 signals) + 4 interactive demos. See the Module 6 section above. |
 | Module 1's topic narrative content | ⭕ Planned | Still a bullet outline, unlike Module 3 — see the Module 1 section above. |
 | Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
-| 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
+| 9 remaining incident-simulator scenarios | ✅ Done | All 10 incidents now have a full `investigation` (clues + diagnosis options) and are `status: "available"`. See the Incident simulator section above. |
 | 14 production runbooks | ⭕ Planned | Titles/categories scoped; content not written. |
 | Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ✅ Done | Built at [local-cluster-lab/](local-cluster-lab/) — explicitly out of scope for the Next.js app per README, a separate deliverable. See Module 2 section below for what was built and verified. |
 
@@ -303,7 +325,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 161/161 passing
+- `npx vitest run` — 171/171 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's

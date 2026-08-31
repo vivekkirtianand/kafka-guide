@@ -2,34 +2,24 @@
 
 import { useState } from "react";
 import Badge from "@/components/Badge";
-
-interface Clue {
-  label: string;
-  evidence: string;
-}
-
-interface DiagnosisOption {
-  label: string;
-  correct: boolean;
-  feedback: string;
-}
+import { IncidentClue, IncidentDiagnosisOption } from "@/lib/types";
 
 export default function IncidentDiagnosis({
   clues,
   options,
 }: {
-  clues: Clue[];
-  options: DiagnosisOption[];
+  clues: IncidentClue[];
+  options: IncidentDiagnosisOption[];
 }) {
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
-  const [picked, setPicked] = useState<DiagnosisOption | null>(null);
+  const [picked, setPicked] = useState<IncidentDiagnosisOption | null>(null);
   const [checksBeforeDiagnosis, setChecksBeforeDiagnosis] = useState(0);
 
   function reveal(label: string) {
     setRevealed((r) => new Set(r).add(label));
   }
 
-  function pick(option: DiagnosisOption) {
+  function pick(option: IncidentDiagnosisOption) {
     setChecksBeforeDiagnosis(revealed.size);
     setPicked(option);
   }
