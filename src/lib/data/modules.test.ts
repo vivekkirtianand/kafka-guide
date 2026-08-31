@@ -55,10 +55,36 @@ describe("module data", () => {
       expect(isr.detail).toMatch(/admission floor/i);
     });
 
-    it("describes idempotent-producer ordering as sequence-number rejection, not broker reordering", () => {
+    it("has the producer (not the broker) assign the sequence number, and the broker reject out-of-order", () => {
       const retries = detail("Ordering guarantees").points.find((p) => p.term === "Retries can reorder")!;
-      expect(retries.detail).toMatch(/sequence number/i);
+      expect(retries.detail).toMatch(/producer stamps each batch with a per-partition sequence number/i);
+      expect(retries.detail).toMatch(/the broker rejects any batch that arrives out of order/i);
+      expect(retries.detail).not.toMatch(/broker tags each batch with a sequence number/i);
       expect(retries.detail).not.toMatch(/restore order/i);
+    });
+
+    it("requires at least R brokers to host a replication factor of R", () => {
+      const replicas = detail("Brokers, topics, partitions, replicas").points.find(
+        (p) => p.term === "Partition → replicas"
+      )!;
+      expect(replicas.detail).toMatch(/at least R brokers/i);
+    });
+
+    it("names murmur2 modulo the partition count, and a per-batch null-key spread", () => {
+      const key = detail("Brokers, topics, partitions, replicas").points.find(
+        (p) => p.term === "Key picks the partition"
+      )!;
+      expect(key.detail).toMatch(/murmur2/i);
+      expect(key.detail).toMatch(/modulo the partition count/i);
+      expect(key.detail).toMatch(/in batches, not strictly one record at a time/i);
+    });
+
+    it("names replica.lag.time.max.ms (with its 30s default) as the ISR-drop clock and lists it as a config", () => {
+      const topic = detail("Leaders, followers, ISR, and controllers");
+      expect(topic.configs).toContain("replica.lag.time.max.ms");
+      const isr = topic.points.find((p) => p.term === "ISR — in-sync replicas")!;
+      expect(isr.detail).toMatch(/replica\.lag\.time\.max\.ms/);
+      expect(isr.detail).toMatch(/30s/i);
     });
 
     it("does not claim the idempotent producer gives end-to-end exactly-once", () => {

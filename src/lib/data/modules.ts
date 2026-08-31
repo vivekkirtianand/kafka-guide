@@ -147,7 +147,7 @@ export const modules: Module[] = [
           {
             term: "Retries can reorder",
             detail:
-              "With more than one in-flight request per connection, a failed-and-retried request can land after a later one that already succeeded. enable.idempotence=true (on by default) holds order across retries for up to 5 in-flight requests: the broker tags each batch with a sequence number, rejects any that arrives out of order, and the producer resends from there — which also removes duplicates.",
+              "With more than one in-flight request per connection, a failed-and-retried request can land after a later one that already succeeded. enable.idempotence=true (on by default) holds order across retries for up to 5 in-flight requests: the producer stamps each batch with a per-partition sequence number, the broker rejects any batch that arrives out of order (or is a duplicate), and the producer resends from there.",
           },
           {
             term: "The consumer can give it up",

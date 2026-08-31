@@ -10,7 +10,7 @@ scannable format as Modules 3–6. `status: "available"`.
 
 | Item | Status | Notes |
 |---|---|---|
-| Topics — Topic explorer content (6 topics) | ✅ Done | Authored in PR #7 (`b8c7218`, "Module 1: write the mental-model topics as Topic explorer content" + one Kafka-accuracy review round `42e5bdf`): append-only log, brokers/topics/partitions/replicas, leaders/followers/ISR/controllers, producers/consumers/offsets/groups, ordering guarantees, delivery semantics. A second review pass (this PR) tightened five points — offsets aren't gapless (compaction + txn markers), `replica.lag.time.max.ms` names the ISR-drop clock, murmur2/mod for key→partition, null-key spread is per-batch not per-record, and idempotent-producer ordering is sequence-number rejection (the broker doesn't reorder). `modules.test.ts` locks these in. |
+| Topics — Topic explorer content (6 topics) | ✅ Done | Authored in PR #7 (`b8c7218`, "Module 1: write the mental-model topics as Topic explorer content" + one Kafka-accuracy review round `42e5bdf`): append-only log, brokers/topics/partitions/replicas, leaders/followers/ISR/controllers, producers/consumers/offsets/groups, ordering guarantees, delivery semantics. A second review pass (this PR) tightened five points — offsets aren't gapless (compaction + txn markers), `replica.lag.time.max.ms` (30s default) names the ISR-drop clock and is now a config chip, murmur2 modulo the partition count for key→partition, null-key spread is per-batch not per-record, and idempotent-producer ordering is the **producer** stamping a per-partition sequence number that the broker validates (it neither assigns the number nor reorders). `modules.test.ts` has a dedicated assertion for each. |
 | Activity: animate producer → partition → consumer | ✅ Done | [RecordFlowDemo.tsx](src/components/demos/RecordFlowDemo.tsx) — includes a predict-before-reveal step (guess the partition, then produce). |
 | Activity: change partition count, observe ordering | ✅ Done | [PartitionOrderingDemo.tsx](src/components/demos/PartitionOrderingDemo.tsx) — toggle 1–4 partitions, step through a fixed keyed-event sequence. |
 | Activity: simulate broker failure and leader election | ✅ Done | [LeaderElectionDemo.tsx](src/components/demos/LeaderElectionDemo.tsx) — pre-existing, reworked (see Fixes below). |
@@ -345,7 +345,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 186/186 passing
+- `npx vitest run` — 189/189 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's
