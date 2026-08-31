@@ -15,7 +15,9 @@ export default function TroubleshootingCatalog() {
         t.symptom.toLowerCase().includes(q) ||
         t.overview.toLowerCase().includes(q) ||
         t.causes.some((c) => c.cause.toLowerCase().includes(q) || c.evidence.toLowerCase().includes(q)) ||
-        (t.keyConfigs ?? []).some((k) => k.toLowerCase().includes(q))
+        t.resolutionFlow.some((r) => r.toLowerCase().includes(q)) ||
+        (t.keyConfigs ?? []).some((k) => k.toLowerCase().includes(q)) ||
+        (t.watchOut ?? "").toLowerCase().includes(q)
     );
   }, [query]);
 

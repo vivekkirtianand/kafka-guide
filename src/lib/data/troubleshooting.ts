@@ -274,7 +274,7 @@ export const troubleshooting: TroubleshootingEntry[] = [
       {
         cause: "Retention set higher than expected",
         evidence:
-          "retention.ms / retention.bytes on the topic, multiplied by the ingestion rate, exceeds the space budgeted for it.",
+          "retention.ms times the ingestion rate — or retention.bytes, which is a per-partition cap so topic size is roughly retention.bytes × partitions × replication factor — works out larger than the space budgeted.",
       },
       {
         cause: "Unexpected ingestion increase",
@@ -303,7 +303,7 @@ export const troubleshooting: TroubleshootingEntry[] = [
       },
     ],
     resolutionFlow: [
-      "Compare configured retention (ms and bytes) against the actual growth rate and free space.",
+      "Compare configured retention against the actual growth rate and free space — retention.bytes is enforced per partition, so multiply by the partition count and replication factor.",
       "Check per-topic BytesInPerSec against baseline to spot a runaway producer.",
       "On compacted topics, check log-cleaner metrics and that the cleaner threads are alive.",
       "Confirm segments are rolling — retention can't delete the active segment.",
@@ -325,45 +325,39 @@ export const troubleshooting: TroubleshootingEntry[] = [
     slug: "large-message-failures",
     symptom: "Large-message failures",
     overview:
-      "A record has to clear four independent size limits — producer, broker/topic, replica fetch, and consumer. RecordTooLargeException from any of them looks similar; a fix has to cover all four.",
+      "A record batch is rejected with RecordTooLargeException by one of three admission limits: the producer's own max.request.size, the broker's message.max.bytes, or a topic's max.message.bytes override. The consumer and replica fetch limits are soft — if the first batch in the first non-empty partition exceeds the limit Kafka returns it anyway to guarantee progress — so they never reject a record or stall a modern client. A fix only has to line up the three admission limits.",
     causes: [
       {
         cause: "Producer max.request.size",
         evidence:
-          "RecordTooLargeException thrown synchronously from send(), before the record is ever transmitted.",
+          "RecordTooLargeException thrown synchronously from send(), before anything is transmitted. It caps a single record and the whole produce request.",
       },
       {
         cause: "Broker message.max.bytes",
         evidence:
-          "The broker rejects the batch in the produce response; this value is also the cluster-wide default for new topics.",
+          "The broker rejects the batch in the produce response. This value is also the cluster-wide default max.message.bytes for new topics.",
       },
       {
         cause: "Topic-level max.message.bytes override",
         evidence:
-          "kafka-configs --describe on the topic shows a max.message.bytes stricter (or looser) than the broker default.",
+          "kafka-configs --describe on the topic shows a max.message.bytes stricter (or looser) than the broker default — it wins for that topic.",
       },
       {
-        cause: "Replica fetch limit",
+        cause: "Not the fetch limits",
         evidence:
-          "A record the leader accepted that followers can't replicate wedges the ISR; modern defaults tie replica.fetch.max.bytes to message.max.bytes, but a hand-tuned cluster can still hit it.",
-      },
-      {
-        cause: "Consumer fetch limits",
-        evidence:
-          "fetch.max.bytes / max.partition.fetch.bytes below the batch size; modern consumers still return the first batch to make progress, very old clients stall.",
+          "replica.fetch.max.bytes and the consumer's fetch.max.bytes / max.partition.fetch.bytes are soft: an over-sized first batch is still returned, so replication and modern consumers keep progressing. They affect memory and per-fetch throughput, not admission — rule them out as the source of a hard failure.",
       },
     ],
     resolutionFlow: [
-      "Identify which side threw — producer (synchronous, before send), broker (in the produce response), or consumer (on poll).",
-      "Line up all four limits: producer max.request.size, broker message.max.bytes, topic max.message.bytes, and the consumer fetch limits.",
-      "Decide between raising limits consistently and keeping messages small (claim-check: payload in object storage, a reference on the topic).",
-      "If raising, change producer, topic/broker, and consumer together, and roll carefully.",
+      "Read where RecordTooLargeException was thrown — the producer (synchronous, before send) or the broker (in the produce response).",
+      "Line up the three admission limits: producer max.request.size, broker message.max.bytes, topic max.message.bytes. The effective ceiling is the smallest one that applies.",
+      "Decide between raising those limits consistently and keeping messages small (claim-check: payload in object storage, a reference on the topic).",
+      "If raising, change the producer and the topic (or broker) together; raise max.partition.fetch.bytes too only so full-size batches are fetched in one round trip rather than one at a time.",
     ],
     keyConfigs: [
       "max.request.size",
       "message.max.bytes",
       "max.message.bytes",
-      "replica.fetch.max.bytes",
       "max.partition.fetch.bytes",
       "compression.type",
     ],

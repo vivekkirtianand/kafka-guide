@@ -237,7 +237,15 @@ improve together and there's one source of truth.
 | All 10 entries written to full depth | ✅ Done | [troubleshooting.ts](src/lib/data/troubleshooting.ts) — consumer lag, frequent rebalances, NOT_ENOUGH_REPLICAS (incl. the before-append vs. `_AFTER_APPEND` distinction), under-replicated partitions (incl. the stale-replication-throttle cause), timeout errors (each timeout named by its config + exception), disk usage growth, large-message failures (the four independent size limits), hot partitions, data/duplicates/ordering (three separate diagnostic paths), connectivity/auth (bootstrap vs. after-bootstrap split). |
 | `TroubleshootingCatalog` component | ✅ Done | [TroubleshootingCatalog.tsx](src/components/TroubleshootingCatalog.tsx) — renders the overview, cause→evidence pairs, resolution flow, monospace config chips, and the watch-out callout (styled like the Topic explorer's). Search now matches symptom, overview, cause, evidence, and config-key text. `data-testid` on the container and each entry row. |
 | Module 7 page | ✅ Done | [page.tsx](src/app/modules/%5Bslug%5D/page.tsx) — `mod.slug === "troubleshooting-scenarios"` renders a short orientation paragraph + the embedded `<TroubleshootingCatalog />` instead of the bullet-outline fallback. `Module.status` flipped `planned` → `available`. `activities` stays empty by design — the catalog is the interaction. |
-| Tests | ✅ Done | `troubleshooting.test.ts` (data shape: 10 entries, unique slugs, every cause has evidence, slug lookup, the NOT_ENOUGH_REPLICAS "repair the follower first" ordering) + `TroubleshootingCatalog.test.tsx` (default-open first entry, toggle, evidence + chip rendering, filter by symptom/cause/evidence/config, no-match state). Suite 148 → 158. |
+| Tests | ✅ Done | `troubleshooting.test.ts` (data shape: 10 entries, unique slugs, every cause has evidence, slug lookup, the NOT_ENOUGH_REPLICAS "repair the follower first" ordering, large-message fetch-limit framing, retention.bytes per-partition) + `TroubleshootingCatalog.test.tsx` (default-open first entry, toggle, evidence + chip rendering, filter by symptom/cause/evidence/resolution/config/watch-out, no-match state). Suite 148 → 161. |
+
+**Review findings addressed (round 1)** (PR #12):
+
+| Finding | Status | Fix |
+|---|---|---|
+| Large-message guidance was wrong for Kafka 4.0 — replica and modern consumer fetch limits are *soft* (an over-sized first batch is returned to guarantee progress), so they don't wedge the ISR or stall consumers; only producer / broker / topic admission limits reject the batch | ✅ Done | `large-message-failures` rewritten around exactly three admission limits (`max.request.size`, `message.max.bytes`, `max.message.bytes`). The former "replica fetch limit" / "consumer fetch limits" causes are replaced by one "Not the fetch limits" entry that states they are soft and to rule them out as a hard failure. `replica.fetch.max.bytes` dropped from `keyConfigs`; resolution flow no longer tells you to line up four limits. |
+| `retention.bytes` described as a topic-wide cap — Kafka enforces it per partition (topic size ≈ `retention.bytes` × partitions × RF) | ✅ Done | `disk-usage-growth` cause evidence and resolution step 1 corrected. (This misconception also appeared in PR #14's runbooks — fixed there too.) |
+| `watchOut` was rendered but not searchable, contradicting the stated enrichment | ✅ Done | `TroubleshootingCatalog` filter now also matches `resolutionFlow` steps and `watchOut` text (both are rendered content). Module 7 intro and a new test updated to match. |
 
 ## Test infrastructure
 
@@ -295,7 +303,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 158/158 passing
+- `npx vitest run` — 161/161 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's

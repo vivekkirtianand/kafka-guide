@@ -45,6 +45,22 @@ describe("TroubleshootingCatalog", () => {
     expect(screen.getByTestId("entry-data-integrity-issues")).toBeInTheDocument();
   });
 
+  it("also matches text that only appears in the resolution flow or the watch-out", async () => {
+    const user = userEvent.setup();
+    render(<TroubleshootingCatalog />);
+    const box = screen.getByPlaceholderText(/Search a symptom/);
+
+    // "claim-check" appears only in a resolution-flow step
+    await user.type(box, "claim-check");
+    expect(screen.getByTestId("entry-large-message-failures")).toBeInTheDocument();
+    expect(screen.queryByTestId("entry-consumer-lag")).not.toBeInTheDocument();
+
+    // "man-in-the-middle" appears only in a watch-out
+    await user.clear(box);
+    await user.type(box, "man-in-the-middle");
+    expect(screen.getByTestId("entry-connectivity-and-auth")).toBeInTheDocument();
+  });
+
   it("shows a no-match state", async () => {
     const user = userEvent.setup();
     render(<TroubleshootingCatalog />);

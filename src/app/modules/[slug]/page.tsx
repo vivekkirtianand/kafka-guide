@@ -64,9 +64,10 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         <div className="flex flex-col gap-6">
           <p className="text-sm leading-relaxed text-text-muted">
             Each entry moves from a symptom to the specific evidence that confirms or rules out
-            each cause, then to a resolution flow. The search matches symptoms, causes, evidence,
-            and config keys. The recurring theme: reducing a durability setting can make an error
-            disappear while making the underlying problem worse.
+            each cause, then to a resolution flow. The search matches every field — symptoms,
+            causes, evidence, resolution steps, config keys, and the watch-outs. The recurring
+            theme: reducing a durability setting can make an error disappear while making the
+            underlying problem worse.
           </p>
           <TroubleshootingCatalog />
         </div>
