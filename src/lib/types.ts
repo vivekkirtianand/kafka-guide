@@ -132,11 +132,25 @@ export interface Incident {
   status: "available" | "planned";
 }
 
+export interface TroubleshootingCause {
+  // The candidate cause, short.
+  cause: string;
+  // The specific metric, log line, or command output that confirms this cause or rules it
+  // out — what to look at, not just "check the logs".
+  evidence: string;
+}
+
 export interface TroubleshootingEntry {
   slug: string;
   symptom: string;
-  causes: string[];
+  // One or two sentences of framing: what the symptom actually means and the trap to avoid.
+  overview: string;
+  causes: TroubleshootingCause[];
   resolutionFlow: string[];
+  // Config keys that show up in the diagnosis or the fix — rendered as monospace chips.
+  keyConfigs?: string[];
+  // The mistake that makes the symptom disappear while making the system worse.
+  watchOut?: string;
 }
 
 export interface Runbook {
