@@ -1411,7 +1411,10 @@ export const modules: Module[] = [
       },
     },
     activities: [
-      "Present an unlabeled dashboard and identify the bottleneck: producer, broker, consumer, disk, network, or downstream processing",
+      "Read an unlabeled dashboard and name the bottleneck: producer, broker, consumer, disk, network, or downstream",
+      "Break a request-latency total into its queue, local, and remote phases",
+      "Tell a runaway lag slope from a flat-but-breaching backlog, per partition",
+      "Localize ISR churn to one slow broker vs. a shared network or storage cause",
     ],
     status: "available",
   },

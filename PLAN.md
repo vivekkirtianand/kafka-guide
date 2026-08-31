@@ -164,6 +164,65 @@ re-verified live):
 | Poison strategy mislabeled "no handling" — it models an explicit seek-back retry handler | ✅ Done | Tab renamed "unbounded retry"; disclaimer states all three strategies assume a seek-back handler and that this one is Spring Kafka's original default (seek back on every failure, no limit, no routing). |
 | PLAN.md still described auto-commit as "one batch behind" and the poison strategy as "no handling" | ✅ Done | Updated the Module 4 activity rows above to match the reworked demos. |
 
+## Module 5 — Broker and topic configuration
+
+Topic explorer content for all 11 topics landed in PR #9 (`status: "available"`, 4 content-review
+rounds on the Kafka accuracy — acks/ISR, replication amplification, KRaft quorum, SCRAM, log
+cleaner). PR #10 added the interactive demos, wired into
+[page.tsx](src/app/modules/%5Bslug%5D/page.tsx) under `mod.slug === "broker-topic-configuration"`.
+
+| Item | Status | Notes |
+|---|---|---|
+| Activity: shrink the ISR below min.insync.replicas | ✅ Done | [ReplicationFloorDemo.tsx](src/components/demos/ReplicationFloorDemo.tsx) — one partition, RF 3, a min.insync.replicas picker; stop/start brokers to shrink the ISR and watch acks=all flip between "durable" and NOT_ENOUGH_REPLICAS while acks=1 keeps working off the leader. Leader election on leader loss; a restarted broker replicates the backlog before rejoining the ISR and never reclaims leadership; after a full outage only a last-ISR replica can lead without `unclean.leader.election.enable` (a separately labelled, danger-styled action). |
+| Activity: compare delete and compact cleanup | ✅ Done | [RetentionCompactionDemo.tsx](src/components/demos/RetentionCompactionDemo.tsx) — a keyed partition log; toggle `cleanup.policy` between `delete` (whole closed segments age out, blind to keys) and `compact` (latest value per key survives; a tombstone propagates a delete then expires on the next pass). Shows what a full replay reads. |
+| Activity: spread replicas across racks, then fail a rack | ✅ Done | [RackPlacementDemo.tsx](src/components/demos/RackPlacementDemo.tsx) — six brokers across three racks, RF 3, a rack-C consumer. `broker.rack` on = one replica per rack, survives any single rack failure; off = two replicas stack in one rack, losing it drops below the floor. Rack-aware fetching needs `replica.selector.class` AND `client.rack`, and only helps with an in-sync replica in the consumer's rack. Changing `broker.rack` doesn't move an existing partition — a reassignment does. |
+| Activity: push a client past its byte-rate quota | ✅ Done | [QuotaThrottleDemo.tsx](src/components/demos/QuotaThrottleDemo.tsx) — `producer_byte_rate` and `request_percentage` tabs; push a client over quota and watch throughput cap, throttle latency rise, and errors stay at zero. A throttle pause longer than `request.timeout.ms` makes each attempt time out and retry — `delivery.timeout.ms` is the final verdict. |
+
+**Tests**: 20 new tests (four demo test files), bringing the suite to 114. **Review**: PR #10 went
+through five review rounds (commits `3bc11ff`, `ab53633`, `3224c37`, `3de651f`, `b7ce8bf`) —
+demo election safety, ISR-membership-needs-a-leader, and the late `unclean.leader.election.enable`
+toggle path.
+
+## Module 6 — Observability
+
+Topic explorer content for all 11 signals landed in PR #9 alongside Module 5. This module's demos
+are wired into [page.tsx](src/app/modules/%5Bslug%5D/page.tsx) under `mod.slug === "observability"`.
+The module lists one scoped activity (the unlabeled-dashboard bottleneck game); the demo set was
+built out to four to match Module 5's depth, and the `activities` list in `modules.ts` was expanded
+to name all four.
+
+| Item | Status | Notes |
+|---|---|---|
+| Activity: read an unlabeled dashboard, name the bottleneck | ✅ Done | [BottleneckDiagnosis.tsx](src/components/demos/BottleneckDiagnosis.tsx) — six deterministic dashboards, each a still snapshot of nine signals (produce p99, producer buffer/retry, consumer lag, poll processing vs. `max.poll.interval.ms`, request-queue/handler-idle, Local/RemoteTimeMs, disk await/free, network vs. line rate, downstream call latency) with the SLA breach flagged. Pick one of six causes (producer / broker / consumer / disk / network / downstream); a wrong pick explains that cause's real signature. The consumer-vs-downstream pair is deliberately near-identical except the sink-call panel. The producer dashboard shows a *near-empty* send buffer (the app isn't feeding `send()`) — a full buffer would point at the sender thread / network / a throttle instead. |
+| Activity: split a request-latency total into its phases | ✅ Done | [RequestLatencyBreakdown.tsx](src/components/demos/RequestLatencyBreakdown.tsx) — a pure function of four toggles (acks=all, one slow follower, slow disk, too few I/O threads) over the five TotalTimeMs phases. A phase is called "dominant" only at ≥50% of a total that is itself elevated; the slow-follower toggle is disabled (and has no effect) unless acks=all is on. Diagnosis text maps each dominant phase to its cause (queue → `num.io.threads`, local → disk, remote → slow follower). Disclaimer notes a fetch's RemoteTimeMs is the benign long-poll wait. |
+| Activity: runaway lag slope vs. flat-but-breaching backlog | ✅ Done | [LagSlopeVsAbsolute.tsx](src/components/demos/LagSlopeVsAbsolute.tsx) — three partitions, one consumer each at a fixed 120 rec/s ceiling (consume = min(produce, ceiling), so a group that keeps pace holds a steady backlog rather than draining it). Partition 2 starts at 2,000 lag → flat slope, still past a 15s time-lag SLA. Time lag is a constant-rate estimate (lag ÷ produce rate), so the rate is **locked once the clock starts** — changing it mid-run would rewrite the age of existing records. A "partition 0 stuck (unbounded retry on a bad record)" toggle makes p0 run away while the healthy partitions sit flat; the disclaimer notes a raw exception would skip the record instead (as in Module 4). Combined with an over-ceiling rate, the verdict calls out **two distinct slopes** (p0 at the full produce rate, p1/p2 at produce − ceiling). Enough steps push a stuck partition past the ~6,000-record retention window → data-loss verdict that also notes `auto.offset.reset` resumes consumption automatically. Producing over the ceiling climbs every partition — verdict says adding consumers can't help (can't split a partition); raise per-partition throughput or add partitions + consumers. |
+| Activity: localize ISR churn | ✅ Done | [IsrChurnDemo.tsx](src/components/demos/IsrChurnDemo.tsx) — four brokers, a fixed partition layout, a hand-stepped one-minute clock. The core lesson: `IsrShrinks`/`IsrExpands` are **leader-side** meters, so a slow follower lights up its *leaders'* counters — the demo shows the per-broker `IsrShrinks Count` next to a separate "replica removed from the ISR" tally, labelled as a **derived signal** (ISR-snapshot diffs / shrink log lines), not a live partition field. Scenarios: `healthy` (one first-minute blip, then quiet — not an incident), `one slow broker` (meters fire on the leaders of broker-3's partitions, but broker-3 is the replica removed every time → localized), `saturated fabric` (removed replica spread across the cluster → shared cause). A `min.insync.replicas=2` toggle surfaces the "a shrink drops the ISR to the floor; a second lagging replica drops it to 1 and rejects the write with NOT_ENOUGH_REPLICAS" warning. |
+
+**Tests**: 27 new tests (four demo test files) with the standard pattern — unique `data-testid`
+on structural containers, exact-string assertions on verdict/feedback text, one test per distinct
+behaviour branch — bringing the suite to 148. `typecheck`, `lint`, and `next build` clean; demos
+verified rendering and interacting in-browser.
+
+**Review findings addressed (round 1)** (six Kafka-accuracy findings from a review of PR #11):
+
+| Finding | Status | Fix |
+|---|---|---|
+| [P1] ISR churn attributed to the wrong broker — `IsrShrinksPerSec`/`IsrExpandsPerSec` are incremented by the partition *leader*, not the follower that lagged | ✅ Done | `IsrChurnDemo` reworked around a fixed leader/follower topology. Per-broker `IsrShrinks Count` is now leader-attributed; a separate "replica removed from the ISR" tally is the localizing signal. The "one slow broker" verdict explicitly says the meters fire on the leaders and the removed replica is the tell. |
+| [P1] Producer diagnosis contradicted `buffer-available-bytes` — a near-zero buffer is *full*, not the signature of synchronous `send().get()` / too few threads | ✅ Done | `BottleneckDiagnosis` dashboard 4 now shows an 89%-free send buffer; the explain text and the `producer` signature string both key off a near-empty buffer + idle broker, and note a near-full buffer points at the sender thread / network / a throttle. |
+| [P1] The produce-rate slider retroactively rewrote the age of existing records (`time lag = lag ÷ current rate`) | ✅ Done | `LagSlopeVsAbsolute` locks the produce-rate slider once `step > 0` ("reset to change"), and the disclaimer frames time lag as a constant-rate estimate. |
+| [P1] A poison record doesn't inherently stop a raw Kafka partition — that needs an unbounded seek/retry handler | ✅ Done | `LagSlopeVsAbsolute`'s toggle relabelled "partition 0 stuck (unbounded retry on a bad record)"; disclaimer and verdict say a raw exception would skip the record and move on, consistent with Module 4. |
+| [P1] "Add consumers" can't fix the modelled under-provisioning — every partition already has its own consumer at the ceiling | ✅ Done | `LagSlopeVsAbsolute`'s over-ceiling verdict now says adding consumers can't split a partition; recommends raising per-partition throughput or adding partitions and consumers together. |
+| [P2] Manual offset reset described as the only recovery path after records age out — `auto.offset.reset` also resumes consumption (`earliest`/`latest`/duration, or throws with `none`) | ✅ Done | `LagSlopeVsAbsolute`'s retention verdict now notes `auto.offset.reset` moves the group on its own (or throws with `none`); the skipped records are still unrecoverable. |
+| Nit: `IsrShrinksPerSec (cumulative)` conflated a per-second meter with a running count | ✅ Done | Relabelled to `IsrShrinks Count` (the meter's actual cumulative `Count`), per-broker and aggregate. |
+
+**Review findings addressed (round 2)** (3 findings from a follow-up review of PR #11):
+
+| Finding | Status | Fix |
+|---|---|---|
+| [P1] Combined lag controls gave a false diagnosis — with "stuck retrying" on *and* produce over the ceiling, p0 grows at the full produce rate while p1/p2 grow by `produce − ceiling`, but the `overCap` verdict still claimed a uniform slope | ✅ Done | Added a dedicated `stuck && overCap` branch to `LagSlopeVsAbsolute`: the verdict names the two different slopes and says fixing one problem doesn't touch the other. Regression test covers p0 at 1,600 / p1 at 400 after one 10s step at 160 rec/s. |
+| [P2] The removed-replica tally read as directly observable — Kafka exposes only the *current* ISR; `kafka-topics --describe` after a replica rejoins shows a full ISR and can't reconstruct the removal | ✅ Done | `IsrChurnDemo`'s section header, disclaimer, and source comment now label it a derived signal: diff frequent ISR snapshots, or parse the controller/broker shrink log lines. |
+| [P2] The consumer diagnosis assumed dynamic membership — exceeding `max.poll.interval.ms` doesn't immediately reassign a *static* member's partitions; they hold until the session timeout | ✅ Done | `BottleneckDiagnosis` dashboard 5's explain now splits the two paths (dynamic member dropped and rebalancing every cycle vs. static member holding its partitions to the session timeout), consistent with Module 4; either way the consumer isn't polling. |
+
 ## Test infrastructure
 
 | Item | Status | Notes |
@@ -205,9 +264,11 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 | Item | Status | Notes |
 |---|---|---|
-| Modules 5–7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); pages render a "planned" placeholder today. |
+| Module 7 content/interactivity | ⭕ Planned | Titles, topics, and activities are scoped in [modules.ts](src/lib/data/modules.ts); the page renders a "planned" placeholder today. |
 | Module 3 (Producer configuration) | ✅ Done | Full topic narrative + 4 interactive activities. See the Module 3 section above. |
 | Module 4 (Consumer configuration) | ✅ Done | Full topic narrative (7 topics) + 6 interactive activities. See the Module 4 section above. |
+| Module 5 (Broker and topic configuration) | ✅ Done | Topic explorer content (11 topics) + 4 interactive demos. See the Module 5 section above. |
+| Module 6 (Observability) | ✅ Done | Topic explorer content (11 signals) + 4 interactive demos. See the Module 6 section above. |
 | Module 1's topic narrative content | ⭕ Planned | Still a bullet outline, unlike Module 3 — see the Module 1 section above. |
 | Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
 | 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
@@ -218,7 +279,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 87/87 passing
+- `npx vitest run` — 148/148 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's

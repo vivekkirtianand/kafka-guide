@@ -21,6 +21,10 @@ import ReplicationFloorDemo from "@/components/demos/ReplicationFloorDemo";
 import RetentionCompactionDemo from "@/components/demos/RetentionCompactionDemo";
 import RackPlacementDemo from "@/components/demos/RackPlacementDemo";
 import QuotaThrottleDemo from "@/components/demos/QuotaThrottleDemo";
+import BottleneckDiagnosis from "@/components/demos/BottleneckDiagnosis";
+import RequestLatencyBreakdown from "@/components/demos/RequestLatencyBreakdown";
+import LagSlopeVsAbsolute from "@/components/demos/LagSlopeVsAbsolute";
+import IsrChurnDemo from "@/components/demos/IsrChurnDemo";
 
 export function generateStaticParams() {
   return modules.map((m) => ({ slug: m.slug }));
@@ -132,6 +136,15 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
           <RetentionCompactionDemo />
           <RackPlacementDemo />
           <QuotaThrottleDemo />
+        </div>
+      )}
+
+      {mod.slug === "observability" && (
+        <div className="mt-10 flex flex-col gap-8">
+          <BottleneckDiagnosis />
+          <RequestLatencyBreakdown />
+          <LagSlopeVsAbsolute />
+          <IsrChurnDemo />
         </div>
       )}
 
