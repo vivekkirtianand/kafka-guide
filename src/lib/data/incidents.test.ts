@@ -49,4 +49,11 @@ describe("incident simulator data", () => {
     expect(getIncident("rebalance-storm")?.title).toBe("Rebalance storm during deployment");
     expect(getIncident("nope")).toBeUndefined();
   });
+
+  it("scopes the log-cleaner failure to one broker, not the whole cluster", () => {
+    const correct = getIncident("compaction-not-reclaiming")!.investigation!.options.find((o) => o.correct)!;
+    expect(correct.feedback).toContain("on each broker");
+    expect(correct.feedback).not.toMatch(/cluster-wide|every compacted topic/i);
+    expect(correct.feedback).toMatch(/every other broker keeps compacting/i);
+  });
 });

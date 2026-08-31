@@ -351,11 +351,12 @@ export const incidents: Incident[] = [
   {
     slug: "compaction-not-reclaiming",
     title: "Compaction not reclaiming space",
-    briefing: "A compacted topic's disk usage keeps growing despite a stable key set.",
+    briefing:
+      "Disk usage on one broker is climbing steadily. It holds replicas of several compacted topics whose key sets are stable.",
     symptoms: [
-      "Steady disk growth on compacted topics",
-      "Log-cleaner metrics show rising backlog",
-      "No corresponding traffic increase",
+      "Steady disk growth on one broker",
+      "Rising log-cleaner backlog on that broker only",
+      "Other brokers' replicas of the same partitions are fine",
     ],
     clues: ["Log-cleaner thread metrics", "Tombstone retention settings", "Dirty ratio thresholds"],
     scoring: SCORING,
@@ -364,7 +365,7 @@ export const incidents: Incident[] = [
         {
           label: "log-cleaner thread metrics",
           evidence:
-            "The log-cleaner thread last logged activity 9 days ago, ending with an OutOfMemoryError. log.cleaner.threads is 1. max-dirty-percent is now above 90% on several partitions.",
+            "On broker-3 the log-cleaner thread last logged activity 9 days ago, ending with an OutOfMemoryError. log.cleaner.threads is 1. broker-3's max-dirty-percent is above 90% on the partitions it hosts; every other broker's cleaner is running normally.",
         },
         {
           label: "tombstone retention settings",
@@ -373,27 +374,27 @@ export const incidents: Incident[] = [
         {
           label: "dirty ratio thresholds",
           evidence:
-            "min.cleanable.dirty.ratio is 0.5, and every partition of the topic is well past that. Compaction is eligible to run — there's just nothing running it.",
+            "min.cleanable.dirty.ratio is 0.5. broker-3's replicas are well past it, and the other brokers compact those same partitions fine — compaction is eligible on broker-3, there's just no live cleaner thread there to run it.",
         },
       ],
       options: [
         {
-          label: "The single log-cleaner thread died 9 days ago and took all compaction with it",
+          label: "broker-3's only log-cleaner thread died 9 days ago, so nothing compacts its local replicas",
           correct: true,
           feedback:
-            "The cleaner thread hit an OutOfMemoryError and, being the only one (log.cleaner.threads=1), stopped compaction cluster-wide — silently. Every compacted topic, including __consumer_offsets, has grown since. Fix: restart the broker to bring the cleaner back, then address why it OOMed (dedupe buffer sizing, or a partition with very high key cardinality) and run more than one cleaner thread so a single failure degrades throughput instead of halting compaction. Alert on live cleaner threads and max-dirty-percent.",
+            "log.cleaner.threads creates cleaner workers on each broker. broker-3's single cleaner hit an OutOfMemoryError and stopped, so compaction of broker-3's replicas halted — silently — while every other broker keeps compacting the same partitions normally. broker-3's copies (including its share of __consumer_offsets) just grow. Fix: restart broker-3 to respawn its cleaner, then address the OOM (dedupe buffer sizing, or a high-cardinality partition) and run more than one cleaner thread so one failure degrades throughput instead of halting compaction on that broker. Alert on live cleaner threads and max-dirty-percent per broker.",
         },
         {
           label: "delete.retention.ms is too high, so tombstones are never removed",
           correct: false,
           feedback:
-            "delete.retention.ms is the default 24h, and tombstone buildup wouldn't explain growth across a stable key set of this size. The cleaner isn't running at all.",
+            "delete.retention.ms is the default 24h, and it would affect every broker's replicas equally — not just broker-3's. The cleaner on broker-3 isn't running at all.",
         },
         {
           label: "min.cleanable.dirty.ratio is set too high, so compaction rarely triggers",
           correct: false,
           feedback:
-            "The dirty ratio is already well past the 0.5 threshold on every partition — compaction is eligible. The problem is that no live cleaner thread exists to perform it.",
+            "broker-3's dirty ratio is well past the 0.5 threshold and the other brokers compact the same partitions fine. It's not a threshold problem — broker-3 has no live cleaner thread.",
         },
       ],
     },

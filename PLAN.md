@@ -237,7 +237,13 @@ right answer or what the wrong cause's real signature would look like).
 | Clue + diagnosis data moved into `incidents.ts` | ✅ Done | The slow-broker clue/option constants were hardcoded in the page; they and the 9 new scenarios now live in [incidents.ts](src/lib/data/incidents.ts). The `[slug]` page just reads `incident.investigation`. |
 | 9 scenarios written | ✅ Done | full-broker-disk (traffic + time-only retention → full disk → offline log dir), bad-advertised-listener (bootstrap OK, per-broker names NXDOMAIN from a new region), poison-message (unbounded seek-back on a deserialization failure, frozen committed offset), rebalance-storm (no static membership + eager RangeAssignor → 2 rebalances per pod × 12), hot-partition (one merchant = 55% of traffic, one consumer at 100% CPU), replica-out-of-isr (oversized 24 GB heap → multi-second GC pauses → replica ages past `replica.lag.time.max.ms`), compaction-not-reclaiming (`log.cleaner.threads=1` and the one thread OOMed 9 days ago), producer-timeouts-unavailable-partition (RF 2, both replicas in the same maintenance window, unclean election off), tls-certificate-expiration (broker keystore cert expired at 00:00 UTC, inter-broker PLAINTEXT listener unaffected). |
 | `[slug]` page | ✅ Done | [page.tsx](src/app/incident-simulator/%5Bslug%5D/page.tsx) renders `IncidentDiagnosis` + a "scored on" panel when `investigation` is present, and keeps the "planned" stub as the fallback for any future un-built incident. All 10 are now `status: "available"`. |
-| Tests | ✅ Done | `incidents.test.ts` (10 unique slugs, every incident built + available, each investigation has evidence-bearing clues and exactly one correct option, clue labels map to a scoped category) + `IncidentDiagnosis.test.tsx` (clue reveal, correct/wrong feedback, "N of M clues checked", option lock + reset). Suite 148 → 157. |
+| Tests | ✅ Done | `incidents.test.ts` (10 unique slugs, every incident built + available, each investigation has evidence-bearing clues and exactly one correct option, clue labels map to a scoped category, compaction-failure is broker-scoped) + `IncidentDiagnosis.test.tsx` (clue reveal, correct/wrong feedback, "N of M clues checked", option lock + reset). Suite 148 → 158. |
+
+**Review findings addressed (round 1)** (PR #13):
+
+| Finding | Status | Fix |
+|---|---|---|
+| `compaction-not-reclaiming` presented a dead cleaner thread as cluster-wide — `log.cleaner.threads` creates cleaner workers *on each broker*, so losing the only cleaner on one broker stops cleaning *that broker's local replicas*, not every compacted topic across the cluster | ✅ Done | Reworked the scenario around broker-3: briefing, symptoms, and all three clues now localize the growth to one broker; the correct-option feedback states `log.cleaner.threads` is per broker and that every other broker keeps compacting the same partitions normally. The two wrong options now also lean on the "one broker, not all" distinction. |
 
 ## Test infrastructure
 
@@ -295,7 +301,7 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 157/157 passing
+- `npx vitest run` — 158/158 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's
