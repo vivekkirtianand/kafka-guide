@@ -223,6 +223,19 @@ verified rendering and interacting in-browser.
 | [P2] The removed-replica tally read as directly observable — Kafka exposes only the *current* ISR; `kafka-topics --describe` after a replica rejoins shows a full ISR and can't reconstruct the removal | ✅ Done | `IsrChurnDemo`'s section header, disclaimer, and source comment now label it a derived signal: diff frequent ISR snapshots, or parse the controller/broker shrink log lines. |
 | [P2] The consumer diagnosis assumed dynamic membership — exceeding `max.poll.interval.ms` doesn't immediately reassign a *static* member's partitions; they hold until the session timeout | ✅ Done | `BottleneckDiagnosis` dashboard 5's explain now splits the two paths (dynamic member dropped and rebalancing every cycle vs. static member holding its partitions to the session timeout), consistent with Module 4; either way the consumer isn't polling. |
 
+## Production operations runbooks
+
+The 14 runbooks were slug + category stubs with empty `steps` and a "planned" badge on the
+index. This PR writes all 14 to full content and gives each its own page.
+
+| Item | Status | Notes |
+|---|---|---|
+| `Runbook` type | ✅ Done | [types.ts](src/lib/types.ts) gained `summary` (what the procedure achieves and the risk it manages) and `when` (the trigger that leads you here). `steps` is unchanged — `prechecks` / `execution` / `validation` / `rollback` / `escalation`. |
+| All 14 runbooks written | ✅ Done | [runbooks.ts](src/lib/data/runbooks.ts) — topic creation review, increasing partitions, adding/removing brokers, partition reassignment, rolling app deployments, rolling broker restarts, certificate/credential rotation, capacity planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery, handling a full disk, handling broker/AZ failures. KRaft-era throughout (controller quorum, `kafka-features.sh` metadata-version bump, no ZooKeeper). Each section is 3–6 concrete steps with the real commands and metric names. `getRunbook(slug)` helper added. |
+| `/runbooks/[slug]` detail route | ✅ Done | [page.tsx](src/app/runbooks/%5Bslug%5D/page.tsx) — `generateStaticParams` over all 14; renders the summary, a "when to use this" callout, and the five step sections each behind a colour-coded `Badge` (prechecks/execution/validation → accent/stream/success, rollback → neutral, escalation → danger). Mirrors the async-`params` pattern from `incident-simulator/[slug]` and `modules/[slug]`. |
+| Index page | ✅ Done | [runbooks/page.tsx](src/app/runbooks/page.tsx) — category-grouped cards are now links to the detail pages and show the `summary`; the "planned" badge and the "ready to write" description are gone. |
+| Tests | ✅ Done | `runbooks.test.ts` — 14 unique slugs, every runbook has a summary/when/category and all five step sections non-empty, slugs are url-safe and resolve via `getRunbook`, categories are from the known set. Suite 148 → 153. |
+
 ## Test infrastructure
 
 | Item | Status | Notes |
@@ -272,14 +285,14 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 | Module 1's topic narrative content | ⭕ Planned | Still a bullet outline, unlike Module 3 — see the Module 1 section above. |
 | Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
 | 9 remaining incident-simulator scenarios | ⭕ Planned | Only the "slow broker" incident is fully built; the rest render "planned." |
-| 14 production runbooks | ⭕ Planned | Titles/categories scoped; content not written. |
+| 14 production runbooks | ✅ Done | All 14 written to full content (prechecks/execution/validation/rollback/escalation) with a `/runbooks/[slug]` detail page each. See the Production operations runbooks section above. |
 | Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ✅ Done | Built at [local-cluster-lab/](local-cluster-lab/) — explicitly out of scope for the Next.js app per README, a separate deliverable. See Module 2 section below for what was built and verified. |
 
 ## Verification
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 148/148 passing
+- `npx vitest run` — 153/153 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's
