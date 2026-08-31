@@ -269,6 +269,26 @@ right answer or what the wrong cause's real signature would look like).
 |---|---|---|
 | `compaction-not-reclaiming` presented a dead cleaner thread as cluster-wide — `log.cleaner.threads` creates cleaner workers *on each broker*, so losing the only cleaner on one broker stops cleaning *that broker's local replicas*, not every compacted topic across the cluster | ✅ Done | Reworked the scenario around broker-3: briefing, symptoms, and all three clues now localize the growth to one broker; the correct-option feedback states `log.cleaner.threads` is per broker and that every other broker keeps compacting the same partitions normally. The two wrong options now also lean on the "one broker, not all" distinction. |
 
+## Production operations runbooks
+
+The 14 runbooks were slug + category stubs with empty `steps` and a "planned" badge on the
+index. This PR writes all 14 to full content and gives each its own page.
+
+| Item | Status | Notes |
+|---|---|---|
+| `Runbook` type | ✅ Done | [types.ts](src/lib/types.ts) gained `summary` (what the procedure achieves and the risk it manages) and `when` (the trigger that leads you here). `steps` is unchanged — `prechecks` / `execution` / `validation` / `rollback` / `escalation`. |
+| All 14 runbooks written | ✅ Done | [runbooks.ts](src/lib/data/runbooks.ts) — topic creation review, increasing partitions, adding/removing brokers, partition reassignment, rolling app deployments, rolling broker restarts, certificate/credential rotation, capacity planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery, handling a full disk, handling broker/AZ failures. KRaft-era throughout (controller quorum, `kafka-features.sh` metadata-version bump, no ZooKeeper). Each section is 3–6 concrete steps with the real commands and metric names. `getRunbook(slug)` helper added. |
+| `/runbooks/[slug]` detail route | ✅ Done | [page.tsx](src/app/runbooks/%5Bslug%5D/page.tsx) — `generateStaticParams` over all 14; renders the summary, a "when to use this" callout, and the five step sections each behind a colour-coded `Badge` (prechecks/execution/validation → accent/stream/success, rollback → neutral, escalation → danger). Mirrors the async-`params` pattern from `incident-simulator/[slug]` and `modules/[slug]`. |
+| Index page | ✅ Done | [runbooks/page.tsx](src/app/runbooks/page.tsx) — category-grouped cards are now links to the detail pages and show the `summary`; the "planned" badge and the "ready to write" description are gone. |
+| Tests | ✅ Done | `runbooks.test.ts` — 14 unique slugs, every runbook has a summary/when/category and all five step sections non-empty, slugs are url-safe and resolve via `getRunbook`, categories from the known set, retention.bytes framed per-partition, no cross-partition compaction claim. Adds 7 tests (171 → 178). |
+
+**Review findings addressed (round 1)** (PR #14):
+
+| Finding | Status | Fix |
+|---|---|---|
+| "Increasing partitions" claimed compaction would eventually remove a key's stale value from its old partition — compaction operates independently *within* each partition, so under compact-only cleanup the old value stays there indefinitely unless a newer record or a tombstone is written to that same partition | ✅ Done | The execution step now states compaction is per-partition and the stale copy persists forever on a compact-only topic without a tombstone; `cleanup.policy=delete` (or `delete,compact`) ages it out with retention. The ordering-impact precheck reworded to match (brief with time/size retention, indefinite compact-only). |
+| `retention.bytes` described as a topic-wide cap — Kafka enforces it per partition; topic footprint ≈ `retention.bytes` × partitions × replication factor | ✅ Done | Corrected in all four runbooks that reference it as a sizing limit: topic-creation review, capacity planning, handling a full disk (validation), and the precheck wording. |
+
 ## Test infrastructure
 
 | Item | Status | Notes |
@@ -318,14 +338,14 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 | Module 1's topic narrative content | ⭕ Planned | Still a bullet outline, unlike Module 3 — see the Module 1 section above. |
 | Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
 | 9 remaining incident-simulator scenarios | ✅ Done | All 10 incidents now have a full `investigation` (clues + diagnosis options) and are `status: "available"`. See the Incident simulator section above. |
-| 14 production runbooks | ⭕ Planned | Titles/categories scoped; content not written. |
+| 14 production runbooks | ✅ Done | All 14 written to full content (prechecks/execution/validation/rollback/escalation) with a `/runbooks/[slug]` detail page each. See the Production operations runbooks section above. |
 | Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ✅ Done | Built at [local-cluster-lab/](local-cluster-lab/) — explicitly out of scope for the Next.js app per README, a separate deliverable. See Module 2 section below for what was built and verified. |
 
 ## Verification
 
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 171/171 passing
+- `npx vitest run` — 178/178 passing
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's

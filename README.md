@@ -33,7 +33,7 @@ src/
     modules/                        Module index + dynamic module pages (7 modules from the plan)
     config-explorer/                Filterable configuration reference
     troubleshooting/                Symptom → evidence → cause → resolution catalog
-    runbooks/                       Production operations runbook index
+    runbooks/                       Production operations runbook index + dynamic runbook pages
     incident-simulator/             Incident list + interactive diagnosis pages
   components/
     Sidebar.tsx, TopBar.tsx         App shell (nav + persistent version/deployment context)
@@ -104,10 +104,14 @@ src/
   error disappear while making the system worse. Searchable by symptom, cause, evidence, or
   config key. The Module 7 page embeds the catalog; `/troubleshooting` is the standalone
   reference view.
-- The 14 runbooks are scoped (titles, categories) but their content is not yet written —
-  they render a "planned" state so the whole app is navigable today. Module 2's page is the
-  exception: it links out to the local cluster lab below instead of showing that
-  placeholder, since the content itself lives outside the Next.js app.
+- **Production runbooks** ships all 14 written to full content — prechecks, execution,
+  validation, rollback, and escalation criteria — each on its own `/runbooks/[slug]` page:
+  topic creation review, increasing partitions, adding/removing brokers, partition
+  reassignment, rolling app and broker restarts, certificate/credential rotation, capacity
+  planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery,
+  handling a full disk, and broker/AZ failures.
+- Module 2's page links out to the local cluster lab below instead of showing an in-app
+  page, since that content lives outside the Next.js app.
 - The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
   containers) described in the plan is a separate, non-web deliverable — not part of this
   Next.js app. It's built out at [`local-cluster-lab/`](local-cluster-lab/) (its own

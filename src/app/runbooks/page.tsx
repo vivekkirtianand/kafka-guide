@@ -1,5 +1,5 @@
+import Link from "next/link";
 import SectionHeading from "@/components/SectionHeading";
-import Badge from "@/components/Badge";
 import { runbooks } from "@/lib/data/runbooks";
 
 const categories = Array.from(new Set(runbooks.map((r) => r.category)));
@@ -10,7 +10,7 @@ export default function RunbooksPage() {
       <SectionHeading
         eyebrow="Reference"
         title="Production operations runbooks"
-        description="Each runbook covers prechecks, execution, validation, rollback, and escalation criteria. Content is scoped and ready to write — this is the index."
+        description="Each runbook covers prechecks, execution, validation, rollback, and escalation criteria for a routine or incident-response operation."
       />
       <div className="flex flex-col gap-8">
         {categories.map((category) => (
@@ -22,13 +22,14 @@ export default function RunbooksPage() {
               {runbooks
                 .filter((r) => r.category === category)
                 .map((r) => (
-                  <div
+                  <Link
                     key={r.slug}
-                    className="flex items-center justify-between rounded-lg border border-border bg-bg-elevated px-4 py-3"
+                    href={`/runbooks/${r.slug}`}
+                    className="group flex flex-col rounded-lg border border-border bg-bg-elevated px-4 py-3 transition-colors hover:border-accent/50"
                   >
-                    <span className="text-sm text-text">{r.title}</span>
-                    <Badge tone="neutral">planned</Badge>
-                  </div>
+                    <span className="text-sm text-text group-hover:text-accent">{r.title}</span>
+                    <span className="mt-1 text-[13px] leading-relaxed text-text-muted">{r.summary}</span>
+                  </Link>
                 ))}
             </div>
           </div>

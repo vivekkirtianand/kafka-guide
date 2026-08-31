@@ -157,6 +157,10 @@ export interface Runbook {
   slug: string;
   title: string;
   category: string;
+  // One or two sentences: what the procedure achieves and the main risk it manages.
+  summary: string;
+  // When this runbook applies — the trigger or the decision that leads you here.
+  when: string;
   steps: {
     prechecks: string[];
     execution: string[];
