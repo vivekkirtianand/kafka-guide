@@ -93,13 +93,18 @@ src/
   pick a diagnosis, get scored feedback) as the pattern for the other 9 incidents.
 - **Config explorer** ships with real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
-- **Troubleshooting catalog** ships with all 10 symptom → cause → resolution entries from
-  the plan, searchable.
-- Module 7, the remaining 9 incidents, and the 14 runbooks are scoped (titles, topics,
-  clues, categories) but their content/interactivity is not yet written — they render a
-  "planned" state so the whole app is navigable today. Module 2's page is the exception: it
-  links out to the local cluster lab below instead of showing that placeholder, since the
-  content itself lives outside the Next.js app.
+- **Module 7 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
+  content: all 10 symptom entries, each with an overview, cause → evidence pairs (the
+  specific metric/log/command that confirms or rules out each cause), a resolution flow,
+  key config chips, and a "watch out" — the durability setting you could lower to make the
+  error disappear while making the system worse. Searchable by symptom, cause, evidence, or
+  config key. The Module 7 page embeds the catalog; `/troubleshooting` is the standalone
+  reference view.
+- The remaining 9 incidents and the 14 runbooks are scoped (titles, clues, categories) but
+  their content/interactivity is not yet written — they render a "planned" state so the
+  whole app is navigable today. Module 2's page is the exception: it links out to the local
+  cluster lab below instead of showing that placeholder, since the content itself lives
+  outside the Next.js app.
 - The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
   containers) described in the plan is a separate, non-web deliverable — not part of this
   Next.js app. It's built out at [`local-cluster-lab/`](local-cluster-lab/) (its own
