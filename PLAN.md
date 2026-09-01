@@ -46,7 +46,7 @@ unless noted.
 |--|--|--|--|--|
 | **1** | **Course framework** | 1a data model + metadata + IA + computed duration; 1b progress tracking (localStorage); 1c glossary | — | M1 |
 | 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
-| 3 | Rework local lab | **3a ✅** Lab A single-broker walkthrough as **in-app** lesson (10 steps × command/output/observe/error/recovery/checkbox); 3b Lab B = existing 3-broker lab + OS matrix + `verify-lab` script + volume-delete warning + in-app instructions | 1a, 1b | M1 |
+| 3 | Rework local lab | **3a ✅** Lab A single-broker in-app walkthrough; **3b ✅** Lab B (3-broker) in-app walkthrough + OS matrix + resource floor + `verify-lab.sh` + volume-delete warning | 1a, 1b | M1 |
 | 4 | Java producer/consumer module | 4a `examples/order-pipeline-java/` scaffold (producer/consumer/shared/tests) + CI; 4b Module 3 lessons 1–11; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
 | 5 | Schemas & serialization | 5a Module 5 topic content (bytes, JSON/Avro/Protobuf, Schema Registry, compatibility modes, poison records); 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
@@ -292,7 +292,7 @@ following the established demo idiom (pure logic, teaching disclaimer, `reset`, 
 | PR | Scope | Status |
 |---|---|---|
 | 3a | Lab A — a single-broker, in-app hands-on walkthrough (new lesson render path) | ✅ Done |
-| 3b | Lab B — the existing 3-broker lab: OS matrix, resource floor, `verify-lab` script, volume-delete warning, in-app instructions | ⬜ Next |
+| 3b | Lab B — the 3-broker lab: in-app walkthrough, OS matrix, resource floor, `verify-lab.sh`, volume-delete warning | ✅ Done |
 
 ### PR 3a — Lab A single-broker in-app walkthrough
 
@@ -364,6 +364,45 @@ Suite 283 → 285.
 |---|---|---|
 | 1 | The round-2 rewrite still asserted a specific behaviour — `poll()` returns cross-partition records "interleaved" — which Kafka does not guarantee | reworded to "the order records from different partitions come back in is undefined / no ordering promise"; test now also forbids "interleav*" and requires the no-guarantee phrasing |
 | 2 | `PLAN.md`'s v1-era Module 2 section still described it as `status: "external"` with a "lab built" badge, contradicting Phase 3a | added a "Superseded by Phase 3a" note to that section and corrected the "what was built" checklist row, the risks note, and the final-verification line to say Module 2 is now `"available"` with the in-app Lab A |
+
+### PR 3b — Lab B three-broker in-app walkthrough
+
+The three-broker Compose lab gets the same in-app treatment as Lab A, plus the environment
+scaffolding a beginner needs to actually get it running: an OS matrix, a memory floor, an
+automated health check, and a spelled-out volume-delete warning.
+
+- `src/lib/types.ts` — `Lab` gains `platformNotes?: {platform, note}[]`, `resourceFloor?:
+  string`, `verify?: LabCommand`, `troubleshooting?: {symptom, cause, fix}[]`. `Module.lab?:
+  Lab` → **`Module.labs?: Lab[]`** (a module can have more than one lab).
+- `src/lib/data/labs.ts` — `labB` (`slug: "lab-b-three-broker-cluster"`), 9 steps: brokers
+  healthy → RF-3 topic → describe (leaders/ISR spread) → keyed produce/consume → stop the
+  leader (election + ISR shrink) → restart (rejoin ISR, no auto-leadership) → stop two
+  brokers (`NotEnoughReplicasException` — acks=all admission control) → Grafana dashboard →
+  dynamic topic config. Setup is `git clone --depth 1` + `docker compose up -d`; verify is
+  `./verify-lab.sh`; teardown spells out `stop` vs `down` vs `down -v`.
+- `local-cluster-lab/verify-lab.sh` (new) — checks all three brokers report `healthy` and
+  every host port (29092–29094, 8080, 9090, 3001) is accepting connections; exits non-zero
+  with a pointer to the README's Troubleshooting section. Pure bash — `/dev/tcp`, no `nc` /
+  `timeout` (macOS has neither by default).
+- `.github/workflows/ci.yml` — `verify-local-cluster-lab` job runs `bash -n` and
+  `shellcheck` on `verify-lab.sh`.
+- `local-cluster-lab/README.md` — retitled "Lab B"; adds a Resources section (≥ 4 GB Docker
+  memory, ~5 GB disk, and why), a By-platform table (macOS / Windows-WSL / Linux), a
+  `verify-lab.sh` step in Quick start, a Troubleshooting table, and an expanded
+  `docker compose down -v` warning.
+- `src/components/LabWalkthrough.tsx` — `defaultCollapsed?` prop: a collapsed lab renders as
+  a `<details>` (`summary` = "Hands-on lab · <title> · N steps · <progress>"), content still
+  in the DOM so step checkboxes persist. New sections render `platformNotes` (a `<dl>`),
+  `resourceFloor` (a callout), `verify` (its own command block), and `troubleshooting`.
+- `src/app/modules/[slug]/page.tsx` — `mod.labs.map((lab, i) => <LabWalkthrough … defaultCollapsed={i > 0} />)`.
+  The "Lab B callout" is now just a pointer to `local-cluster-lab/` on GitHub for browsing
+  the Compose file and `verify-lab.sh`.
+- `src/lib/data/modules.ts` — `labs: [labA, labB]`; `estimatedMinutes` 90 → 150; a fifth
+  objective and a third completion criterion for the three-broker work.
+- Tests: `labs.test.ts` +8 (labB shape, OS matrix covers all three, resource floor,
+  `verify-lab` reference, troubleshooting entries, leader-election / min-ISR steps present,
+  volume-delete warning; module carries `[labA, labB]`); `LabWalkthrough.test.tsx` +2
+  (collapsed `<details>` render, new sections render). Suite 285 → 294.
 
 ## Module 1 — Kafka mental model
 

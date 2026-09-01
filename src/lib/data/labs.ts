@@ -193,4 +193,209 @@ export const labA: Lab = {
     "Lab A is disposable by design — there is no volume, so removing the container erases everything you created, and that is fine. Lab B is different: it mounts named volumes precisely so your cluster's data survives a restart, and there the destructive command is `docker compose down -v`, which deletes those volumes. Get used to the distinction now: removing a container is not always the same as deleting its data.",
 };
 
-export const labs: Lab[] = [labA];
+// Lab B — the three-broker cluster. Same CLI muscle memory as Lab A, but now replication,
+// leader election, and ISR mean something: this is the smallest setup where stopping a broker
+// is survivable and observable. Backed by the Docker Compose project in `local-cluster-lab/`.
+export const labB: Lab = {
+  slug: "lab-b-three-broker-cluster",
+  title: "Lab B — the three-broker cluster",
+  summary:
+    "Bring up three Kafka brokers, a web UI, and Prometheus/Grafana, then do the things one broker cannot show you: replication factor 3, leader election when a broker dies, ISR shrink and recovery, and acks=all admission control.",
+  platformNotes: [
+    {
+      platform: "macOS",
+      note: "Docker Desktop. Raise the memory limit in Settings → Resources → Advanced to at least 4 GB — the default is often 2 GB and the brokers get OOM-killed mid-startup. Apple Silicon needs nothing special; every image here is multi-arch.",
+    },
+    {
+      platform: "Windows (WSL 2)",
+      note: "Install Docker Desktop with the WSL 2 backend, then work entirely inside a WSL 2 (Ubuntu) shell. Clone the repo into the Linux home directory (`~`), not `/mnt/c/...` — Compose bind mounts onto the Windows filesystem are slow enough to trip the broker health checks. Run every command from the WSL shell.",
+    },
+    {
+      platform: "Linux",
+      note: "Docker Engine plus the Compose plugin — the `docker compose` subcommand, not the older standalone `docker-compose` binary. Your user must be in the `docker` group (or prefix each command with `sudo`).",
+    },
+  ],
+  resourceFloor:
+    "Give Docker at least 4 GB of memory (6 GB is comfortable) and keep ~5 GB of free disk. The stack is three Kafka JVMs plus kafka-ui, Prometheus, and Grafana. Below ~4 GB the brokers fail to allocate their heap and the containers restart in a loop.",
+  prerequisites: [
+    "You have finished Lab A — the CLI commands here assume you have already produced and consumed once",
+    "Docker and Docker Compose v2, with the memory limit raised per the platform note above",
+    "git, to clone the repo that holds the Compose file",
+    "A POSIX shell (macOS Terminal, a Linux shell, or WSL 2 on Windows)",
+  ],
+  setup: [
+    {
+      command: "git clone --depth 1 https://github.com/vivekkirtianand/kafka-guide.git",
+      note: "Clones the guide repo. `--depth 1` skips history — you only need the working tree. If you already have it checked out, just `cd` into it and `git pull`.",
+    },
+    {
+      command: "cd kafka-guide/local-cluster-lab && docker compose up -d",
+      note: "Starts all six base services in the background. The first run pulls several images and can take a few minutes. `local-cluster-lab/README.md` documents every service and port.",
+    },
+  ],
+  verify: {
+    command: "./verify-lab.sh",
+    note: "Checks that all three brokers report healthy and that every host port (29092–29094, 8080, 9090, 3001) is accepting connections. Re-run it any time the lab seems off; a failing check points you at the right section of the README's Troubleshooting list.",
+  },
+  steps: [
+    {
+      id: "brokers-healthy",
+      title: "Confirm all three brokers are healthy",
+      intro: "`docker compose ps` shows every service and its health. All three `kafka-*` services should reach `healthy` within 30–60 seconds.",
+      command: "docker compose ps",
+      expected:
+        "NAME                     SERVICE     STATUS                   PORTS\nkafka-lab-kafka-1        kafka-1     Up 45 seconds (healthy)  0.0.0.0:29092->9092/tcp\nkafka-lab-kafka-2        kafka-2     Up 45 seconds (healthy)  0.0.0.0:29093->9092/tcp\nkafka-lab-kafka-3        kafka-3     Up 45 seconds (healthy)  0.0.0.0:29094->9092/tcp\nkafka-lab-kafka-ui       kafka-ui    Up 30 seconds            0.0.0.0:8080->8080/tcp\n... (prometheus, grafana)",
+      observe:
+        "Do all three brokers say `(healthy)`? If one is stuck `(health: starting)` for more than a minute or keeps restarting, that is almost always Docker memory — see the README's Troubleshooting section.",
+      commonError: {
+        symptom: "One or more `kafka-*` rows cycle between `Up` and `Restarting`, or sit at `(health: starting)` forever.",
+        cause: "Docker does not have enough memory for three broker JVMs, so the OS kills them as they start.",
+        recovery: "Raise Docker's memory limit to at least 4 GB (Docker Desktop → Settings → Resources), then `docker compose down && docker compose up -d`.",
+      },
+    },
+    {
+      id: "replicated-topic",
+      title: "Create a topic with replication factor 3",
+      intro: "This is the topic one broker could not give you: three copies of every partition, one per broker.",
+      command:
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --create --topic orders --partitions 3 --replication-factor 3",
+      expected: "Created topic orders.",
+      observe:
+        "The CLI runs inside the container and points at `kafka-1:19092` — the in-network listener, not the host-facing `localhost:29092`. Any of the three brokers works as the entry point.",
+      commonError: {
+        symptom: "`InvalidReplicationFactorException` mentioning `larger than the number of available brokers`.",
+        cause: "Fewer than three brokers are actually up — check `docker compose ps` again.",
+        recovery: "Wait for all three to be `(healthy)`, then re-run.",
+      },
+    },
+    {
+      id: "describe-replicated",
+      title: "See leaders, replicas, and ISR spread across brokers",
+      intro: "`--describe` now has something to say: each partition has a leader on one broker and followers on the other two.",
+      command:
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic orders",
+      expected:
+        "Topic: orders\tPartitionCount: 3\tReplicationFactor: 3\tConfigs: min.insync.replicas=2\n\tTopic: orders\tPartition: 0\tLeader: 1\tReplicas: 1,2,3\tIsr: 1,2,3\n\tTopic: orders\tPartition: 1\tLeader: 2\tReplicas: 2,3,1\tIsr: 2,3,1\n\tTopic: orders\tPartition: 2\tLeader: 3\tReplicas: 3,1,2\tIsr: 3,1,2\n(your leader assignment will vary; the point is that leadership is spread, not all on one broker)",
+      observe:
+        "`Replicas` lists all three brokers for every partition; `Isr` (in-sync replicas) currently matches it. `min.insync.replicas=2` is a topic config here — remember that number for the broker-stop step.",
+    },
+    {
+      id: "produce-consume-keyed",
+      title: "Produce keyed records and see where they land",
+      intro: "Same keyed-producer pattern as Lab A, then read it back with the partition shown.",
+      command:
+        "printf 'west:A\\nwest:B\\neast:C\\n' | docker exec -i kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server kafka-1:19092 --topic orders --property parse.key=true --property key.separator=:\ndocker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic orders --from-beginning --max-messages 3 --timeout-ms 20000 --property print.partition=true --property print.key=true",
+      expected:
+        "Partition:1\twest\tA\nPartition:1\twest\tB\nPartition:2\teast\tC\nProcessed a total of 3 messages\n(partition numbers vary; both `west` records share one)",
+      observe:
+        "Same behaviour as Lab A — the key decides the partition. What is different now is that the partition's leader is on a specific broker, and that is the broker you will stop next.",
+    },
+    {
+      id: "stop-leader",
+      title: "Stop the broker leading a partition",
+      intro:
+        "Find a partition's leader from the describe output, then stop that broker and describe again. Substitute the broker number you actually saw leading.",
+      command:
+        "docker compose stop kafka-2\ndocker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic orders",
+      expected:
+        "\tTopic: orders\tPartition: 1\tLeader: 3\tReplicas: 2,3,1\tIsr: 3,1\n(the partition kafka-2 was leading has a new leader, and 2 has dropped out of every Isr list)",
+      observe:
+        "Leadership moved to a surviving in-sync replica within a second or two, and `Isr` for every partition shrank from `1,2,3` to two brokers. Producers and consumers using `acks=all` kept working because two in-sync replicas still meet `min.insync.replicas=2`.",
+      commonError: {
+        symptom: "`--describe` still shows `Leader: 2` for some partition.",
+        cause: "You stopped a broker that was not leading that partition — leadership only moves for partitions whose leader went away.",
+        recovery: "That is fine. Look at the partition kafka-2 *was* leading; that one has a new leader.",
+      },
+    },
+    {
+      id: "restart-broker",
+      title: "Restart the broker and watch it rejoin the ISR",
+      intro: "Bring the stopped broker back and describe once more after a few seconds.",
+      command:
+        "docker compose start kafka-2\nsleep 10 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic orders",
+      expected:
+        "\tTopic: orders\tPartition: 1\tLeader: 3\tReplicas: 2,3,1\tIsr: 3,1,2\n(kafka-2 is back in every Isr list, but it did NOT automatically take leadership back)",
+      observe:
+        "kafka-2 caught up and rejoined the ISR, so you are back to three in-sync replicas. It did not reclaim the partitions it used to lead — KRaft leaves leadership where it is until a preferred-leader election moves it. That is expected; leadership imbalance after a restart is normal and self-corrects on the next rebalance.",
+    },
+    {
+      id: "min-isr-floor",
+      title: "Drop the ISR below the floor and watch acks=all stop accepting writes",
+      intro:
+        "`min.insync.replicas=2` means an `acks=all` write is only accepted while at least two replicas are in sync. Stop two of the three brokers and every partition's ISR falls to one.",
+      command:
+        "docker compose stop kafka-2 kafka-3\nprintf 'blocked\\n' | docker exec -i kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server kafka-1:19092 --topic orders --producer-property acks=all --producer-property retries=0",
+      expected:
+        "org.apache.kafka.common.errors.NotEnoughReplicasException: The size of the current ISR ... is insufficient to satisfy the min.insync.replicas requirement of [2] for partition orders-N",
+      observe:
+        "This is admission control, not data loss. Kafka refused the write rather than accept something it could only store on one broker. An `acks=1` or `acks=0` producer would still have been accepted here — with a weaker durability guarantee. Bring the brokers back with `docker compose start kafka-2 kafka-3` and the same produce succeeds once the ISR is back to two.",
+      commonError: {
+        symptom: "The produce succeeds instead of failing.",
+        cause: "One of the two brokers you stopped is still (or already) running, so a partition still has two in-sync replicas.",
+        recovery: "`docker compose ps` should show only kafka-1 up among the brokers. Stop whichever of kafka-2 / kafka-3 is still running and retry.",
+      },
+    },
+    {
+      id: "grafana-dashboard",
+      title: "Read the same story on the Grafana dashboard",
+      intro:
+        "Everything you just did by hand is on a dashboard. Start the brokers back up, open Grafana, and stop a broker again while watching.",
+      command: "docker compose start kafka-2 kafka-3   # then open http://localhost:3001",
+      expected:
+        "Grafana (anonymous access, no login) → Dashboards → \"Kafka lab overview\". Panels: brokers reporting, under-replicated partitions, consumer-group lag, per-topic write rate, ISR vs total replicas.",
+      observe:
+        "Stop a broker and the \"under-replicated partitions\" panel jumps from 0 and \"brokers reporting\" drops to 2; start it and both recover. This is the metric an on-call engineer actually watches — the CLI `--describe` is the same information one snapshot at a time.",
+    },
+    {
+      id: "dynamic-config",
+      title: "Change a topic config with no restart",
+      intro: "Dynamic topic configs like `retention.ms` apply immediately across the cluster.",
+      command:
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka-1:19092 --entity-type topics --entity-name orders --alter --add-config retention.ms=3600000\ndocker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka-1:19092 --entity-type topics --entity-name orders --describe",
+      expected:
+        "Completed updating config for topic orders.\nDynamic configs for topic orders are:\n  retention.ms=3600000 sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:retention.ms=3600000}\n  min.insync.replicas=2 ...",
+      observe:
+        "No broker restart, no downtime — the change is stored in cluster metadata and every broker picks it up. Remove the override with `--delete-config retention.ms` to fall back to the broker default.",
+    },
+  ],
+  troubleshooting: [
+    {
+      symptom: "A `kafka-*` container restarts in a loop or never becomes healthy.",
+      cause: "Docker has too little memory for three broker JVMs.",
+      fix: "Raise Docker's memory to at least 4 GB (Docker Desktop → Settings → Resources), then `docker compose down && docker compose up -d`.",
+    },
+    {
+      symptom: "`verify-lab.sh` or `docker compose up` reports a port is already allocated.",
+      cause: "Another process — often a local Kafka, or a previous run of this lab — holds 29092–29094, 8080, 9090, or 3001.",
+      fix: "`docker compose down`, stop the other process (`lsof -i :29092`), and retry. Or change the published ports in `docker-compose.yml`.",
+    },
+    {
+      symptom: "Kafka UI at localhost:8080 shows no cluster or an 'offline' status.",
+      cause: "It connected before the brokers were ready and cached the failure.",
+      fix: "`docker compose restart kafka-ui`, then reload the page.",
+    },
+    {
+      symptom: "On Windows, `docker compose up` fails on a bind mount, or brokers never pass health checks.",
+      cause: "The repo is checked out under `/mnt/c/...`; Compose bind mounts onto the Windows filesystem are too slow.",
+      fix: "Clone the repo into your WSL 2 home directory (`~`) and run the lab from there.",
+    },
+  ],
+  teardown: [
+    {
+      command: "docker compose stop",
+      note: "Stops every container but keeps them and their volumes. `docker compose start` brings the same cluster back with all its data.",
+    },
+    {
+      command: "docker compose down",
+      note: "Removes the containers and the network. The named volumes — and so every topic, record, and Grafana/Prometheus history — survive. Next `docker compose up -d` resumes the same cluster.",
+    },
+    {
+      command: "docker compose down -v",
+      note: "The destructive one. `-v` also deletes the named volumes, wiping all cluster data. Use it only when you want a genuinely fresh cluster.",
+    },
+  ],
+  teardownWarning:
+    "`docker compose down` on its own is safe — it keeps the volumes, so your topics and records come back on the next `up`. `docker compose down -v` deletes those volumes permanently: every topic, every record, and all Grafana/Prometheus history are gone, and the next start is a brand-new cluster. There is no undo. Only reach for `-v` when a fresh cluster is exactly what you want.",
+};
+
+export const labs: Lab[] = [labA, labB];

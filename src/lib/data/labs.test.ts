@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { labs, labA } from "./labs";
+import { labs, labA, labB } from "./labs";
 import { modules } from "./modules";
 
 describe("lab data", () => {
@@ -121,9 +121,57 @@ describe("lab data", () => {
     });
   });
 
-  it("the local-cluster-lab module carries Lab A and is available", () => {
+  describe("Lab B — three-broker cluster", () => {
+    it("is a multi-step three-broker walkthrough backed by the Compose project", () => {
+      expect(labB.steps.length).toBeGreaterThanOrEqual(8);
+      expect(labB.setup.some((c) => /git clone/.test(c.command))).toBe(true);
+      expect(labB.setup.some((c) => /docker compose up -d/.test(c.command))).toBe(true);
+    });
+
+    it("has an OS matrix covering macOS, Windows/WSL, and Linux", () => {
+      const platforms = (labB.platformNotes ?? []).map((p) => p.platform.toLowerCase());
+      expect(platforms.some((p) => p.includes("mac"))).toBe(true);
+      expect(platforms.some((p) => p.includes("windows") || p.includes("wsl"))).toBe(true);
+      expect(platforms.some((p) => p.includes("linux"))).toBe(true);
+    });
+
+    it("states a memory/disk floor and what happens below it", () => {
+      expect(labB.resourceFloor).toBeDefined();
+      expect(labB.resourceFloor!).toMatch(/\bGB\b/);
+      expect(labB.resourceFloor!).toMatch(/memory|RAM/i);
+    });
+
+    it("offers verify-lab.sh as an automated check", () => {
+      expect(labB.verify?.command).toMatch(/verify-lab\.sh/);
+    });
+
+    it("has lab-level troubleshooting entries, each with a cause and a fix", () => {
+      expect((labB.troubleshooting ?? []).length).toBeGreaterThanOrEqual(3);
+      for (const t of labB.troubleshooting ?? []) {
+        expect(t.symptom.length).toBeGreaterThan(0);
+        expect(t.cause.length).toBeGreaterThan(0);
+        expect(t.fix.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("teaches leader election / ISR and acks=all admission control", () => {
+      const ids = labB.steps.map((s) => s.id);
+      expect(ids).toContain("stop-leader");
+      expect(ids).toContain("min-isr-floor");
+      const minIsr = labB.steps.find((s) => s.id === "min-isr-floor")!;
+      expect(minIsr.expected).toMatch(/NotEnoughReplicas|min\.insync\.replicas/i);
+    });
+
+    it("warns before the destructive volume delete and distinguishes it from a plain down", () => {
+      expect(labB.teardown.some((c) => /down -v/.test(c.command))).toBe(true);
+      expect(labB.teardownWarning).toMatch(/-v/);
+      expect(labB.teardownWarning).toMatch(/no undo|permanently|destructive/i);
+    });
+  });
+
+  it("the local-cluster-lab module carries Lab A then Lab B and is available", () => {
     const mod = modules.find((m) => m.slug === "local-cluster-lab")!;
     expect(mod.status).toBe("available");
-    expect(mod.lab?.slug).toBe(labA.slug);
+    expect(mod.labs?.map((l) => l.slug)).toEqual([labA.slug, labB.slug]);
   });
 });
