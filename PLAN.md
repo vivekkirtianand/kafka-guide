@@ -294,7 +294,7 @@ index. This PR writes all 14 to full content and gives each its own page.
 | Item | Status | Notes |
 |---|---|---|
 | Vitest + React Testing Library setup | ✅ Done | [vitest.config.mts](vitest.config.mts), [vitest.setup.ts](vitest.setup.ts), `npm test` / `npm run test:watch`. |
-| Component tests | ✅ Done | 87 tests across 15 files: `RecordFlowDemo.test.tsx`, `PartitionOrderingDemo.test.tsx`, `LeaderElectionDemo.test.tsx`, `Sidebar.test.tsx` (Module 1); `AcksDurabilityDemo.test.tsx`, `BatchingThroughputDemo.test.tsx`, `BufferAndTimeoutDemo.test.tsx`, `IdempotenceDemo.test.tsx` (Module 3); `PollIntervalDemo.test.tsx`, `ConsumerGroupScalingDemo.test.tsx`, `CommitStrategyDemo.test.tsx`, `CommitCrashDemo.test.tsx`, `OffsetResetDemo.test.tsx`, `PoisonMessageDemo.test.tsx` (Module 4), plus `configs.test.ts` (config version gating). |
+| Component + data tests | ✅ Done | 189 tests across 30 files. Component: 3 Module 1 demos + `Sidebar`; 4 Module 3 demos; 6 Module 4 demos; 4 Module 5 demos; 4 Module 6 demos; `TopicExplorer`, `TroubleshootingCatalog`, `IncidentDiagnosis`. Data: `configs` (version gating), `troubleshooting` (catalog shape + Kafka-accuracy asserts), `incidents` (10 built scenarios), `runbooks` (14 filled), `modules` (topicDetail shape + Module 1 accuracy asserts). |
 | Dev preview config | ✅ Done | [.claude/launch.json](.claude/launch.json) for local dev-server preview. |
 | Node version pinned/declared | ✅ Done | `engines.node` in `package.json` (floor set by `jsdom`), [.nvmrc](.nvmrc). |
 | CI | ✅ Done | [.github/workflows/ci.yml](.github/workflows/ci.yml) — `npm run typecheck`, lint, test, build on push/PR to `main`. |
@@ -328,6 +328,8 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 ## Open questions / follow-ups
 
+Everything the guide plan scoped is now built — this table is a closed log, no items remain open.
+
 | Item | Status | Notes |
 |---|---|---|
 | Module 7 content/interactivity | ✅ Done | Enriched the shared troubleshooting catalog (per-cause evidence, key configs, watch-outs) and embedded it on the Module 7 page; `status: "available"`. See the Module 7 section above. |
@@ -343,9 +345,24 @@ Findings surfaced via manual code review across six passes; all fixes verified w
 
 ## Verification
 
+Every item in the guide plan is built:
+
+- **Modules 1–7** — all have Topic explorer content (`topicDetail`) for every topic and are
+  `status: "available"` (Module 2 is `"external"` — the local cluster lab). Modules 1 and
+  3–6 also carry their interactive demos; Module 7 embeds the troubleshooting catalog.
+- **Incident simulator** — all 10 scenarios have a full `investigation` (clues + diagnosis
+  options), `status: "available"`.
+- **Troubleshooting catalog** — all 10 symptom entries at full depth (overview, cause →
+  evidence, resolution flow, key configs, watch-out).
+- **Production runbooks** — all 14 written to full content, each with a `/runbooks/[slug]`
+  page.
+- **Local cluster lab** — the separate Docker Compose deliverable at `local-cluster-lab/`.
+
+Checks (re-run on `main` after PR #15):
+
 - `npm run typecheck` (`next typegen && tsc --noEmit`) — clean, including from a clean checkout with no `.next` directory
 - `npx eslint .` — clean
-- `npx vitest run` — 189/189 passing
+- `npx vitest run` — 189/189 passing across 30 test files (25 component tests under `src/components/`, plus 5 data tests: `configs`, `troubleshooting`, `incidents`, `runbooks`, `modules`)
 - `npm run build` — clean production build
 - Manual browser verification (desktop + mobile viewports) for every UI-facing fix above,
   except the drawer's breakpoint-crossing close: the available browser automation tool's
