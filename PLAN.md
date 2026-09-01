@@ -240,6 +240,16 @@ following the established demo idiom (pure logic, teaching disclaimer, `reset`, 
   sample events (`order-placed`, `sensor-reading`), score and reveal each part's role.
 - Tests: one `*.test.tsx` per demo (22 total). Suite 228 → 250.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | QueueVsLogDemo said a queue delivers "once" | reworded — "routes each message to one consumer and drops it once acknowledged"; disclaimer notes redelivery after a failed ack |
+| 2 | "replay costs nothing" | "nothing has to be re-produced … though re-reading still costs broker and consumer work" |
+| 3 | Fan-out demo said adding a consumer "is free" | "needs no change to the producer … (it does add its own infrastructure and load on the brokers)" |
+| 4 | LabelTheEventDemo disclaimer said the key is absent *and* that every event "is a key" | "every Kafka event has a value and a timestamp, plus an optional key and optional headers" |
+| 5 | Key note said it "picks the partition" unconditionally | "by default decides the partition … (an explicit partition or custom partitioner can override this)" |
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

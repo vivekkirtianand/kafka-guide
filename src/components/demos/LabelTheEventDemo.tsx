@@ -8,7 +8,7 @@ type Role = "key" | "value" | "timestamp" | "headers";
 const ROLES: Role[] = ["key", "value", "timestamp", "headers"];
 
 const ROLE_NOTE: Record<Role, string> = {
-  key: "picks the partition and groups related events so they stay ordered",
+  key: "by default decides the partition, so related events land together and stay ordered (an explicit partition or custom partitioner can override this)",
   value: "the payload — what actually happened; Kafka stores it as opaque bytes",
   timestamp: "when the event happened (or when the broker stored it)",
   headers: "optional side metadata — trace ids, schema version, source — not used for routing",
@@ -91,9 +91,9 @@ export default function LabelTheEventDemo() {
       </div>
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
-        Simplified for teaching — on the wire these parts are bytes with a fixed record layout, and the key or
-        headers can be absent. What carries over: every Kafka event is a key, a value, a timestamp, and
-        optional headers, and each part has a distinct job.
+        Simplified for teaching — on the wire these parts are bytes with a fixed record layout. What carries
+        over: every Kafka event has a value and a timestamp, plus an optional key and optional headers, and
+        each part has a distinct job.
       </p>
 
       <div className="mb-3 font-mono text-[11px] text-text-faint">

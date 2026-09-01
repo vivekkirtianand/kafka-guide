@@ -83,7 +83,8 @@ export default function OrderEventFanoutDemo() {
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — a real pipeline has many events, more partitions, and consumer groups rather
         than lone consumers. What carries over: the producer publishes once and doesn&apos;t know its readers;
-        each consumer tracks its own position; adding a new one is free and can replay from the start.
+        each consumer tracks its own position; adding one needs no change to the producer and can replay from
+        the start (it does add its own infrastructure and load on the brokers).
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">

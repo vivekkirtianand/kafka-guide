@@ -32,7 +32,7 @@ describe("QueueVsLogDemo", () => {
 
     expect(within(queue()).queryByText("e0")).not.toBeInTheDocument();
     expect(within(queue()).getByText("1 consumed & gone")).toBeInTheDocument();
-    expect(feed()).toHaveTextContent(/delivered once and removed — no one else will see it/i);
+    expect(feed()).toHaveTextContent(/goes to one consumer, and isn't kept for anyone else to read/i);
   });
 
   it("advances a consumer group's offset while the event stays on the log", async () => {
@@ -70,7 +70,7 @@ describe("QueueVsLogDemo", () => {
     await user.click(screen.getByRole("button", { name: "group A: reset to 0" }));
 
     expect(screen.getByTestId("wk-queuelog-groupA")).toHaveTextContent("group A offset: 0");
-    expect(feed()).toHaveTextContent(/replay costs nothing/i);
+    expect(feed()).toHaveTextContent(/nothing has to be re-produced/i);
   });
 
   it("resets", async () => {

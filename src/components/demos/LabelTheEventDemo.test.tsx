@@ -49,7 +49,7 @@ describe("LabelTheEventDemo", () => {
     await user.click(screen.getByRole("button", { name: /check answers/i }));
 
     expect(screen.getByTestId("wk-label-result")).toHaveTextContent("3 / 4 correct");
-    expect(screen.getByTestId("wk-label-part-A")).toHaveTextContent(/picks the partition and groups related events/i);
+    expect(screen.getByTestId("wk-label-part-A")).toHaveTextContent(/by default decides the partition/i);
   });
 
   it("moves on to the sensor-reading sample", async () => {

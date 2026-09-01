@@ -40,7 +40,7 @@ export default function QueueVsLogDemo() {
       const remaining = c.produced - c.queueConsumed;
       if (remaining <= 0) return push("the queue is empty — nothing left to deliver.", c);
       const id = c.queueConsumed;
-      return push(`queue: a worker takes e${id}. It is delivered once and removed — no one else will see it.`, {
+      return push(`queue: a worker takes e${id} and acknowledges it, so it is removed — it goes to one consumer, and isn't kept for anyone else to read.`, {
         ...c,
         queueConsumed: c.queueConsumed + 1,
       });
@@ -78,7 +78,7 @@ export default function QueueVsLogDemo() {
 
   function resetGroupA() {
     setS((c) =>
-      push("log: group A's offset is reset to 0. It will re-read every event — replay costs nothing.", {
+      push("log: group A's offset is reset to 0. It will re-read every event — nothing has to be re-produced, the log already holds it (though re-reading still costs broker and consumer work).", {
         ...c,
         groupA: 0,
       }),
@@ -108,8 +108,9 @@ export default function QueueVsLogDemo() {
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — real queues and Kafka both have far more nuance (visibility timeouts,
-        partitions, retention limits). What carries over: a queue delivers each message once and forgets it; a
-        Kafka topic keeps events so any number of consumer groups can read — and re-read — them.
+        partitions, retention limits, and a queue redelivers after a failed ack). What carries over: a queue
+        routes each message to one consumer and drops it once acknowledged; a Kafka topic keeps events so any
+        number of consumer groups can read — and re-read — them.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -142,7 +143,7 @@ export default function QueueVsLogDemo() {
             worker: consume next
           </button>
           <p className="mt-2 font-mono text-[10px] leading-relaxed text-text-faint">
-            No second reader, no replay — a consumed message is gone.
+            One consumer per message, no replay — once acknowledged it is gone.
           </p>
         </div>
 
