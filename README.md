@@ -30,7 +30,7 @@ Google Fonts used (`fonts.googleapis.com`) — after that they're cached locally
 src/
   app/
     page.tsx                        Dashboard / home
-    modules/                        Module index + dynamic module pages (7 modules from the plan)
+    modules/                        Module index + dynamic module pages (Module 0 "Why Kafka?" + the v1 core modules)
     glossary/                       Core Kafka vocabulary, linked to the modules that teach each term
     config-explorer/                Filterable configuration reference
     troubleshooting/                Symptom → evidence → cause → resolution catalog
@@ -89,6 +89,11 @@ links back to the glossary.
 
 ## What's scaffolded vs. what's next
 
+- **Module 0 (Why Kafka?)** is built: Topic explorer content for all 9 topics — what an
+  event is, streaming vs. request/response, Kafka vs. queues / databases / object storage,
+  common use cases, when Kafka is the wrong tool, and the components at a high level. It
+  deliberately stops short of ISR / acks / KRaft. Interactive activities and the knowledge
+  check are still to come (Phase 2b / 2c).
 - **Module 1 (Kafka mental model)** is built: scannable Topic explorer content for all 6
   topics (append-only log, brokers/partitions/replicas, leaders/ISR/controllers,
   producers/consumers/offsets/groups, ordering guarantees, delivery semantics) plus the

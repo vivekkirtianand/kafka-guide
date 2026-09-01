@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { modules, getModule } from "./modules";
 
 describe("module data", () => {
-  it("has unique, sequential slugs and indexes", () => {
+  it("has unique slugs and 0-based sequential indexes (Module 0 is 'Why Kafka?')", () => {
     const slugs = modules.map((m) => m.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
-    expect(modules.map((m) => m.index)).toEqual(modules.map((_, i) => i + 1));
+    expect(modules.map((m) => m.index)).toEqual(modules.map((_, i) => i));
+    expect(modules[0].slug).toBe("why-kafka");
   });
 
   it("every topicDetail / topicNarrative key matches a real topic string", () => {
@@ -142,5 +143,55 @@ describe("course metadata", () => {
     expect(paths.length + reference.length + modules.filter((m) => m.track === "advanced").length).toBe(
       modules.length,
     );
+  });
+});
+
+describe("Module 0 — Why Kafka?", () => {
+  const m0 = getModule("why-kafka")!;
+  // Every learner-visible string on the module — header metadata included, not just the
+  // Topic-explorer body.
+  const allText = [
+    m0.title,
+    m0.summary,
+    ...(m0.objectives ?? []),
+    ...(m0.completionCriteria ?? []),
+    ...m0.topics,
+    ...m0.activities,
+    ...(m0.furtherReading ?? []).flatMap((r) => [r.label, r.url]),
+    ...Object.values(m0.topicDetail!).flatMap((d) => [
+      d.summary,
+      d.watchOut ?? "",
+      ...d.points.flatMap((p) => [p.term, p.detail]),
+    ]),
+  ].join(" ");
+
+  it("is the first module, on the beginner path, with no prerequisites", () => {
+    expect(m0.index).toBe(0);
+    expect(m0.track).toBe("beginner-path");
+    expect(m0.prerequisites).toEqual([]);
+    expect(m0.status).toBe("available");
+  });
+
+  it("covers every listed topic with Topic-explorer content", () => {
+    for (const topic of m0.topics) {
+      const d = m0.topicDetail![topic];
+      expect(d, topic).toBeDefined();
+      expect(d.points.length, topic).toBeGreaterThan(0);
+    }
+  });
+
+  it("does not introduce ISR / acknowledgements / KRaft / controller-quorum before the problem is understood", () => {
+    // Acceptance criterion for Phase 2 — checked across every learner-visible field.
+    expect(allText).not.toMatch(/\bISR\b|in[- ]sync replica/i);
+    // acknowledge / acknowledged / acknowledgment / acknowledgement / ack / acks
+    expect(allText).not.toMatch(/\backnowledg|\backs?\b/i);
+    expect(allText).not.toMatch(/\bKRaft\b|controller[- ]quorum|controller quorum|\bquorum\b/i);
+  });
+
+  it("frames Kafka against the alternatives a beginner would actually weigh", () => {
+    expect(m0.topics).toContain("Kafka versus queues");
+    expect(m0.topics).toContain("Kafka versus databases");
+    expect(m0.topics).toContain("When Kafka is a poor choice");
+    expect(allText).toMatch(/request\/response/i);
   });
 });

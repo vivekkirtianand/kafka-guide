@@ -51,10 +51,10 @@ export default function Home() {
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
           <Link
-            href={`/modules/${modules[0].slug}`}
+            href={`/modules/${beginner[0].slug}`}
             className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-bg-inset transition-opacity hover:opacity-90"
           >
-            Start with the mental model
+            Start the beginner path
           </Link>
           <Link
             href="/incident-simulator"

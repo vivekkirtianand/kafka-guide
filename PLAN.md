@@ -174,6 +174,53 @@ unless noted.
 | 1 | A "See also" link to a term the active search filters out did nothing (dead anchor) | `Glossary` intercepts see-also clicks: if the target row isn't rendered, clear the query, then scroll to it once it re-renders (`pendingScroll` ref + an effect keyed on `query`) |
 | 2 | Glossary "Controller" definition said a controller is a broker | reworded — "a server runs as a controller, as a broker, or (in small clusters) as both — set by `process.roles`", matching the Module 1 / Module 5 content |
 
+## Phase 2 — Module 0: Why Kafka?
+
+| PR | Scope | Status |
+|---|---|---|
+| 2a | Module 0 shell + Topic-explorer content for all 9 topics | ✅ Done |
+| 2b | 4 interactive activities (tech-choice picker, order-event fan-out, queue-vs-log, label-the-event) | ⭕ Planned |
+| 2c | 10-question beginner knowledge check + "Should this system use Kafka?" design exercise | ⭕ Planned |
+
+### PR 2a — Module 0 shell + topic content
+
+- `src/lib/data/modules.ts` — new first entry `why-kafka` (**`index: 0`**), `track:
+  "beginner-path"`, `status: "available"`, `activities: []` (2b), full `topicDetail` for all
+  9 topics: what an event is · key/value/timestamp/headers/schema · streaming vs
+  request/response · Kafka vs queues / databases / object storage · common use cases · when
+  Kafka is a poor choice · main components at a high level. `mental-model` now lists
+  `why-kafka` as a prerequisite.
+- **Module indexes are now 0-based** — the array is `why-kafka`(0) … `troubleshooting`(7),
+  so `index === arrayPosition`. `modules.test.ts`'s sequential-index check updated from
+  `i + 1` to `i`. Display strings already `padStart(2, "0")`, so headings read "Module 00".
+  `trackNeighbors` / `ModuleMeta` / sidebar unaffected (all key off `index` order, not a
+  starting value).
+- `src/app/page.tsx` — hero CTA now links `beginnerPath(modules)[0]` ("Start the beginner
+  path") instead of the hardcoded mental-model link.
+- Tests: `modules.test.ts` +4 — Module 0 is index 0 / beginner-path / no prereqs; covers
+  every topic; **acceptance criterion**: its content matches none of `/ISR|in-sync
+  replica/`, `/acknowledgement|acks/`, `/KRaft|controller quorum|quorum/`; frames Kafka
+  against queues / databases / "poor choice" / request-response. Suite 224 → 228.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Ordering described as topic/stream-wide | reworded to "scoped — it holds within a partition, not across a whole topic" |
+| 2 | Said Kafka "pushes" records to consumers | reworded — "a consumer polls a topic and pulls each new event … Kafka doesn't push; the consumer asks"; consumer component now says "by polling the broker" |
+| 3 | Replication presented as automatic | "You can also configure a partition to be copied … (its replication factor) … it is a setting, not automatic" |
+| 4 | Said Kafka is "not a system of record" | "Kafka can be the system of record for events — the authoritative log … What it is not is a query database" |
+| 5 | Module 0 not linked to the glossary | 13 inline `[[…]]` links added across Module 0; `why-kafka` added to `modules` on 15 glossary terms (event, topic, partition, offset, key, broker, cluster, producer, consumer, consumer-group, replication-factor, retention, log-compaction, schema-registry, serialization) |
+| 6 | Acceptance test scanned only the Topic-explorer body and missed `acknowledge`/`acknowledgment` | `allText` now includes title, summary, objectives, completion criteria, topic strings, and further-reading; regex broadened to `/\backnowledg/` and `/\backs?\b/` |
+
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Object-storage comparison still said events arrive "in order" | dropped "in order" — the point is about the poll/pull access pattern, not ordering |
+| 2 | "the next topic unpacks this" was wrong (next topic is event fields) | "a later topic unpacks this" |
+| 3 | Acceptance test corpus omitted `m0.activities` (populated in 2b) | `...m0.activities` added to `allText` |
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer
