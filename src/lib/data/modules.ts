@@ -1,4 +1,5 @@
 import { Module } from "@/lib/types";
+import { labA } from "./labs";
 
 export const modules: Module[] = [
   {
@@ -676,22 +677,22 @@ export const modules: Module[] = [
   {
     slug: "local-cluster-lab",
     index: 2,
-    title: "Local cluster laboratory",
+    title: "Your first local Kafka workflow",
     summary:
-      "A reproducible three-broker KRaft cluster with CLI tools, a Kafka UI, and Prometheus/Grafana for hands-on labs.",
+      "Run Kafka on your own machine and drive the whole loop — topic, produce, consume, consumer group, replay — from the command line. Lab A is a single broker in one `docker run`; Lab B is the full three-broker cluster with a UI and metrics.",
     difficulty: "beginner",
-    estimatedMinutes: 120,
+    estimatedMinutes: 90,
     prerequisites: ["mental-model"],
     track: "beginner-path",
     objectives: [
-      "Start a multi-broker Kafka cluster locally and confirm every broker is healthy",
-      "Create a topic, produce and consume records, and inspect partition placement",
-      "Stop a broker, watch leader election and ISR shrink, then restart and watch it rejoin",
-      "Reset a consumer group's offsets and replay a partition",
+      "Start a Kafka broker locally with Docker and confirm it is serving requests",
+      "Create a topic, produce records with and without keys, and consume them back",
+      "Read which partition each record landed on and explain why keyed records stay together",
+      "Use a consumer group, read its lag, then reset its offsets and replay the topic",
     ],
     completionCriteria: [
-      "The three-broker stack is running and Grafana shows the lab dashboard",
-      "You have completed every activity in local-cluster-lab/README.md at least once",
+      "You have worked through every step of Lab A against a running broker",
+      "You can explain, from what you saw, why a keyed record's partition is fixed and what 'replay' actually changes",
     ],
     furtherReading: [
       { label: "Apache Kafka 4.0 — Quickstart", url: "https://kafka.apache.org/40/getting-started/quickstart/" },
@@ -699,6 +700,7 @@ export const modules: Module[] = [
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",
+    lab: labA,
     topics: [
       "Three Kafka brokers in KRaft mode",
       "Kafka CLI tools",
@@ -869,7 +871,7 @@ export const modules: Module[] = [
       "Inspect consumer offsets",
       "Change topic-level configuration safely",
     ],
-    status: "external",
+    status: "available",
   },
   {
     slug: "producer-configuration",

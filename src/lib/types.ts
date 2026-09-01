@@ -53,6 +53,54 @@ export interface Exercise {
   successCriteria: string[];
 }
 
+// One command in a lab's setup or teardown: what to run and why it is there.
+export interface LabCommand {
+  command: string;
+  note: string;
+}
+
+// A single hands-on step in an in-app lab walkthrough. The learner runs `command`, compares
+// what they see against `expected`, answers `observe` for themselves, and ticks the step off
+// — the checkbox state is persisted per lab in the progress store.
+export interface LabStep {
+  // Stable id, unique within the lab. Used as the progress-store key for this step's checkbox,
+  // so it must not change once learners have progress saved against it.
+  id: string;
+  title: string;
+  // One or two sentences of framing before the command.
+  intro: string;
+  // The exact command to run, rendered as a copyable block.
+  command: string;
+  // What a correct run prints — the whole thing, or the lines that matter.
+  expected: string;
+  // A "what did you observe?" question that forces the learner to read the output.
+  observe: string;
+  // The mistake that most commonly bites at this step, and how to recover from it.
+  commonError?: {
+    symptom: string;
+    cause: string;
+    recovery: string;
+  };
+}
+
+// An in-app, step-by-step lab the learner works through against a real Kafka broker.
+export interface Lab {
+  // Stable id; also the progress-store namespace for the step checkboxes.
+  slug: string;
+  title: string;
+  // One or two sentences: what the learner builds and why it is the smallest useful setup.
+  summary: string;
+  // What must be true before starting — tooling, resources.
+  prerequisites: string[];
+  // Commands that bring the environment up, before the numbered steps.
+  setup: LabCommand[];
+  steps: LabStep[];
+  // Commands that bring the environment down. Carries the destructive-cleanup warning.
+  teardown: LabCommand[];
+  // The one thing to be careful about when tearing down — rendered as a callout.
+  teardownWarning: string;
+}
+
 export interface Module {
   slug: string;
   index: number;
@@ -81,6 +129,8 @@ export interface Module {
   // and types are stable.
   knowledgeChecks?: KnowledgeCheck[];
   exercises?: Exercise[];
+  // An in-app, step-by-step hands-on lab rendered above the topic content.
+  lab?: Lab;
   topics: string[];
   // Full lesson prose for a topic, keyed by the exact string in `topics`. Paragraphs are
   // separated by a blank line. Omitted (or partial) where the topic is still an outline

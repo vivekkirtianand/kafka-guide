@@ -7,6 +7,7 @@ import Badge from "@/components/Badge";
 import TopicExplorer from "@/components/TopicExplorer";
 import ModuleMeta from "@/components/ModuleMeta";
 import ModuleCompletion from "@/components/ModuleCompletion";
+import LabWalkthrough from "@/components/LabWalkthrough";
 import KnowledgeCheck from "@/components/KnowledgeCheck";
 import DesignExercise from "@/components/DesignExercise";
 import TroubleshootingCatalog from "@/components/TroubleshootingCatalog";
@@ -70,6 +71,12 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
       />
 
       <ModuleMeta module={mod} />
+
+      {mod.lab && (
+        <div className="mt-8">
+          <LabWalkthrough lab={mod.lab} />
+        </div>
+      )}
 
       {mod.slug === "troubleshooting-scenarios" ? (
         <div className="flex flex-col gap-6">
@@ -193,13 +200,16 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         </div>
       )}
 
-      {mod.status === "external" && (
+      {mod.slug === "local-cluster-lab" && (
         <div className="mt-10 rounded-lg border border-border bg-bg-elevated p-5 text-sm text-text-muted">
           <Badge tone="success">lab built</Badge>
           <p className="mt-3">
-            This module&apos;s content isn&apos;t a page in this app — it&apos;s a real, reproducible
-            Docker Compose lab: a three-broker Kafka cluster in KRaft mode, a web UI, and
-            Prometheus/Grafana for metrics, with a walkthrough for every activity listed above.
+            <strong className="text-text">Lab B — the three-broker cluster.</strong> Once Lab A
+            feels routine, step up to the full setup: three Kafka brokers in KRaft mode, a web UI,
+            and Prometheus/Grafana. It is the smallest cluster where replication and leader
+            election behave like production — the topics above walk through what is in it. It is a
+            reproducible Docker Compose project in the repo; a future update brings its walkthrough
+            in-app too.
           </p>
           <a
             href="https://github.com/vivekkirtianand/kafka-guide/tree/main/local-cluster-lab"
