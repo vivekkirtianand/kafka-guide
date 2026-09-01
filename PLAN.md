@@ -347,6 +347,16 @@ partitions, keys, offsets, and consumer groups.
 
 Suite 278 → 283.
 
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | `printf` / single-quoting / `docker exec` don't work in Windows PowerShell or cmd (the advertised default terminals) | the shell prerequisite now scopes to a POSIX shell and tells Windows users to run the commands under WSL or Git Bash; test asserts that prereq names WSL / Git Bash |
+| 2 | "Same key, same partition — every time" is unconditional | `verify-key-partition` observe now qualifies it: default partitioner + fixed partition count; adding partitions shifts the mapping, and an explicit partition / custom partitioner overrides it. Test requires the caveat and rejects the "every time" phrasing |
+| 3 | Text claimed the console consumer drains one whole partition before the next — Kafka gives no such guarantee | reworded to "`poll()` returns whatever has arrived from each partition, interleaved"; test asserts no step says "partition by partition" / "one partition at a time" / "one whole partition before" |
+
+Suite 283 → 285.
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

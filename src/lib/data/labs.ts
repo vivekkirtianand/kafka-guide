@@ -10,9 +10,9 @@ export const labA: Lab = {
   summary:
     "Run a single Kafka broker in Docker and drive the whole produce-topic-consume-replay loop from the CLI. One broker is enough to see topics, partitions, keys, offsets, and consumer groups behave.",
   prerequisites: [
-    "Docker Desktop (macOS/Windows) or Docker Engine (Linux) installed and running — check with `docker version`",
+    "Docker Desktop (macOS/Windows) or Docker Engine (Linux), installed and running — check with `docker version`",
     "About 2 GB of free RAM and 2 GB of free disk for the Kafka image and its data",
-    "A terminal — every command below is a single line you can copy and run",
+    "A POSIX shell to paste the commands into: Terminal on macOS, any shell on Linux, or WSL / Git Bash on Windows. They use `docker exec`, single-quoted strings, and `printf` — Windows PowerShell and cmd need different quoting and have no `printf`, so run them under WSL or Git Bash there.",
   ],
   setup: [
     {
@@ -97,7 +97,7 @@ export const labA: Lab = {
         "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 3 --timeout-ms 20000",
       expected: "first\nsecond\nthird\nProcessed a total of 3 messages",
       observe:
-        "All three came back, most likely in the order you sent them. With only three records they landed on one partition (the next step confirms that), and a single partition is always read in order. Ordering is only *guaranteed* per partition — spread records across several partitions and the console consumer, which drains one partition at a time, stops showing send order.",
+        "All three came back, most likely in the order you sent them — with so few records they landed on one partition (the next step confirms that), and a single partition is always read in order. That order only holds *within* a partition, though. Once records are spread across partitions, a consumer's `poll()` returns whatever has arrived from each partition, interleaved — so the sequence you see is no longer send order.",
       commonError: {
         symptom: "The command prints one or two lines then hangs, ending after 20s with `Processed a total of 2 messages` and a `TimeoutException`.",
         cause: "Fewer than three records reached the topic — usually a typo in the topic name on the produce step, so the records went to a different (auto-rejected or mis-named) topic.",
@@ -139,9 +139,9 @@ export const labA: Lab = {
       command:
         "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 6 --timeout-ms 20000 --property print.partition=true --property print.key=true",
       expected:
-        "Partition:0\teast\torder C\nPartition:1\twest\torder A\nPartition:1\twest\torder B\nPartition:2\tnull\tfirst\nPartition:2\tnull\tsecond\nPartition:2\tnull\tthird\nProcessed a total of 6 messages\n(your partition numbers will differ, and the consumer prints one whole partition before the next — so this grouping is not send order. What is reliable: both `west` records sit on one partition in send order, and all three unkeyed records sit on one partition.)",
+        "Partition:0\teast\torder C\nPartition:1\twest\torder A\nPartition:1\twest\torder B\nPartition:2\tnull\tfirst\nPartition:2\tnull\tsecond\nPartition:2\tnull\tthird\nProcessed a total of 6 messages\n(your partition numbers will differ, and records from different partitions may be interleaved — the order shown is not necessarily send order. What is reliable: both `west` records sit on one partition in send order, and the three unkeyed records share a partition.)",
       observe:
-        "Same key, same partition — every time. Kafka hashes the key and takes it modulo the partition count (`murmur2(key) % partitionCount`), so `west` always resolves to the same partition and its two records keep their relative order. That is the mechanism behind per-key ordering.",
+        "Both `west` records are on one partition, in send order. With the default partitioner and a fixed partition count, Kafka hashes the key and takes it modulo the partition count (`murmur2(key) % partitionCount`), so a given key keeps resolving to the same partition — that is what gives you per-key ordering. It is not absolute: add partitions later and the mapping shifts, and an explicit partition or a custom partitioner overrides it.",
       commonError: {
         symptom: "The command hangs and ends after 20s with `Processed a total of 0 messages` and a `TimeoutException`.",
         cause: "`--from-beginning` was left off, so the consumer waited for six *new* records instead of reading the existing ones.",

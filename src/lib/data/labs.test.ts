@@ -52,10 +52,24 @@ describe("lab data", () => {
       expect(create.commonError?.symptom).toMatch(/InvalidReplicationFactor/i);
     });
 
-    it("shows same-key-same-partition from real consumer output", () => {
+    it("shows key→partition as conditional (default partitioner, fixed partition count), not absolute", () => {
       const verify = labA.steps.find((s) => s.id === "verify-key-partition")!;
       expect(verify.command).toMatch(/print\.partition=true/);
       expect(verify.observe).toMatch(/hash(es)? the key|modulo the partition count/i);
+      // the caveat must be present and the unconditional claim gone
+      expect(verify.observe).toMatch(/add partitions|custom partitioner|explicit partition|default partitioner/i);
+      expect(verify.observe).not.toMatch(/same partition\s*[—-]\s*every time/i);
+    });
+
+    it("never claims the console consumer reads one partition fully before the next", () => {
+      const text = labA.steps.map((s) => `${s.intro} ${s.expected} ${s.observe}`).join(" ");
+      expect(text).not.toMatch(/partition by partition|one partition at a time|one whole partition before|drains one partition/i);
+    });
+
+    it("assumes a POSIX shell and points Windows users at WSL / Git Bash", () => {
+      const shellPrereq = labA.prerequisites.find((p) => /shell|WSL|Git Bash/i.test(p));
+      expect(shellPrereq).toBeDefined();
+      expect(shellPrereq).toMatch(/WSL|Git Bash/);
     });
 
     it("consumes deterministically — every consume step bounds itself with --max-messages, not a short timeout", () => {
