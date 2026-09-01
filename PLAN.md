@@ -84,7 +84,7 @@ unless noted.
 | PR | Scope | Status |
 |---|---|---|
 | 1a | Course data model + per-module metadata + beginner/reference IA + computed course length | ✅ Done |
-| 1b | Progress tracking (localStorage): completion state, resume, progress %, reset | ⭕ Planned |
+| 1b | Progress tracking (localStorage): completion state, resume, progress %, reset | ✅ Done |
 | 1c | Glossary route + data + inline term component | ⭕ Planned |
 
 ### PR 1a — data model + metadata + IA
@@ -121,6 +121,29 @@ unless noted.
 | 2 | Prev/next crossed track boundaries (lab → producer-config) | new `trackNeighbors()` in `course.ts` — navigation stays within the module's track; the last beginner module has no "next" |
 | 3 | "version + deployment aware" badge sat on the Reference modules heading | badge moved onto the Configuration Explorer card (the only surface that responds to those selectors); heading now reads "look up as needed" |
 | 4 | `kafka.apache.org/documentation/#anchor` links redirect to the docs landing page | all `furtherReading` links repointed to version-pinned Kafka 4.0 URLs (`/40/configuration/producer-configs/`, `/40/getting-started/introduction/`, …); test rejects unversioned `kafka.apache.org` links |
+
+### PR 1b — progress tracking (localStorage)
+
+- `src/lib/context/ProgressContext.tsx` (new) — a `useSyncExternalStore`-backed store over
+  `localStorage["kafka-guide:progress"]` (`Record<slug, {completed, completedAt?, visitedAt?}>`).
+  SSR snapshot is empty; cross-tab `storage` events refresh it; every read/write is
+  try/caught so a blocked store degrades to "won't persist" rather than throwing. API:
+  `isComplete`, `markComplete` / `markIncomplete` / `toggleComplete`, `markVisited`,
+  `resetAll`, `completedCount(slugs)`, `resumeSlug(slugs)`, `hydrated`.
+- `src/app/layout.tsx` — `<ProgressProvider>` inside `<ClusterProvider>`.
+- `src/components/ModuleCompletion.tsx` (new) — bottom-of-module client block: completion
+  criteria + a "Mark module complete" ⇄ "Completed" toggle; `markVisited` on mount. Shown
+  for every non-`planned` module.
+- `src/components/ModuleProgressBadge.tsx` (new) — "✓ done" / "started" indicator, renders
+  nothing until `hydrated`. Used on `ModuleCard` and in the `Sidebar` module lists.
+- `src/components/BeginnerPathProgress.tsx` (new) — home-page bar: `done/total`, a
+  progressbar with an accessible name, a "Resume/Start: <module>" link to `resumeSlug`, and
+  a confirm-gated "Reset progress" button (both appear only once there is progress).
+- Tests: `ProgressContext.test.tsx` (new, 8 — persist/restore, toggle, reset, counts, resume
+  ordering, throwing-storage resilience); `ModuleCard` + `Sidebar` tests wrapped in the
+  provider. `vitest.setup.ts` installs a minimal in-memory `localStorage` polyfill
+  unconditionally (jsdom here provides none; probing for one made Node emit an
+  ExperimentalWarning per worker). Suite 203 → 211.
 
 ## Module 1 — Kafka mental model
 

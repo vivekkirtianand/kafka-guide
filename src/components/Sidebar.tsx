@@ -5,10 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { modules } from "@/lib/data/modules";
 import { beginnerPath, referenceModules } from "@/lib/course";
+import ModuleProgressBadge from "./ModuleProgressBadge";
 
 const moduleLink = (m: (typeof modules)[number]) => ({
   href: `/modules/${m.slug}`,
   label: `${String(m.index).padStart(2, "0")} · ${m.title}`,
+  slug: m.slug,
 });
 
 const sections = [
@@ -45,16 +47,18 @@ function Nav({ pathname, onNavigate }: { pathname: string; onNavigate?: () => vo
           <ul className="flex flex-col gap-0.5">
             {section.items.map((item) => {
               const active = pathname === item.href;
+              const slug = "slug" in item ? item.slug : undefined;
               return (
                 <li key={item.href}>
                   <Link
                     href={item.href}
                     onClick={onNavigate}
-                    className={`block rounded px-2.5 py-1.5 text-sm transition-colors ${
+                    className={`flex items-center gap-2 rounded px-2.5 py-1.5 text-sm transition-colors ${
                       active ? "bg-accent-soft text-accent" : "text-text-muted hover:bg-bg-elevated hover:text-text"
                     }`}
                   >
-                    {item.label}
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    {slug && <ModuleProgressBadge slug={slug} className="shrink-0" />}
                   </Link>
                 </li>
               );

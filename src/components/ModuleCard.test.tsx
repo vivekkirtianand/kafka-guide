@@ -1,7 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import ModuleCard from "./ModuleCard";
+import { ProgressProvider, __resetProgressCacheForTests } from "@/lib/context/ProgressContext";
 import { Module } from "@/lib/types";
+
+const renderCard = (module: Module) =>
+  render(
+    <ProgressProvider>
+      <ModuleCard module={module} />
+    </ProgressProvider>,
+  );
+
+beforeEach(() => {
+  window.localStorage.clear();
+  __resetProgressCacheForTests();
+});
 
 const base: Module = {
   slug: "demo",
@@ -17,7 +30,7 @@ const base: Module = {
 
 describe("ModuleCard", () => {
   it("shows difficulty and the time estimate alongside the topic/activity counts", () => {
-    render(<ModuleCard module={base} />);
+    renderCard(base);
     expect(screen.getByText("intermediate")).toBeInTheDocument();
     expect(screen.getByText("~45 min")).toBeInTheDocument();
     expect(screen.getByText("2 topics")).toBeInTheDocument();
@@ -25,12 +38,12 @@ describe("ModuleCard", () => {
   });
 
   it("omits the estimate when a module has none", () => {
-    render(<ModuleCard module={{ ...base, estimatedMinutes: undefined }} />);
+    renderCard({ ...base, estimatedMinutes: undefined });
     expect(screen.queryByText(/min$/)).not.toBeInTheDocument();
   });
 
   it("links to the module page", () => {
-    render(<ModuleCard module={base} />);
+    renderCard(base);
     expect(screen.getByRole("link")).toHaveAttribute("href", "/modules/demo");
   });
 });

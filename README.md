@@ -66,12 +66,19 @@ src/
     course.ts                       Computed course length + beginner/reference/advanced splits
     data/                           Seed content for modules, configs, incidents, troubleshooting, runbooks
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
+    context/ProgressContext.tsx     Per-module completion + resume state, persisted to localStorage
 ```
 
 `ModuleMeta.tsx` renders the per-module header (difficulty, estimated time, prerequisites,
 objectives, last-reviewed date). The home page and sidebar split modules into a linear
 **Beginner path** and lookup-as-needed **Reference** material; the course-length estimate is
 computed from each module's `estimatedMinutes`, not hardcoded.
+
+**Progress tracking** (`ProgressContext`) records which modules a learner has completed and
+last visited, in `localStorage` (`kafka-guide:progress`). It drives the completion toggle at
+the bottom of each module, the "✓ done" markers on cards and in the sidebar, and the
+beginner-path progress bar + "Resume" link on the home page. A blocked/unavailable store
+degrades gracefully — progress just doesn't persist.
 
 ## What's scaffolded vs. what's next
 
