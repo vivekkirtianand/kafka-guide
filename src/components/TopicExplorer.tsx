@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { TopicDetail } from "@/lib/types";
+import { renderGlossaryText } from "./GlossaryTerm";
 
 // The trailing "(acks, enable.idempotence, …)" in a topic string duplicates the
 // config chips, so drop it from the displayed heading.
@@ -91,7 +92,7 @@ function TopicRow({
               <Chevron open={open} />
             </button>
           </h3>
-          <p className="mt-1 text-sm leading-relaxed text-text-muted">{detail.summary}</p>
+          <p className="mt-1 text-sm leading-relaxed text-text-muted">{renderGlossaryText(detail.summary)}</p>
           {detail.configs && detail.configs.length > 0 && <ConfigChips configs={detail.configs} />}
         </div>
       </div>
@@ -112,7 +113,7 @@ function TopicRow({
           {detail.points.map((p) => (
             <div key={p.term} className="flex flex-col gap-0.5">
               <dt className="font-mono text-[12px] text-accent">{p.term}</dt>
-              <dd className="text-sm leading-relaxed text-text-muted">{p.detail}</dd>
+              <dd className="text-sm leading-relaxed text-text-muted">{renderGlossaryText(p.detail)}</dd>
             </div>
           ))}
         </dl>
@@ -120,7 +121,7 @@ function TopicRow({
         {detail.watchOut && (
           <div className="mt-4 rounded-md border border-border-soft border-l-2 border-l-danger bg-danger-soft px-3 py-2">
             <span className="font-mono text-[10px] uppercase tracking-wide text-danger">Watch out</span>
-            <p className="mt-1 text-sm leading-relaxed text-text-muted">{detail.watchOut}</p>
+            <p className="mt-1 text-sm leading-relaxed text-text-muted">{renderGlossaryText(detail.watchOut)}</p>
           </div>
         )}
       </div>

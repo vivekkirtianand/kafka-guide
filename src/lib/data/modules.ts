@@ -66,7 +66,7 @@ export const modules: Module[] = [
       },
       "Brokers, topics, partitions, replicas": {
         summary:
-          "A topic is split into partitions for scale; each partition is replicated across brokers for durability.",
+          "A [[topic|topic]] is split into [[partition|partitions]] for scale; each partition is [[replica|replicated]] across [[broker|brokers]] for durability.",
         points: [
           {
             term: "Broker",
@@ -94,7 +94,7 @@ export const modules: Module[] = [
       },
       "Leaders, followers, ISR, and controllers": {
         summary:
-          "Every partition has one leader that handles all of its reads and writes; the controller decides which broker that is.",
+          "Every partition has one [[leader|leader]] that handles all of its reads and writes; the [[controller|controller]] decides which broker that is.",
         configs: ["acks", "min.insync.replicas", "replica.lag.time.max.ms"],
         points: [
           {
@@ -151,7 +151,7 @@ export const modules: Module[] = [
           "The read position and the committed offset are different things. Whether a crash reprocesses or skips records depends entirely on when you commit relative to doing the work.",
       },
       "Ordering guarantees": {
-        summary: "Kafka orders records within a single partition — and only there.",
+        summary: "Kafka orders records within a single [[partition|partition]] — and only there.",
         configs: ["enable.idempotence", "max.in.flight.requests.per.connection"],
         points: [
           {

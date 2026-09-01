@@ -7,6 +7,11 @@ import Badge from "@/components/Badge";
 
 const pillars: { href: string; label: string; description: string; badge?: string }[] = [
   {
+    href: "/glossary",
+    label: "Glossary",
+    description: "Plain-language definitions of the core Kafka vocabulary, linked to the modules that teach each term.",
+  },
+  {
     href: "/config-explorer",
     label: "Configuration explorer",
     description:
@@ -95,7 +100,7 @@ export default function Home() {
         <div className="mb-5 flex items-baseline justify-between">
           <h2 className="font-display text-xl text-text">Practice and lookup</h2>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {pillars.map((p) => (
             <Link
               key={p.href}
