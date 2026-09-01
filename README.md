@@ -39,6 +39,7 @@ src/
   components/
     Sidebar.tsx, TopBar.tsx         App shell (nav + persistent version/deployment context)
     LogStrip.tsx                    Signature append-only-log motif (used in the top bar)
+    LabWalkthrough.tsx             In-app hands-on lab: setup, per-step command/output/observe/recovery, persisted checkboxes
     demos/
       TechnologyChoiceDemo.tsx     Module 0 activity: pick Kafka / queue / DB / object store / API call per scenario
       OrderEventFanoutDemo.tsx     Module 0 activity: one order-placed event → billing, email, warehouse, analytics
@@ -69,9 +70,10 @@ src/
   lib/
     types.ts                        Shared content types (incl. per-module course metadata)
     course.ts                       Computed course length + beginner/reference/advanced splits
-    data/                           Seed content for modules, configs, incidents, troubleshooting, runbooks
+    data/                           Seed content for modules, labs, configs, incidents, troubleshooting, runbooks
+    data/labs.ts                    In-app hands-on lab walkthroughs (Lab A: single-broker first workflow)
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
-    context/ProgressContext.tsx     Per-module completion + resume state, persisted to localStorage
+    context/ProgressContext.tsx     Per-module completion + resume state + lab step checkboxes, persisted to localStorage
 ```
 
 `ModuleMeta.tsx` renders the per-module header (difficulty, estimated time, prerequisites,
@@ -142,9 +144,14 @@ links back to the glossary.
   reassignment, rolling app and broker restarts, certificate/credential rotation, capacity
   planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery,
   handling a full disk, and broker/AZ failures.
-- Module 2's page links out to the local cluster lab below instead of showing an in-app
-  page, since that content lives outside the Next.js app.
+- **Module 2 (Your first local Kafka workflow)** now opens with **Lab A**, an in-app
+  hands-on walkthrough (`LabWalkthrough`, data in `src/lib/data/labs.ts`): one broker via a
+  single `docker run`, then 10 steps through create-topic → produce (keyed and unkeyed) →
+  consume → partition placement → consumer group + lag → reset offsets and replay. Every step
+  shows the exact command, the expected output, a "what did you observe?" prompt, a common
+  error with recovery, and a checkbox that persists via `ProgressContext`.
 - The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
-  containers) described in the plan is a separate, non-web deliverable — not part of this
-  Next.js app. It's built out at [`local-cluster-lab/`](local-cluster-lab/) (its own
-  `docker-compose.yml` and README) with a walkthrough for all six Module 2 activities.
+  containers) is **Lab B** — the step up from Lab A, still a separate Docker Compose
+  deliverable at [`local-cluster-lab/`](local-cluster-lab/) (its own `docker-compose.yml` and
+  README) with a walkthrough for all six activities. Module 2's page links out to it; a
+  future update brings that walkthrough in-app too.

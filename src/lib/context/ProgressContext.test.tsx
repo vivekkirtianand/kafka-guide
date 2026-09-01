@@ -79,6 +79,33 @@ describe("ProgressContext", () => {
     expect(result.current.resumeSlug(["a", "b", "c"])).toBe("b");
   });
 
+  it("toggles lab step checkboxes independently of module completion and persists them", () => {
+    const { result } = mount();
+    act(() => result.current.toggleStep("lab-a", "broker-up"));
+    act(() => result.current.toggleStep("lab-a", "create-topic"));
+
+    expect(result.current.stepDone("lab-a", "broker-up")).toBe(true);
+    expect(result.current.stepDone("lab-a", "missing")).toBe(false);
+    expect(result.current.isComplete("lab-a")).toBe(false);
+    expect(result.current.completedStepCount("lab-a", ["broker-up", "create-topic", "describe"])).toBe(2);
+
+    const stored = JSON.parse(window.localStorage.getItem("kafka-guide:progress")!);
+    expect(stored["lab-a"].steps).toEqual({ "broker-up": true, "create-topic": true });
+
+    act(() => result.current.toggleStep("lab-a", "broker-up"));
+    expect(result.current.stepDone("lab-a", "broker-up")).toBe(false);
+    expect(result.current.completedStepCount("lab-a", ["broker-up", "create-topic"])).toBe(1);
+  });
+
+  it("restores lab step progress on a fresh mount", () => {
+    window.localStorage.setItem(
+      "kafka-guide:progress",
+      JSON.stringify({ "lab-a": { completed: false, steps: { "broker-up": true } } }),
+    );
+    const { result } = mount();
+    expect(result.current.stepDone("lab-a", "broker-up")).toBe(true);
+  });
+
   it("survives a localStorage that throws on read and write", () => {
     const getItem = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
       throw new Error("blocked");

@@ -17,6 +17,8 @@ export interface ModuleProgress {
   completedAt?: string;
   // ISO timestamp of the most recent visit to the module page — drives "resume".
   visitedAt?: string;
+  // Per-step checkboxes for an in-app lab, keyed by LabStep.id. Only present on lab entries.
+  steps?: Record<string, boolean>;
 }
 
 type ProgressMap = Record<string, ModuleProgress>;
@@ -94,6 +96,10 @@ interface ProgressContextValue {
   resetAll: () => void;
   completedCount: (slugs: string[]) => number;
   resumeSlug: (candidateSlugs: string[]) => string | undefined;
+  // Per-step lab checkboxes, namespaced under a lab slug.
+  stepDone: (slug: string, stepId: string) => boolean;
+  toggleStep: (slug: string, stepId: string) => void;
+  completedStepCount: (slug: string, stepIds: string[]) => number;
 }
 
 const ProgressContext = createContext<ProgressContextValue | null>(null);
@@ -135,6 +141,29 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
 
   const resetAll = useCallback(() => setMap({}), []);
 
+  const stepDone = useCallback(
+    (slug: string, stepId: string) => !!progress[slug]?.steps?.[stepId],
+    [progress],
+  );
+
+  const toggleStep = useCallback((slug: string, stepId: string) => {
+    update((p) => {
+      const existing = p[slug] ?? { completed: false };
+      const steps = { ...existing.steps };
+      if (steps[stepId]) delete steps[stepId];
+      else steps[stepId] = true;
+      return { ...p, [slug]: { ...existing, steps } };
+    });
+  }, []);
+
+  const completedStepCount = useCallback(
+    (slug: string, stepIds: string[]) => {
+      const steps = progress[slug]?.steps ?? {};
+      return stepIds.filter((id) => steps[id]).length;
+    },
+    [progress],
+  );
+
   const completedCount = useCallback(
     (slugs: string[]) => slugs.filter((s) => progress[s]?.completed).length,
     [progress],
@@ -164,6 +193,9 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
       resetAll,
       completedCount,
       resumeSlug,
+      stepDone,
+      toggleStep,
+      completedStepCount,
     }),
     [
       progress,
@@ -176,6 +208,9 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
       resetAll,
       completedCount,
       resumeSlug,
+      stepDone,
+      toggleStep,
+      completedStepCount,
     ],
   );
 

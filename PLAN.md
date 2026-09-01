@@ -46,7 +46,7 @@ unless noted.
 |--|--|--|--|--|
 | **1** | **Course framework** | 1a data model + metadata + IA + computed duration; 1b progress tracking (localStorage); 1c glossary | — | M1 |
 | 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
-| 3 | Rework local lab | 3a Lab A single-broker walkthrough as **in-app** lesson (10 steps × command/output/observe/error/recovery/checkbox); 3b Lab B = existing 3-broker lab + OS matrix + `verify-lab` script + volume-delete warning + in-app instructions | 1a, 1b | M1 |
+| 3 | Rework local lab | **3a ✅** Lab A single-broker walkthrough as **in-app** lesson (10 steps × command/output/observe/error/recovery/checkbox); 3b Lab B = existing 3-broker lab + OS matrix + `verify-lab` script + volume-delete warning + in-app instructions | 1a, 1b | M1 |
 | 4 | Java producer/consumer module | 4a `examples/order-pipeline-java/` scaffold (producer/consumer/shared/tests) + CI; 4b Module 3 lessons 1–11; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
 | 5 | Schemas & serialization | 5a Module 5 topic content (bytes, JSON/Avro/Protobuf, Schema Registry, compatibility modes, poison records); 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
@@ -285,6 +285,55 @@ following the established demo idiom (pure logic, teaching disclaimer, `reset`, 
 | 2 | Assessment state could leak between modules on client nav | `[slug]/page.tsx` passes `key={mod.slug}` to `<KnowledgeCheck>` and `<DesignExercise>` so React remounts them per module; component tests verify a fresh remount clears state |
 | 3 | Correct answer conveyed by colour only, not exposed to AT | `kc-verdict` gets `role="status"`; a wrong verdict now prints "The correct answer: …" in text; each option carries a text marker (`· ✓ correct answer` / `· ✗ your answer`), not just green/red |
 | 4 | Design exercise was a false binary (multiple consumers ⇒ Kafka) | reworked — the fraud team's "re-run over the last 60 days" gives an explicit replay/retained-history requirement; options widened to retained log / lightweight pub-sub / direct calls / mix; criteria call out that fan-out alone doesn't tip it |
+
+## Phase 3 — rework the local lab
+
+| PR | Scope | Status |
+|---|---|---|
+| 3a | Lab A — a single-broker, in-app hands-on walkthrough (new lesson render path) | ✅ Done |
+| 3b | Lab B — the existing 3-broker lab: OS matrix, resource floor, `verify-lab` script, volume-delete warning, in-app instructions | ⬜ Next |
+
+### PR 3a — Lab A single-broker in-app walkthrough
+
+The lab stops being a link out to GitHub and becomes a real lesson you work through in the
+app, against a Kafka broker you actually run. Lab A is the smallest useful setup — **one
+broker, one `docker run`, no checkout, no compose file** — so nothing distracts from topics,
+partitions, keys, offsets, and consumer groups.
+
+- `src/lib/types.ts` (new types) — `Lab` / `LabStep` / `LabCommand`. A `LabStep` is
+  `{ id, title, intro, command, expected, observe, commonError? }`; a `Lab` is
+  `{ slug, title, summary, prerequisites, setup, steps, teardown, teardownWarning }`.
+  `Module` gains `lab?: Lab`.
+- `src/lib/data/labs.ts` (new) — `labA` (`slug: "lab-a-first-workflow"`), 10 steps:
+  broker-up check → create topic (RF 1, and *why* not 3) → describe → produce no-key →
+  consume from beginning → show partitions → produce with key → confirm same-key→same-partition
+  → consumer group + read lag → reset offsets and replay. Setup is `docker run -d --name
+  kafka-lab-a -p 9092:9092 apache/kafka:4.0.2`; teardown is `docker rm -f`, with a warning
+  that Lab A mounts no volume (so removal erases the data — fine here) versus Lab B's named
+  volumes and `docker compose down -v`. 8 of 10 steps carry a `commonError`
+  (symptom / cause / recovery).
+- `src/lib/context/ProgressContext.tsx` — `ModuleProgress` gains `steps?: Record<string,
+  boolean>`; new `stepDone(slug, id)` / `toggleStep(slug, id)` / `completedStepCount(slug,
+  ids)`, namespaced under the lab slug so step checkboxes are independent of module
+  completion and persist through the same localStorage store.
+- `src/components/LabWalkthrough.tsx` (new, `"use client"`) — renders prerequisites, setup
+  commands (each with a copy button), a `role="progressbar"` "N / 10 steps done" bar, every
+  step (run / expected output / "What did you observe?" callout / collapsible
+  "Something went wrong?" / a persisted checkbox), then teardown + the delete warning.
+- `src/app/modules/[slug]/page.tsx` — any module with `mod.lab` renders `<LabWalkthrough>`
+  under `<ModuleMeta>`. The old `status === "external"` GitHub-link block becomes a
+  `local-cluster-lab`-specific "Lab B — the three-broker cluster" callout (still links out;
+  3b brings it in-app).
+- `src/lib/data/modules.ts` — `local-cluster-lab` retitled "Your first local Kafka workflow",
+  `status: "external"` → `"available"`, `estimatedMinutes` 120 → 90, objectives/completion
+  criteria rewritten around Lab A, `lab: labA` attached. Its 6 topics (now Lab B reference)
+  are unchanged.
+- Tests: `labs.test.ts` (new — unique slugs, every step has the rendered fields + a unique
+  id, Lab A specifics: 10 steps, `docker run` not compose, RF-1 rationale, same-key→same-partition,
+  replay-moves-the-reader, teardown warning contrasts Lab B volumes); `LabWalkthrough.test.tsx`
+  (new — renders steps/prereqs/warning, common-error only where defined, checkbox count +
+  persistence across remount, "lab complete" at 10/10); `ProgressContext.test.tsx` +2 (step
+  toggle/persist/restore). Suite 263 → 278.
 
 ## Module 1 — Kafka mental model
 
