@@ -180,7 +180,7 @@ unless noted.
 |---|---|---|
 | 2a | Module 0 shell + Topic-explorer content for all 9 topics | ✅ Done |
 | 2b | 4 interactive activities (tech-choice picker, order-event fan-out, queue-vs-log, label-the-event) | ✅ Done |
-| 2c | 10-question beginner knowledge check + "Should this system use Kafka?" design exercise | ⭕ Planned |
+| 2c | 10-question beginner knowledge check + "Should this system use Kafka?" design exercise | ✅ Done |
 
 ### PR 2a — Module 0 shell + topic content
 
@@ -255,6 +255,36 @@ following the established demo idiom (pure logic, teaching disclaimer, `reset`, 
 | # | Finding | Fix |
 |---|---|---|
 | 1 | LabelTheEventDemo said every event "has a value" — Kafka permits null values (tombstones) | "a value field (whose value can be null — a tombstone on a compacted topic)" |
+
+### PR 2c — Module 0 knowledge check + design exercise
+
+- `src/lib/data/modules.ts` — Module 0 gains `knowledgeChecks` (10 beginner questions:
+  what an event is, streaming vs. request/response, adding a consumer, DB vs. Kafka,
+  queue vs. topic, key → partition, object storage, offset, poor reasons to adopt, charging
+  a card = synchronous) and one `exercises` entry (the "subscription-box company — should
+  they use Kafka?" one-paragraph design task with 5 self-check criteria). The
+  `KnowledgeCheck` / `Exercise` types were added in Phase 1a.
+- `src/components/KnowledgeCheck.tsx` (new) — one question at a time, pick → lock → reveal
+  explanation, running score, end summary with a pass/fail-ish band. `data-testid`
+  `knowledge-check` / `kc-question` / `kc-verdict` / `kc-summary`.
+- `src/components/DesignExercise.tsx` (new) — prompt + the success criteria as a
+  self-assessed checklist (`de-criteria`, `de-progress`); no score, no persistence.
+- `src/app/modules/[slug]/page.tsx` — **generic** blocks: any module with `knowledgeChecks`
+  renders `<KnowledgeCheck>`, any with `exercises` renders `<DesignExercise>` (so Phase 10's
+  per-module checks need no page changes).
+- Tests: `KnowledgeCheck.test.tsx` (6), `DesignExercise.test.tsx` (3); `modules.test.ts` +2
+  (Module 0 has 10 valid checks + 1 exercise; every module's `answerIndex` is in range). The
+  Phase-2 acceptance corpus now also scans `knowledgeChecks` / `exercises` text. Suite
+  250 → 261.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Partitioning question was under-specified | reworded — "a record produced with a key, no explicit partition, and the default partitioner"; answer "the key's hash"; explanation covers no-key and explicit-partition/custom-partitioner overrides |
+| 2 | Assessment state could leak between modules on client nav | `[slug]/page.tsx` passes `key={mod.slug}` to `<KnowledgeCheck>` and `<DesignExercise>` so React remounts them per module; component tests verify a fresh remount clears state |
+| 3 | Correct answer conveyed by colour only, not exposed to AT | `kc-verdict` gets `role="status"`; a wrong verdict now prints "The correct answer: …" in text; each option carries a text marker (`· ✓ correct answer` / `· ✗ your answer`), not just green/red |
+| 4 | Design exercise was a false binary (multiple consumers ⇒ Kafka) | reworked — the fraud team's "re-run over the last 60 days" gives an explicit replay/retained-history requirement; options widened to retained log / lightweight pub-sub / direct calls / mix; criteria call out that fan-out alone doesn't tip it |
 
 ## Module 1 — Kafka mental model
 

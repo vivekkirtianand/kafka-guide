@@ -7,6 +7,8 @@ import Badge from "@/components/Badge";
 import TopicExplorer from "@/components/TopicExplorer";
 import ModuleMeta from "@/components/ModuleMeta";
 import ModuleCompletion from "@/components/ModuleCompletion";
+import KnowledgeCheck from "@/components/KnowledgeCheck";
+import DesignExercise from "@/components/DesignExercise";
 import TroubleshootingCatalog from "@/components/TroubleshootingCatalog";
 import TechnologyChoiceDemo from "@/components/demos/TechnologyChoiceDemo";
 import OrderEventFanoutDemo from "@/components/demos/OrderEventFanoutDemo";
@@ -175,6 +177,19 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
           <RequestLatencyBreakdown />
           <LagSlopeVsAbsolute />
           <IsrChurnDemo />
+        </div>
+      )}
+
+      {mod.knowledgeChecks && mod.knowledgeChecks.length > 0 && (
+        <div className="mt-10">
+          {/* keyed by slug so client navigation between modules starts a fresh check */}
+          <KnowledgeCheck key={mod.slug} checks={mod.knowledgeChecks} />
+        </div>
+      )}
+
+      {mod.exercises && mod.exercises.length > 0 && (
+        <div className="mt-8">
+          <DesignExercise key={mod.slug} exercises={mod.exercises} />
         </div>
       )}
 

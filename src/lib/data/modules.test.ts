@@ -158,6 +158,8 @@ describe("Module 0 — Why Kafka?", () => {
     ...m0.topics,
     ...m0.activities,
     ...(m0.furtherReading ?? []).flatMap((r) => [r.label, r.url]),
+    ...(m0.knowledgeChecks ?? []).flatMap((k) => [k.question, k.explanation, ...k.options]),
+    ...(m0.exercises ?? []).flatMap((e) => [e.prompt, ...e.successCriteria]),
     ...Object.values(m0.topicDetail!).flatMap((d) => [
       d.summary,
       d.watchOut ?? "",
@@ -193,5 +195,34 @@ describe("Module 0 — Why Kafka?", () => {
     expect(m0.topics).toContain("Kafka versus databases");
     expect(m0.topics).toContain("When Kafka is a poor choice");
     expect(allText).toMatch(/request\/response/i);
+  });
+
+  it("has a 10-question knowledge check with valid answers", () => {
+    expect(m0.knowledgeChecks).toHaveLength(10);
+    for (const k of m0.knowledgeChecks!) {
+      expect(k.options.length, k.question).toBeGreaterThanOrEqual(2);
+      expect(k.answerIndex, k.question).toBeGreaterThanOrEqual(0);
+      expect(k.answerIndex, k.question).toBeLessThan(k.options.length);
+      expect(k.explanation.length, k.question).toBeGreaterThan(0);
+    }
+  });
+
+  it("has a 'should this use Kafka?' design exercise with self-check criteria", () => {
+    expect(m0.exercises).toHaveLength(1);
+    const ex = m0.exercises![0];
+    expect(ex.prompt).toMatch(/recommend/i);
+    expect(ex.successCriteria.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("knowledge checks (any module)", () => {
+  it("every KnowledgeCheck has an in-range answerIndex and enough options", () => {
+    for (const m of modules) {
+      for (const k of m.knowledgeChecks ?? []) {
+        expect(k.options.length, `${m.slug}: ${k.question}`).toBeGreaterThanOrEqual(2);
+        expect(k.answerIndex, `${m.slug}: ${k.question}`).toBeGreaterThanOrEqual(0);
+        expect(k.answerIndex, `${m.slug}: ${k.question}`).toBeLessThan(k.options.length);
+      }
+    }
   });
 });
