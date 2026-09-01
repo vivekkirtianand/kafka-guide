@@ -277,6 +277,15 @@ following the established demo idiom (pure logic, teaching disclaimer, `reset`, 
   Phase-2 acceptance corpus now also scans `knowledgeChecks` / `exercises` text. Suite
   250 → 261.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Partitioning question was under-specified | reworded — "a record produced with a key, no explicit partition, and the default partitioner"; answer "the key's hash"; explanation covers no-key and explicit-partition/custom-partitioner overrides |
+| 2 | Assessment state could leak between modules on client nav | `[slug]/page.tsx` passes `key={mod.slug}` to `<KnowledgeCheck>` and `<DesignExercise>` so React remounts them per module; component tests verify a fresh remount clears state |
+| 3 | Correct answer conveyed by colour only, not exposed to AT | `kc-verdict` gets `role="status"`; a wrong verdict now prints "The correct answer: …" in text; each option carries a text marker (`· ✓ correct answer` / `· ✗ your answer`), not just green/red |
+| 4 | Design exercise was a false binary (multiple consumers ⇒ Kafka) | reworked — the fraud team's "re-run over the last 60 days" gives an explicit replay/retained-history requirement; options widened to retained log / lightweight pub-sub / direct calls / mix; criteria call out that fan-out alone doesn't tip it |
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

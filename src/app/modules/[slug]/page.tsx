@@ -182,13 +182,14 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
 
       {mod.knowledgeChecks && mod.knowledgeChecks.length > 0 && (
         <div className="mt-10">
-          <KnowledgeCheck checks={mod.knowledgeChecks} />
+          {/* keyed by slug so client navigation between modules starts a fresh check */}
+          <KnowledgeCheck key={mod.slug} checks={mod.knowledgeChecks} />
         </div>
       )}
 
       {mod.exercises && mod.exercises.length > 0 && (
         <div className="mt-8">
-          <DesignExercise exercises={mod.exercises} />
+          <DesignExercise key={mod.slug} exercises={mod.exercises} />
         </div>
       )}
 

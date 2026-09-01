@@ -386,16 +386,17 @@ export const modules: Module[] = [
           "A queue routes each message to one consumer and removes it once handled. A Kafka topic keeps events, so any number of groups can read — and rewind and re-read — them.",
       },
       {
-        question: "By default, what decides which partition a record lands in?",
+        question:
+          "A record is produced with a key, no explicit partition set, and the default partitioner. What decides which partition it lands in?",
         options: [
-          "The record's key",
+          "The key's hash",
           "The size of the record",
           "The time the record was produced",
-          "Whichever partition has the least data",
+          "Whichever partition currently has the least data",
         ],
         answerIndex: 0,
         explanation:
-          "By default the key's hash picks the partition, so same-key records stay together and in order. An explicit partition or a custom partitioner can override this; a record with no key is spread across partitions.",
+          "In that case the key's hash picks the partition, so same-key records stay together and in order. A record with no key is spread across partitions instead, and setting an explicit partition or a custom partitioner overrides the key entirely.",
       },
       {
         question: "A partner downloads one 5 GB report file once a day. Where should it live?",
@@ -444,13 +445,14 @@ export const modules: Module[] = [
     exercises: [
       {
         prompt:
-          "A subscription-box company processes about 2,000 orders a day. When an order is placed they need to charge the card, email a receipt, tell the warehouse to pick it, and update an analytics dashboard — and they expect to add a loyalty-points service and a fraud check within a year. Write a one-paragraph recommendation: put an event stream (Kafka) at the centre, or wire the services together with direct calls?",
+          "A subscription-box company processes about 2,000 orders a day. When an order is placed, four systems need to react: charge the card, email a receipt, tell the warehouse to pick it, and update an analytics dashboard. They plan to add a loyalty-points service and a fraud check within the year — and the fraud team says that every time they retrain their model, they will need to re-run it over the last 60 days of orders. Write a one-paragraph recommendation: a retained event log (Kafka), a lightweight pub/sub broker, direct service-to-service calls, or a mix — and why.",
         successCriteria: [
-          "You give a clear recommendation (event stream / direct calls / hybrid), not just a list of pros and cons",
-          "You name the deciding factor: several independent consumers of the same \"order placed\" event, with more coming",
+          "You give one clear recommendation, not a list of pros and cons",
+          "You single out the fraud team's 60-day reprocessing need as the requirement that a retained, replayable log serves and plain pub/sub or a queue does not",
+          "You note that the four downstream reactions on their own could be handled by simple pub/sub — fan-out by itself is not what tips the decision",
           "You keep charging the card as a synchronous call, not an event",
-          "You call out the cost: someone has to operate Kafka, or pay for a managed service",
-          "Your recommendation would not flip if the volume were 200 orders/day instead of 2,000 — throughput isn't what decides it here",
+          "You name the cost: someone has to operate the log, or pay for a managed service",
+          "Your recommendation would not change at 200 orders/day — throughput is not the deciding factor",
         ],
       },
     ],

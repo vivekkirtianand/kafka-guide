@@ -86,6 +86,10 @@ export default function KnowledgeCheck({ checks }: { checks: Check[] }) {
                     : isPicked
                       ? "border-danger/50 bg-danger-soft text-danger"
                       : "border-border-soft bg-bg-inset text-text-faint";
+              // Non-colour marker so the correct/picked options are distinguishable without
+              // relying on the green/red styling.
+              const marker =
+                picked === null ? "" : isAnswer ? "· ✓ correct answer" : isPicked ? "· ✗ your answer" : "";
               return (
                 <button
                   key={i}
@@ -94,14 +98,25 @@ export default function KnowledgeCheck({ checks }: { checks: Check[] }) {
                   className={`rounded border px-3 py-2 text-left text-sm transition-colors ${tone}`}
                 >
                   {opt}
+                  {marker && <span className="ml-1.5 font-mono text-[11px]">{marker}</span>}
                 </button>
               );
             })}
           </div>
 
           {picked !== null && (
-            <div className="rounded-md border border-border-soft bg-bg-inset p-4" data-testid="kc-verdict">
+            <div
+              className="rounded-md border border-border-soft bg-bg-inset p-4"
+              data-testid="kc-verdict"
+              role="status"
+            >
               <Badge tone={correct ? "success" : "danger"}>{correct ? "correct" : "not quite"}</Badge>
+              {!correct && (
+                <p className="mt-2 text-sm text-text">
+                  The correct answer:{" "}
+                  <span className="text-success">{check.options[check.answerIndex]}</span>
+                </p>
+              )}
               <p className="mt-2 text-sm leading-relaxed text-text-muted">{check.explanation}</p>
               <button
                 onClick={next}

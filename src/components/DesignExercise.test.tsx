@@ -38,4 +38,25 @@ describe("DesignExercise", () => {
 
     expect(screen.getByTestId("de-progress")).toHaveTextContent("0 / 3 self-checked");
   });
+
+  it("starts fresh when remounted for a different module (keyed by slug)", async () => {
+    const user = userEvent.setup();
+    const other: Exercise[] = [{ prompt: "Other prompt", successCriteria: ["only one"] }];
+    const { rerender } = render(
+      <div>
+        <DesignExercise key="mod-a" exercises={exercises} />
+      </div>,
+    );
+    await user.click(screen.getByLabelText("give a clear recommendation"));
+    expect(screen.getByTestId("de-progress")).toHaveTextContent("1 / 3 self-checked");
+
+    rerender(
+      <div>
+        <DesignExercise key="mod-b" exercises={other} />
+      </div>,
+    );
+
+    expect(screen.getByText("Other prompt")).toBeInTheDocument();
+    expect(screen.getByTestId("de-progress")).toHaveTextContent("0 / 1 self-checked");
+  });
 });

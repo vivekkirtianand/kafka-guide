@@ -39,12 +39,42 @@ describe("KnowledgeCheck", () => {
     expect(screen.getByRole("button", { name: "wrong one" })).toBeDisabled();
   });
 
-  it("marks a wrong pick", async () => {
+  it("marks a wrong pick, names the correct option in text, and exposes the verdict as a status", async () => {
     const user = userEvent.setup();
     render(<KnowledgeCheck checks={checks} />);
 
     await user.click(screen.getByRole("button", { name: "wrong one" }));
-    expect(within(screen.getByTestId("kc-verdict")).getByText("not quite")).toBeInTheDocument();
+
+    const verdict = screen.getByTestId("kc-verdict");
+    expect(verdict).toHaveAttribute("role", "status");
+    expect(within(verdict).getByText("not quite")).toBeInTheDocument();
+    expect(within(verdict).getByText(/The correct answer:/)).toHaveTextContent("right one");
+    // the right/picked options carry a text marker, not just colour
+    expect(screen.getByRole("button", { name: /right one\s*·\s*✓ correct answer/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /wrong one\s*·\s*✗ your answer/ })).toBeInTheDocument();
+  });
+
+  it("starts fresh when it is remounted for a different module (keyed by slug)", async () => {
+    const user = userEvent.setup();
+    const other: Check[] = [
+      { question: "Other module question?", options: ["a", "b"], answerIndex: 0, explanation: "x" },
+    ];
+    const { rerender } = render(
+      <div>
+        <KnowledgeCheck key="mod-a" checks={checks} />
+      </div>,
+    );
+    await user.click(screen.getByRole("button", { name: "right one" }));
+    expect(screen.getByTestId("kc-verdict")).toBeInTheDocument();
+
+    rerender(
+      <div>
+        <KnowledgeCheck key="mod-b" checks={other} />
+      </div>,
+    );
+
+    expect(screen.getByTestId("kc-question")).toHaveTextContent("Other module question?");
+    expect(screen.queryByTestId("kc-verdict")).not.toBeInTheDocument();
   });
 
   it("tallies a score after the last question", async () => {
