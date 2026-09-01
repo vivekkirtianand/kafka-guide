@@ -7,6 +7,26 @@ export const modules: Module[] = [
     title: "Kafka mental model",
     summary:
       "The append-only log, brokers, partitions, replicas, and the ordering and delivery guarantees everything else is built on.",
+    difficulty: "beginner",
+    estimatedMinutes: 60,
+    prerequisites: [],
+    track: "beginner-path",
+    objectives: [
+      "Describe a topic-partition as an ordered, append-only log and explain what an offset is",
+      "Explain how a record's key selects its partition and why that fixes ordering",
+      "Distinguish a leader, a follower, and the in-sync replica set",
+      "State the difference between at-most-once, at-least-once, and exactly-once processing",
+    ],
+    completionCriteria: [
+      "You can predict which partition a keyed record lands on and whether two records stay ordered",
+      "You can explain, without notes, what happens to consumers when a partition leader fails",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka — Introduction", url: "https://kafka.apache.org/documentation/#introduction" },
+      { label: "Apache Kafka — Design", url: "https://kafka.apache.org/documentation/#design" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-01",
     topics: [
       "Kafka's append-only log",
       "Brokers, topics, partitions, replicas",
@@ -202,6 +222,26 @@ export const modules: Module[] = [
     title: "Local cluster laboratory",
     summary:
       "A reproducible three-broker KRaft cluster with CLI tools, a Kafka UI, and Prometheus/Grafana for hands-on labs.",
+    difficulty: "beginner",
+    estimatedMinutes: 120,
+    prerequisites: ["mental-model"],
+    track: "beginner-path",
+    objectives: [
+      "Start a multi-broker Kafka cluster locally and confirm every broker is healthy",
+      "Create a topic, produce and consume records, and inspect partition placement",
+      "Stop a broker, watch leader election and ISR shrink, then restart and watch it rejoin",
+      "Reset a consumer group's offsets and replay a partition",
+    ],
+    completionCriteria: [
+      "The three-broker stack is running and Grafana shows the lab dashboard",
+      "You have completed every activity in local-cluster-lab/README.md at least once",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka — Quickstart", url: "https://kafka.apache.org/quickstart" },
+      { label: "Apache Kafka — Operations", url: "https://kafka.apache.org/documentation/#operations" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-01",
     topics: [
       "Three Kafka brokers in KRaft mode",
       "Kafka CLI tools",
@@ -380,6 +420,25 @@ export const modules: Module[] = [
     title: "Producer configuration",
     summary:
       "Configuration organized by goal — durability, batching, backpressure, latency, ordering, and transactions.",
+    difficulty: "intermediate",
+    estimatedMinutes: 90,
+    prerequisites: ["mental-model"],
+    track: "reference",
+    objectives: [
+      "Choose an acks and min.insync.replicas pairing for a given durability requirement",
+      "Explain how linger.ms and batch.size trade latency for throughput",
+      "Describe what enable.idempotence guarantees and what it does not",
+      "Reason about buffer exhaustion, delivery.timeout.ms, and retry behavior",
+    ],
+    completionCriteria: [
+      "Given a durability or latency goal, you can name the producer configs that move it and their side effects",
+      "You can explain why acks=all alone does not prevent data loss",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka — Producer configs", url: "https://kafka.apache.org/documentation/#producerconfigs" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-01",
     topics: [
       "Prevent acknowledged data loss (acks, enable.idempotence, retries)",
       "Improve batching (batch.size, linger.ms)",
@@ -600,6 +659,25 @@ export const modules: Module[] = [
     title: "Consumer configuration",
     summary:
       "Consumer groups, partition assignment, offset commits, rebalances, and poison-message handling.",
+    difficulty: "intermediate",
+    estimatedMinutes: 90,
+    prerequisites: ["mental-model"],
+    track: "reference",
+    objectives: [
+      "Explain how partitions are assigned across a consumer group and what triggers a rebalance",
+      "Compare automatic and manual offset commits and their failure modes",
+      "Predict what is reprocessed when a consumer crashes before or after a commit",
+      "Design a retry-topic and dead-letter-topic path for poison messages",
+    ],
+    completionCriteria: [
+      "You can explain why processing that overruns max.poll.interval.ms causes a rebalance",
+      "You can describe an at-least-once consumer that never loses an acknowledged record",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka — Consumer configs", url: "https://kafka.apache.org/documentation/#consumerconfigs" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-01",
     topics: [
       "Consumer groups and partition assignment",
       "Polling and heartbeats",
@@ -840,6 +918,26 @@ export const modules: Module[] = [
     title: "Broker and topic configuration",
     summary:
       "Replication, retention, compaction, request limits, quotas, and listener/security configuration.",
+    difficulty: "advanced",
+    estimatedMinutes: 100,
+    prerequisites: ["mental-model", "producer-configuration", "consumer-configuration"],
+    track: "reference",
+    objectives: [
+      "Explain how replication factor, min.insync.replicas, and the ISR interact during a failure",
+      "Contrast delete and compact cleanup and pick one for a given topic",
+      "Reason about retention.bytes as a per-partition limit when sizing a topic",
+      "Describe how client quotas throttle rather than reject traffic",
+    ],
+    completionCriteria: [
+      "You can size a topic's disk footprint from retention, partition count, and replication factor",
+      "You can explain what NOT_ENOUGH_REPLICAS means and the safe ways to clear it",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka — Broker configs", url: "https://kafka.apache.org/documentation/#brokerconfigs" },
+      { label: "Apache Kafka — Topic configs", url: "https://kafka.apache.org/documentation/#topicconfigs" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-01",
     topics: [
       "Replication and durability",
       "Retention and compaction",
@@ -1142,6 +1240,25 @@ export const modules: Module[] = [
     index: 6,
     title: "Observability",
     summary: "Moving from symptom to evidence across lag, ISR, latency, disk, network, and GC signals.",
+    difficulty: "advanced",
+    estimatedMinutes: 80,
+    prerequisites: ["mental-model", "local-cluster-lab"],
+    track: "reference",
+    objectives: [
+      "Read an unlabeled dashboard and name the bottleneck: producer, broker, consumer, disk, network, or downstream",
+      "Tell a runaway lag slope from a flat-but-breaching backlog",
+      "Break a request-latency total into its queue, local, and remote phases",
+      "Localize ISR churn to one slow broker versus a shared cause",
+    ],
+    completionCriteria: [
+      "Given a set of metrics, you can state the single most likely bottleneck and the next check",
+      "You know which signals kafka-exporter alone cannot see (GC, heap) and why that matters",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka — Monitoring", url: "https://kafka.apache.org/documentation/#monitoring" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-01",
     topics: [
       "Consumer lag and lag growth rate",
       "Under-replicated and offline partitions",
@@ -1424,6 +1541,24 @@ export const modules: Module[] = [
     title: "Troubleshooting scenarios",
     summary:
       "A searchable symptom → evidence → cause → resolution catalog covering the most common Kafka incidents.",
+    difficulty: "advanced",
+    estimatedMinutes: 70,
+    prerequisites: ["observability"],
+    track: "reference",
+    objectives: [
+      "Move from a paging symptom to the specific evidence that confirms or rules out each cause",
+      "Recognize the fixes that make a symptom disappear while making the system worse",
+      "Match common errors (NOT_ENOUGH_REPLICAS, timeouts, rebalance storms) to their real signatures",
+    ],
+    completionCriteria: [
+      "For each catalog entry you can name the evidence that distinguishes its causes",
+      "You can explain why lowering a durability setting is rarely the right incident response",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka — Operations", url: "https://kafka.apache.org/documentation/#operations" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-01",
     topics: [
       "Consumer lag",
       "Frequent consumer rebalances",

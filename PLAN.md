@@ -2,6 +2,47 @@
 
 Tracks work against the guide plan referenced in [README.md](README.md). Statuses: ✅ Done · 🚧 In progress · ⭕ Planned (not started) · ❓ Open question.
 
+---
+
+# v2 — beginner course redesign
+
+A second plan (see the roadmap for all 11 phases) reworks the reference-first guide below into
+a linear beginner course. Delivered one PR per unit. Phase 1 builds the course framework.
+
+## Phase 1 — course framework
+
+| PR | Scope | Status |
+|---|---|---|
+| 1a | Course data model + per-module metadata + beginner/reference IA + computed course length | ✅ Done |
+| 1b | Progress tracking (localStorage): completion state, resume, progress %, reset | ⭕ Planned |
+| 1c | Glossary route + data + inline term component | ⭕ Planned |
+
+### PR 1a — data model + metadata + IA
+
+- `src/lib/types.ts` — `Module` gains optional `difficulty`, `estimatedMinutes`,
+  `prerequisites`, `objectives`, `completionCriteria`, `furtherReading`, `applicableVersions`,
+  `lastReviewed`, `track`; new `KnowledgeCheck` / `Exercise` types + `knowledgeChecks` /
+  `exercises` fields (content authored in Phase 10, slot lands now).
+- `src/lib/course.ts` (new) — `courseHours`, `courseWeeks`, `beginnerPath`,
+  `referenceModules`, `advancedModules`. `course.test.ts` covers the math + a real-list
+  partition check.
+- `src/lib/data/modules.ts` — all 7 modules populated: difficulty, time estimate, 3–4
+  objectives, prerequisites (each resolves to an earlier module), completion criteria,
+  further reading (official Apache docs, https-only), `track`, `lastReviewed`.
+  Tracks: `mental-model` + `local-cluster-lab` → beginner-path; the other five → reference.
+- `src/components/ModuleMeta.tsx` (new) — module-page header: difficulty/track badges,
+  `~N min`, prerequisites as links, objectives list, "Reviewed against Kafka 4.0 · DATE".
+- `src/app/modules/[slug]/page.tsx` — renders `<ModuleMeta>`, a "Further reading" block, and
+  a **prev** link beside the existing next link.
+- `src/app/page.tsx` — "Learning path" split into **Beginner path** + **Reference modules**;
+  the hardcoded "7 modules · ~8 weeks" is now `${modules.length} · ~${courseWeeks(modules)}`
+  (currently ~3 weeks for the 7 existing modules).
+- `src/components/ModuleCard.tsx` — difficulty + `~N min` on the footer line.
+- `src/components/Sidebar.tsx` — "Guide" split into "Beginner path" / "Reference modules".
+- Tests: `modules.test.ts` +6 (metadata present, prereqs resolve to earlier modules,
+  further-reading URLs absolute https, track partition); `ModuleCard.test.tsx` (new);
+  `course.test.ts` (new). Suite 189 → 201.
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

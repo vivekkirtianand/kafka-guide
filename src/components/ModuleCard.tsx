@@ -18,8 +18,18 @@ export default function ModuleCard({ module }: { module: Module }) {
         <h3 className="font-display text-lg text-text group-hover:text-accent">{module.title}</h3>
         <p className="mt-2 text-sm leading-relaxed text-text-muted">{module.summary}</p>
       </div>
-      <div className="mt-4 font-mono text-[11px] text-text-faint">
-        {module.topics.length} topics · {module.activities.length} activities
+      <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-text-faint">
+        {module.difficulty && <span className="text-text-muted">{module.difficulty}</span>}
+        {module.difficulty && <span aria-hidden>·</span>}
+        <span>{module.topics.length} topics</span>
+        <span aria-hidden>·</span>
+        <span>{module.activities.length} activities</span>
+        {module.estimatedMinutes && (
+          <>
+            <span aria-hidden>·</span>
+            <span>~{module.estimatedMinutes} min</span>
+          </>
+        )}
       </div>
     </Link>
   );

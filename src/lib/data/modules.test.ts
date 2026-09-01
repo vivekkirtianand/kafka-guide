@@ -95,3 +95,46 @@ describe("module data", () => {
     });
   });
 });
+
+describe("course metadata", () => {
+  it("every module has difficulty, a positive time estimate, and a track", () => {
+    for (const m of modules) {
+      expect(["beginner", "intermediate", "advanced"], m.slug).toContain(m.difficulty);
+      expect(m.estimatedMinutes ?? 0, m.slug).toBeGreaterThan(0);
+      expect(["beginner-path", "reference", "advanced"], m.slug).toContain(m.track);
+    }
+  });
+
+  it("every module lists at least three learning objectives", () => {
+    for (const m of modules) {
+      expect(m.objectives?.length ?? 0, m.slug).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("every prerequisite resolves to a real, earlier module", () => {
+    for (const m of modules) {
+      for (const slug of m.prerequisites ?? []) {
+        const dep = getModule(slug);
+        expect(dep, `${m.slug} → ${slug}`).toBeDefined();
+        expect(dep!.index, `${m.slug} → ${slug}`).toBeLessThan(m.index);
+      }
+    }
+  });
+
+  it("every further-reading link points at an absolute https URL", () => {
+    for (const m of modules) {
+      for (const r of m.furtherReading ?? []) {
+        expect(r.url, `${m.slug}: ${r.label}`).toMatch(/^https:\/\//);
+      }
+    }
+  });
+
+  it("splits cleanly into a beginner path plus reference material", () => {
+    const paths = modules.filter((m) => m.track === "beginner-path");
+    const reference = modules.filter((m) => m.track === "reference");
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths.length + reference.length + modules.filter((m) => m.track === "advanced").length).toBe(
+      modules.length,
+    );
+  });
+});
