@@ -61,9 +61,12 @@ describe("lab data", () => {
       expect(verify.observe).not.toMatch(/same partition\s*[—-]\s*every time/i);
     });
 
-    it("never claims the console consumer reads one partition fully before the next", () => {
+    it("does not assert an unguaranteed cross-partition read order (neither 'partition by partition' nor 'interleaved')", () => {
       const text = labA.steps.map((s) => `${s.intro} ${s.expected} ${s.observe}`).join(" ");
-      expect(text).not.toMatch(/partition by partition|one partition at a time|one whole partition before|drains one partition/i);
+      expect(text).not.toMatch(/partition by partition|one partition at a time|one whole partition before|drains one partition|interleav/i);
+      // the cross-partition point is made as "no guarantee / undefined", not a specific behaviour
+      const consumeBack = labA.steps.find((s) => s.id === "consume-from-beginning")!;
+      expect(consumeBack.observe).toMatch(/no ordering promise|undefined|not guaranteed|no promise/i);
     });
 
     it("assumes a POSIX shell and points Windows users at WSL / Git Bash", () => {

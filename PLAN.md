@@ -69,8 +69,9 @@ unless noted.
 - **Renumber timing** (Phase 6): doing it before Module 0 exists means a throwaway 0-based
   shuffle — Module 0 (Phase 2) is sequenced before the renumber so there's an anchor. Slugs
   are already semantic, so the renumber is the `index` field + array order + nav, not routes.
-- **Lab content moving in-app** (Phase 3): today Module 2 links out to GitHub. Lab A becomes a
-  real in-app lesson type — a new render path, not just data.
+- **Lab content moving in-app** (Phase 3): Module 2 used to only link out to GitHub. Phase 3a
+  (PR #23) added Lab A as a real in-app lesson type — a new render path, not just data; 3b
+  brings Lab B (the 3-broker Compose lab) in-app the same way.
 
 ### Phase-1 acceptance criteria
 
@@ -353,9 +354,16 @@ Suite 278 → 283.
 |---|---|---|
 | 1 | `printf` / single-quoting / `docker exec` don't work in Windows PowerShell or cmd (the advertised default terminals) | the shell prerequisite now scopes to a POSIX shell and tells Windows users to run the commands under WSL or Git Bash; test asserts that prereq names WSL / Git Bash |
 | 2 | "Same key, same partition — every time" is unconditional | `verify-key-partition` observe now qualifies it: default partitioner + fixed partition count; adding partitions shifts the mapping, and an explicit partition / custom partitioner overrides it. Test requires the caveat and rejects the "every time" phrasing |
-| 3 | Text claimed the console consumer drains one whole partition before the next — Kafka gives no such guarantee | reworded to "`poll()` returns whatever has arrived from each partition, interleaved"; test asserts no step says "partition by partition" / "one partition at a time" / "one whole partition before" |
+| 3 | Text claimed the console consumer drains one whole partition before the next — Kafka gives no such guarantee | reworded away from a specific read order; test asserts no step says "partition by partition" / "one partition at a time" / "one whole partition before" |
 
 Suite 283 → 285.
+
+**Review findings addressed (round 3)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | The round-2 rewrite still asserted a specific behaviour — `poll()` returns cross-partition records "interleaved" — which Kafka does not guarantee | reworded to "the order records from different partitions come back in is undefined / no ordering promise"; test now also forbids "interleav*" and requires the no-guarantee phrasing |
+| 2 | `PLAN.md`'s v1-era Module 2 section still described it as `status: "external"` with a "lab built" badge, contradicting Phase 3a | added a "Superseded by Phase 3a" note to that section and corrected the "what was built" checklist row, the risks note, and the final-verification line to say Module 2 is now `"available"` with the in-app Lab A |
 
 ## Module 1 — Kafka mental model
 
@@ -373,16 +381,24 @@ scannable format as Modules 3–6. `status: "available"`.
 
 ## Module 2 — Local cluster laboratory
 
-Unlike Module 1, this module's content isn't a React page — it's the actual local-cluster
-deliverable README.md scopes as separate from the Next.js app: a reproducible three-broker
-Kafka cluster and observability stack, built at [local-cluster-lab/](local-cluster-lab/).
-The in-app `/modules/local-cluster-lab` page ([page.tsx](src/app/modules/%5Bslug%5D/page.tsx))
-no longer shows the generic "planned" placeholder — it renders a "lab built" badge and links
-out to the `local-cluster-lab/` folder on GitHub. `Module.status` in
-[types.ts](src/lib/types.ts) gained a third value, `"external"` (built, but as content
-outside this app rather than an embedded React demo), so the module index card
-([ModuleCard.tsx](src/components/ModuleCard.tsx)) also shows a distinct "lab built" badge
-instead of grouping this module in with the still-actually-unbuilt "planned" ones.
+> **Superseded by Phase 3a (PR #23).** Module 2 is now `status: "available"` and titled
+> "Your first local Kafka workflow". Its page leads with **Lab A**, an in-app step-by-step
+> walkthrough against a single broker (`src/lib/data/labs.ts` + `LabWalkthrough.tsx`); the
+> three-broker Compose lab below becomes **Lab B**, still reached via a link out (Phase 3b
+> brings it in-app). The `Module.status: "external"` value and "lab built" badge described
+> here no longer apply to this module. The rest of this section records the Compose
+> deliverable as originally built.
+
+Unlike Module 1, the original Module 2 content wasn't a React page — it was the actual
+local-cluster deliverable README.md scopes as separate from the Next.js app: a reproducible
+three-broker Kafka cluster and observability stack, built at
+[local-cluster-lab/](local-cluster-lab/). Before Phase 3a the in-app
+`/modules/local-cluster-lab` page ([page.tsx](src/app/modules/%5Bslug%5D/page.tsx)) rendered
+a "lab built" badge and linked out to the `local-cluster-lab/` folder on GitHub;
+`Module.status` in [types.ts](src/lib/types.ts) carried a third value, `"external"` (built,
+but as content outside this app rather than an embedded React demo), so the module index card
+([ModuleCard.tsx](src/components/ModuleCard.tsx)) showed a distinct "lab built" badge instead
+of grouping this module in with the still-actually-unbuilt "planned" ones.
 
 | Item | Status | Notes |
 |---|---|---|
@@ -693,7 +709,7 @@ Everything the guide plan scoped is now built — this table is a closed log, no
 | Module 5 (Broker and topic configuration) | ✅ Done | Topic explorer content (11 topics) + 4 interactive demos. See the Module 5 section above. |
 | Module 6 (Observability) | ✅ Done | Topic explorer content (11 signals) + 4 interactive demos. See the Module 6 section above. |
 | Module 1's topic content | ✅ Done | All 6 topics have Topic explorer content (PR #7) plus a second accuracy review pass. See the Module 1 section above. |
-| Module 2 in-app page | ✅ Done | Detail page and index card both show a "lab built" badge (new `Module.status: "external"` value) with a link out to `local-cluster-lab/` on GitHub, instead of grouping with the actually-unbuilt "planned" modules. |
+| Module 2 in-app page | ✅ Done | Originally: a "lab built" badge (then-new `Module.status: "external"` value) linking out to `local-cluster-lab/` on GitHub. **Phase 3a (PR #23) supersedes this** — Module 2 is now `status: "available"` with an in-app Lab A walkthrough; the card shows the standard "available" badge. |
 | 9 remaining incident-simulator scenarios | ✅ Done | All 10 incidents now have a full `investigation` (clues + diagnosis options) and are `status: "available"`. See the Incident simulator section above. |
 | 14 production runbooks | ✅ Done | All 14 written to full content (prechecks/execution/validation/rollback/escalation) with a `/runbooks/[slug]` detail page each. See the Production operations runbooks section above. |
 | Local cluster lab (docker-compose, 3-broker KRaft + Kafka UI + Prometheus/Grafana) | ✅ Done | Built at [local-cluster-lab/](local-cluster-lab/) — explicitly out of scope for the Next.js app per README, a separate deliverable. See Module 2 section below for what was built and verified. |
@@ -703,8 +719,9 @@ Everything the guide plan scoped is now built — this table is a closed log, no
 Every item in the guide plan is built:
 
 - **Modules 1–7** — all have Topic explorer content (`topicDetail`) for every topic and are
-  `status: "available"` (Module 2 is `"external"` — the local cluster lab). Modules 1 and
-  3–6 also carry their interactive demos; Module 7 embeds the troubleshooting catalog.
+  `status: "available"`. (Module 2 was `"external"` until Phase 3a / PR #23, which added the
+  in-app Lab A walkthrough and flipped it to `"available"`.) Modules 1 and 3–6 also carry
+  their interactive demos; Module 7 embeds the troubleshooting catalog.
 - **Incident simulator** — all 10 scenarios have a full `investigation` (clues + diagnosis
   options), `status: "available"`.
 - **Troubleshooting catalog** — all 10 symptom entries at full depth (overview, cause →

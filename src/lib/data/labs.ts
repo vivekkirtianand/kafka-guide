@@ -97,7 +97,7 @@ export const labA: Lab = {
         "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 3 --timeout-ms 20000",
       expected: "first\nsecond\nthird\nProcessed a total of 3 messages",
       observe:
-        "All three came back, most likely in the order you sent them — with so few records they landed on one partition (the next step confirms that), and a single partition is always read in order. That order only holds *within* a partition, though. Once records are spread across partitions, a consumer's `poll()` returns whatever has arrived from each partition, interleaved — so the sequence you see is no longer send order.",
+        "All three came back, most likely in the order you sent them — with so few records they landed on one partition (the next step confirms that), and a single partition is always read in order. That order only holds *within* a partition, though. Across partitions Kafka makes no ordering promise at all: once records are spread over several partitions, the order a consumer hands them back in is undefined and need not match send order.",
       commonError: {
         symptom: "The command prints one or two lines then hangs, ending after 20s with `Processed a total of 2 messages` and a `TimeoutException`.",
         cause: "Fewer than three records reached the topic — usually a typo in the topic name on the produce step, so the records went to a different (auto-rejected or mis-named) topic.",
@@ -139,7 +139,7 @@ export const labA: Lab = {
       command:
         "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 6 --timeout-ms 20000 --property print.partition=true --property print.key=true",
       expected:
-        "Partition:0\teast\torder C\nPartition:1\twest\torder A\nPartition:1\twest\torder B\nPartition:2\tnull\tfirst\nPartition:2\tnull\tsecond\nPartition:2\tnull\tthird\nProcessed a total of 6 messages\n(your partition numbers will differ, and records from different partitions may be interleaved — the order shown is not necessarily send order. What is reliable: both `west` records sit on one partition in send order, and the three unkeyed records share a partition.)",
+        "Partition:0\teast\torder C\nPartition:1\twest\torder A\nPartition:1\twest\torder B\nPartition:2\tnull\tfirst\nPartition:2\tnull\tsecond\nPartition:2\tnull\tthird\nProcessed a total of 6 messages\n(your partition numbers will differ, and the order records from different partitions come back in is undefined — not necessarily send order. What is reliable: both `west` records sit on one partition in send order, and the three unkeyed records share a partition.)",
       observe:
         "Both `west` records are on one partition, in send order. With the default partitioner and a fixed partition count, Kafka hashes the key and takes it modulo the partition count (`murmur2(key) % partitionCount`), so a given key keeps resolving to the same partition — that is what gives you per-key ordering. It is not absolute: add partitions later and the mapping shifts, and an explicit partition or a custom partitioner overrides it.",
       commonError: {
