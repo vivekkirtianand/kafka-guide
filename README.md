@@ -40,6 +40,10 @@ src/
     Sidebar.tsx, TopBar.tsx         App shell (nav + persistent version/deployment context)
     LogStrip.tsx                    Signature append-only-log motif (used in the top bar)
     demos/
+      TechnologyChoiceDemo.tsx     Module 0 activity: pick Kafka / queue / DB / object store / API call per scenario
+      OrderEventFanoutDemo.tsx     Module 0 activity: one order-placed event → billing, email, warehouse, analytics
+      QueueVsLogDemo.tsx           Module 0 activity: queue (deliver once) vs. Kafka topic (retained, replayable)
+      LabelTheEventDemo.tsx        Module 0 activity: label the key, value, timestamp, and headers of sample events
       RecordFlowDemo.tsx            Module 1 activity: producer → partition → consumer, predict-before-reveal
       PartitionOrderingDemo.tsx     Module 1 activity: partition count vs. ordering guarantees
       LeaderElectionDemo.tsx        Module 1 activity: broker failure, catch-up, and leader election
@@ -92,8 +96,9 @@ links back to the glossary.
 - **Module 0 (Why Kafka?)** is built: Topic explorer content for all 9 topics — what an
   event is, streaming vs. request/response, Kafka vs. queues / databases / object storage,
   common use cases, when Kafka is the wrong tool, and the components at a high level. It
-  deliberately stops short of ISR / acks / KRaft. Interactive activities and the knowledge
-  check are still to come (Phase 2b / 2c).
+  deliberately stops short of ISR / acks / KRaft. Four interactive activities — a
+  technology-choice picker, an order-event fan-out walkthrough, a queue-vs-retained-log
+  comparison, and a label-the-event exercise. The knowledge check is still to come (Phase 2c).
 - **Module 1 (Kafka mental model)** is built: scannable Topic explorer content for all 6
   topics (append-only log, brokers/partitions/replicas, leaders/ISR/controllers,
   producers/consumers/offsets/groups, ordering guarantees, delivery semantics) plus the

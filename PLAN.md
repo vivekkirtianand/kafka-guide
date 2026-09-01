@@ -179,7 +179,7 @@ unless noted.
 | PR | Scope | Status |
 |---|---|---|
 | 2a | Module 0 shell + Topic-explorer content for all 9 topics | ✅ Done |
-| 2b | 4 interactive activities (tech-choice picker, order-event fan-out, queue-vs-log, label-the-event) | ⭕ Planned |
+| 2b | 4 interactive activities (tech-choice picker, order-event fan-out, queue-vs-log, label-the-event) | ✅ Done |
 | 2c | 10-question beginner knowledge check + "Should this system use Kafka?" design exercise | ⭕ Planned |
 
 ### PR 2a — Module 0 shell + topic content
@@ -220,6 +220,25 @@ unless noted.
 | 1 | Object-storage comparison still said events arrive "in order" | dropped "in order" — the point is about the poll/pull access pattern, not ordering |
 | 2 | "the next topic unpacks this" was wrong (next topic is event fields) | "a later topic unpacks this" |
 | 3 | Acceptance test corpus omitted `m0.activities` (populated in 2b) | `...m0.activities` added to `allText` |
+
+### PR 2b — Module 0 interactive activities
+
+Four demos in `src/components/demos/`, wired into the `[slug]` page under a `why-kafka` block,
+following the established demo idiom (pure logic, teaching disclaimer, `reset`, unique
+`wk-*` testids). `modules.ts` `activities` populated.
+
+- **`TechnologyChoiceDemo`** — 5 scenarios, pick from Kafka / message queue / relational
+  database / object storage / direct API call; predict-then-reveal with a rationale, running
+  score, end summary.
+- **`OrderEventFanoutDemo`** — publish one `order-placed` event; each of billing / email /
+  warehouse / analytics polls it independently (own offset); "add loyalty service" joins at
+  offset 0 with checkout untouched.
+- **`QueueVsLogDemo`** — side-by-side queue vs. one-partition topic: produce events, a queue
+  worker consumes-and-removes, a Kafka group advances an offset while the event stays, add a
+  second group from 0, reset group A to replay.
+- **`LabelTheEventDemo`** — assign key / value / timestamp / headers to the parts of two
+  sample events (`order-placed`, `sensor-reading`), score and reveal each part's role.
+- Tests: one `*.test.tsx` per demo (22 total). Suite 228 → 250.
 
 ## Module 1 — Kafka mental model
 
