@@ -6,6 +6,7 @@ import SectionHeading from "@/components/SectionHeading";
 import Badge from "@/components/Badge";
 import TopicExplorer from "@/components/TopicExplorer";
 import ModuleMeta from "@/components/ModuleMeta";
+import ModuleCompletion from "@/components/ModuleCompletion";
 import TroubleshootingCatalog from "@/components/TroubleshootingCatalog";
 import LeaderElectionDemo from "@/components/demos/LeaderElectionDemo";
 import RecordFlowDemo from "@/components/demos/RecordFlowDemo";
@@ -213,6 +214,10 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
             ))}
           </ul>
         </div>
+      )}
+
+      {mod.status !== "planned" && (
+        <ModuleCompletion slug={mod.slug} completionCriteria={mod.completionCriteria} />
       )}
 
       {(prev || next) && (

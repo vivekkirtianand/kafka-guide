@@ -2,6 +2,7 @@ import Link from "next/link";
 import { modules } from "@/lib/data/modules";
 import { courseWeeks, beginnerPath, referenceModules } from "@/lib/course";
 import ModuleCard from "@/components/ModuleCard";
+import BeginnerPathProgress from "@/components/BeginnerPathProgress";
 import Badge from "@/components/Badge";
 
 const pillars: { href: string; label: string; description: string; badge?: string }[] = [
@@ -70,6 +71,7 @@ export default function Home() {
           Work through these in order. Everything else on the site is reference material you
           look up when you need it.
         </p>
+        <BeginnerPathProgress path={beginner.map((m) => ({ slug: m.slug, title: m.title }))} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {beginner.map((m) => (
             <ModuleCard key={m.slug} module={m} />

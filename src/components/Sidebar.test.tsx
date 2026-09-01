@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Sidebar from "./Sidebar";
+import { ProgressProvider } from "@/lib/context/ProgressContext";
+
+const renderSidebar = () => render(<Sidebar />, { wrapper: ProgressProvider });
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -45,7 +48,7 @@ describe("Sidebar", () => {
 
   it("closes the mobile drawer and releases the background when the viewport crosses into desktop width", async () => {
     const user = userEvent.setup();
-    render(<Sidebar />);
+    renderSidebar();
 
     await user.click(screen.getByRole("button", { name: "Open navigation" }));
 
@@ -67,7 +70,7 @@ describe("Sidebar", () => {
 
   it("does not force the drawer open when mounted directly at desktop width", () => {
     mql.matches = true;
-    render(<Sidebar />);
+    renderSidebar();
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

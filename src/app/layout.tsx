@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ClusterProvider } from "@/lib/context/ClusterContext";
+import { ProgressProvider } from "@/lib/context/ProgressContext";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 
@@ -35,13 +36,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full">
         <ClusterProvider>
-          <div className="flex min-h-screen flex-col lg:flex-row">
-            <Sidebar />
-            <div id="app-content" className="flex min-h-screen flex-1 flex-col">
-              <TopBar />
-              <main className="flex-1 px-6 py-10 sm:px-10">{children}</main>
+          <ProgressProvider>
+            <div className="flex min-h-screen flex-col lg:flex-row">
+              <Sidebar />
+              <div id="app-content" className="flex min-h-screen flex-1 flex-col">
+                <TopBar />
+                <main className="flex-1 px-6 py-10 sm:px-10">{children}</main>
+              </div>
             </div>
-          </div>
+          </ProgressProvider>
         </ClusterProvider>
       </body>
     </html>
