@@ -31,11 +31,56 @@ export interface TopicDetail {
   watchOut?: string;
 }
 
+export type Difficulty = "beginner" | "intermediate" | "advanced";
+
+// Which part of the guide a module belongs to. The "beginner path" is the linear course a
+// newcomer follows in order; "reference" material is looked up as needed; "advanced" is
+// deeper mechanical detail that assumes the beginner path.
+export type ModuleTrack = "beginner-path" | "reference" | "advanced";
+
+// A single multiple-choice knowledge check. `answerIndex` points into `options`.
+export interface KnowledgeCheck {
+  question: string;
+  options: string[];
+  answerIndex: number;
+  explanation: string;
+}
+
+// A hands-on task with observable success criteria — graded by the learner against the list,
+// not auto-checked.
+export interface Exercise {
+  prompt: string;
+  successCriteria: string[];
+}
+
 export interface Module {
   slug: string;
   index: number;
   title: string;
   summary: string;
+  // Learner-facing course metadata. Optional so a module that is still an outline (or an
+  // older test fixture) still typechecks; the data tests require them on real modules.
+  difficulty?: Difficulty;
+  // Learner-facing minutes to work through the module. Feeds the computed course length.
+  estimatedMinutes?: number;
+  // Module slugs a learner should have done first.
+  prerequisites?: string[];
+  // "By the end of this module you can …" — 3–5 entries.
+  objectives?: string[];
+  // What "done" means for this module — the bar for marking it complete.
+  completionCriteria?: string[];
+  // External links for going deeper, typically official Apache Kafka docs.
+  furtherReading?: { label: string; url: string }[];
+  // Kafka versions this module's content has been checked against. Full version-gating is a
+  // later phase; the field lands here so metadata has one home.
+  applicableVersions?: KafkaVersion[];
+  // ISO date (YYYY-MM-DD) the content was last checked against real Kafka behavior.
+  lastReviewed?: string;
+  track?: ModuleTrack;
+  // Assessment content is authored in a later phase; the fields exist now so the render slot
+  // and types are stable.
+  knowledgeChecks?: KnowledgeCheck[];
+  exercises?: Exercise[];
   topics: string[];
   // Full lesson prose for a topic, keyed by the exact string in `topics`. Paragraphs are
   // separated by a blank line. Omitted (or partial) where the topic is still an outline

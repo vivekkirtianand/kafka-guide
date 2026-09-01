@@ -4,14 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { modules } from "@/lib/data/modules";
+import { beginnerPath, referenceModules } from "@/lib/course";
+
+const moduleLink = (m: (typeof modules)[number]) => ({
+  href: `/modules/${m.slug}`,
+  label: `${String(m.index).padStart(2, "0")} · ${m.title}`,
+});
 
 const sections = [
   {
-    label: "Guide",
-    items: modules.map((m) => ({
-      href: `/modules/${m.slug}`,
-      label: `${String(m.index).padStart(2, "0")} · ${m.title}`,
-    })),
+    label: "Beginner path",
+    items: beginnerPath(modules).map(moduleLink),
+  },
+  {
+    label: "Reference modules",
+    items: referenceModules(modules).map(moduleLink),
   },
   {
     label: "Reference",

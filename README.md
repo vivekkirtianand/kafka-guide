@@ -62,10 +62,16 @@ src/
       IsrChurnDemo.tsx              Module 6 activity: localize ISR churn to one broker vs. a shared cause
       IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
   lib/
-    types.ts                        Shared content types
+    types.ts                        Shared content types (incl. per-module course metadata)
+    course.ts                       Computed course length + beginner/reference/advanced splits
     data/                           Seed content for modules, configs, incidents, troubleshooting, runbooks
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
 ```
+
+`ModuleMeta.tsx` renders the per-module header (difficulty, estimated time, prerequisites,
+objectives, last-reviewed date). The home page and sidebar split modules into a linear
+**Beginner path** and lookup-as-needed **Reference** material; the course-length estimate is
+computed from each module's `estimatedMinutes`, not hardcoded.
 
 ## What's scaffolded vs. what's next
 

@@ -2,6 +2,126 @@
 
 Tracks work against the guide plan referenced in [README.md](README.md). Statuses: ✅ Done · 🚧 In progress · ⭕ Planned (not started) · ❓ Open question.
 
+---
+
+# v2 — beginner course redesign
+
+A second plan reworks the reference-first guide below into a linear beginner course: a path
+from "what is an event" to an unassisted capstone, with progress tracking, real hands-on
+labs, a Java producer/consumer project, a schema module, Connect/Streams, assessments, and
+version awareness. It **reorganizes, not rewrites**, the existing material. Delivered one PR
+per unit, each with external review rounds — same pattern as v1.
+
+Target outcome: a learner with no Kafka experience can explain when/why Kafka is used, run it
+locally and inspect a topic, build a producer and consumer, design keys/partitions/schemas
+safely, reason about delivery guarantees and consumer recovery, use Connect and Streams at an
+intro level, operate a production-style cluster, and complete an end-to-end capstone.
+
+## Roadmap — all 11 phases
+
+### Target module map (v2's 0–12 vs. v1's 1–7)
+
+| v2 | Module | Source | Phase |
+|--|--|--|--|
+| 0 | Why Kafka and when to use it | new | 2 |
+| 1 | Events, topics, partitions, brokers | rework `mental-model` | 6 |
+| 2 | First local Kafka workflow (Lab A) | rework `local-cluster-lab` | 3 |
+| 3 | Build a producer and consumer (Java) | new | 4 |
+| 4 | Keys, ordering, delivery guarantees | split from `mental-model` / `producer-configuration` | 6 |
+| 5 | Schemas and data contracts | new | 5 |
+| 6 | Consumer groups and resilient processing | rework `consumer-configuration` | 6 |
+| 7 | Kafka Connect and Kafka Streams | new | 7 |
+| 8 | Broker, topic and security configuration | `broker-topic-configuration` | 8/9 |
+| 9 | Observability | `observability` | — (mostly done) |
+| 10 | Troubleshooting and incidents | `troubleshooting-scenarios` + incident simulator | — (mostly done) |
+| 11 | Production operations | runbooks | 8 |
+| 12 | Capstone project | new | 10 |
+
+### Phase → PR breakdown
+
+Execution order follows the plan's own "Suggested priority". Each row is one reviewable PR
+unless noted.
+
+| # | Phase | PRs | Depends on | Milestone |
+|--|--|--|--|--|
+| **1** | **Course framework** | 1a data model + metadata + IA + computed duration; 1b progress tracking (localStorage); 1c glossary | — | M1 |
+| 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
+| 3 | Rework local lab | 3a Lab A single-broker walkthrough as **in-app** lesson (10 steps × command/output/observe/error/recovery/checkbox); 3b Lab B = existing 3-broker lab + OS matrix + `verify-lab` script + volume-delete warning + in-app instructions | 1a, 1b | M1 |
+| 4 | Java producer/consumer module | 4a `examples/order-pipeline-java/` scaffold (producer/consumer/shared/tests) + CI; 4b Module 3 lessons 1–11; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
+| 5 | Schemas & serialization | 5a Module 5 topic content (bytes, JSON/Avro/Protobuf, Schema Registry, compatibility modes, poison records); 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
+| 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
+| 7 | Connect & Streams | 7a Module 7 Connect content + file/DB↔Kafka lab (lab stack already has `cp-kafka-connect`); 7b Streams content + order-total aggregation lab | 4, 5 | M2 |
+| 8 | Version & deployment awareness | 8a add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, mark archived releases, bump lab image; 8b `applicableVersions` on lessons/configs/runbooks + selected version affects content + "Reviewed against Kafka X on DATE"; 8c rename "version + deployment aware" → "configuration context", "Every setting" → "Curated configurations" (do first, cheap) | 1a | M3 |
+| 9 | Expand config explorer | 9a ~15 beginner client configs (`bootstrap.servers`, serializers/deserializers, `compression.type`, fetch tuning, …); 9b add `ConfigEntry` fields — example config, safe baseline, verification, rollback, version applicability, managed caveat, official doc link — and backfill | 8b | M3 |
+| 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; 10c capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) | 4, 5, 7 | M3 |
+| 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
+
+### Milestones
+
+- **M1 — Beginner MVP**: Phases 1, 2, 3. First point the course is credibly beginner-friendly.
+- **M2 — Complete developer path**: Phases 4, 5, 6, 7 + assessments from 10a/10b.
+- **M3 — Production-ready**: Phases 8, 9, 10c, 11.
+
+### Cross-cutting risks
+
+- **Java toolchain in CI** (Phase 4): the repo is Node-only today. `examples/order-pipeline-java/`
+  needs its own Gradle/Maven build + a separate CI job. Decide Gradle vs Maven at 4a.
+- **Renumber timing** (Phase 6): doing it before Module 0 exists means a throwaway 0-based
+  shuffle — Module 0 (Phase 2) is sequenced before the renumber so there's an anchor. Slugs
+  are already semantic, so the renumber is the `index` field + array order + nav, not routes.
+- **Lab content moving in-app** (Phase 3): today Module 2 links out to GitHub. Lab A becomes a
+  real in-app lesson type — a new render path, not just data.
+
+### Phase-1 acceptance criteria
+
+1. Every module page shows objectives, prerequisites, difficulty, and estimated time.
+2. Module completion survives a browser refresh.
+3. Learner can tell lessons / labs / reference / advanced material apart.
+4. The home-page course-length estimate is computed from per-module estimates, not hardcoded.
+
+## Phase 1 — course framework
+
+| PR | Scope | Status |
+|---|---|---|
+| 1a | Course data model + per-module metadata + beginner/reference IA + computed course length | ✅ Done |
+| 1b | Progress tracking (localStorage): completion state, resume, progress %, reset | ⭕ Planned |
+| 1c | Glossary route + data + inline term component | ⭕ Planned |
+
+### PR 1a — data model + metadata + IA
+
+- `src/lib/types.ts` — `Module` gains optional `difficulty`, `estimatedMinutes`,
+  `prerequisites`, `objectives`, `completionCriteria`, `furtherReading`, `applicableVersions`,
+  `lastReviewed`, `track`; new `KnowledgeCheck` / `Exercise` types + `knowledgeChecks` /
+  `exercises` fields (content authored in Phase 10, slot lands now).
+- `src/lib/course.ts` (new) — `courseHours`, `courseWeeks`, `beginnerPath`,
+  `referenceModules`, `advancedModules`. `course.test.ts` covers the math + a real-list
+  partition check.
+- `src/lib/data/modules.ts` — all 7 modules populated: difficulty, time estimate, 3–4
+  objectives, prerequisites (each resolves to an earlier module), completion criteria,
+  further reading (official Apache docs, https-only), `track`, `lastReviewed`.
+  Tracks: `mental-model` + `local-cluster-lab` → beginner-path; the other five → reference.
+- `src/components/ModuleMeta.tsx` (new) — module-page header: difficulty/track badges,
+  `~N min`, prerequisites as links, objectives list, "Reviewed against Kafka 4.0 · DATE".
+- `src/app/modules/[slug]/page.tsx` — renders `<ModuleMeta>`, a "Further reading" block, and
+  a **prev** link beside the existing next link.
+- `src/app/page.tsx` — "Learning path" split into **Beginner path** + **Reference modules**;
+  the hardcoded "7 modules · ~8 weeks" is now computed from `courseWeeks(beginnerPath(modules))`
+  (currently 2 modules · ~1 week).
+- `src/components/ModuleCard.tsx` — difficulty + `~N min` on the footer line.
+- `src/components/Sidebar.tsx` — "Guide" split into "Beginner path" / "Reference modules".
+- Tests: `modules.test.ts` +6 (metadata present, prereqs resolve to earlier modules,
+  further-reading links version-pinned, track partition); `ModuleCard.test.tsx` (new);
+  `course.test.ts` (new). Suite 189 → 203.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Beginner-path header showed "7 modules · ~3 weeks" over 2 modules | `courseWeeks(beginner)` + `beginner.length` — now "2 modules · ~1 week" |
+| 2 | Prev/next crossed track boundaries (lab → producer-config) | new `trackNeighbors()` in `course.ts` — navigation stays within the module's track; the last beginner module has no "next" |
+| 3 | "version + deployment aware" badge sat on the Reference modules heading | badge moved onto the Configuration Explorer card (the only surface that responds to those selectors); heading now reads "look up as needed" |
+| 4 | `kafka.apache.org/documentation/#anchor` links redirect to the docs landing page | all `furtherReading` links repointed to version-pinned Kafka 4.0 URLs (`/40/configuration/producer-configs/`, `/40/getting-started/introduction/`, …); test rejects unversioned `kafka.apache.org` links |
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

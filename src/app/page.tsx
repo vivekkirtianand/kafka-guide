@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { modules } from "@/lib/data/modules";
+import { courseWeeks, beginnerPath, referenceModules } from "@/lib/course";
 import ModuleCard from "@/components/ModuleCard";
 import Badge from "@/components/Badge";
 
-const pillars = [
+const pillars: { href: string; label: string; description: string; badge?: string }[] = [
   {
     href: "/config-explorer",
     label: "Configuration explorer",
     description:
       "Every setting filterable by version, deployment type, goal, and risk — with rollback and verification steps.",
+    badge: "version + deployment aware",
   },
   {
     href: "/troubleshooting",
@@ -23,6 +25,10 @@ const pillars = [
 ];
 
 export default function Home() {
+  const beginner = beginnerPath(modules);
+  const reference = referenceModules(modules);
+  const weeks = courseWeeks(beginner);
+
   return (
     <div className="max-w-6xl">
       <section className="mb-16 max-w-3xl">
@@ -55,11 +61,29 @@ export default function Home() {
 
       <section className="mb-16">
         <div className="mb-5 flex items-baseline justify-between">
-          <h2 className="font-display text-xl text-text">Learning path</h2>
-          <span className="font-mono text-[11px] text-text-faint">7 modules · ~8 weeks part-time</span>
+          <h2 className="font-display text-xl text-text">Beginner path</h2>
+          <span className="font-mono text-[11px] text-text-faint">
+            {beginner.length} modules · ~{weeks} {weeks === 1 ? "week" : "weeks"} part-time
+          </span>
+        </div>
+        <p className="mb-5 max-w-2xl text-sm leading-relaxed text-text-muted">
+          Work through these in order. Everything else on the site is reference material you
+          look up when you need it.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {beginner.map((m) => (
+            <ModuleCard key={m.slug} module={m} />
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-16">
+        <div className="mb-5 flex items-baseline justify-between">
+          <h2 className="font-display text-xl text-text">Reference modules</h2>
+          <span className="font-mono text-[11px] text-text-faint">look up as needed</span>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {modules.map((m) => (
+          {reference.map((m) => (
             <ModuleCard key={m.slug} module={m} />
           ))}
         </div>
@@ -67,8 +91,7 @@ export default function Home() {
 
       <section>
         <div className="mb-5 flex items-baseline justify-between">
-          <h2 className="font-display text-xl text-text">Reference and practice</h2>
-          <Badge tone="accent">version + deployment aware</Badge>
+          <h2 className="font-display text-xl text-text">Practice and lookup</h2>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {pillars.map((p) => (
@@ -79,6 +102,11 @@ export default function Home() {
             >
               <h3 className="font-display text-lg text-text group-hover:text-stream">{p.label}</h3>
               <p className="mt-2 text-sm leading-relaxed text-text-muted">{p.description}</p>
+              {p.badge && (
+                <span className="mt-3">
+                  <Badge tone="accent">{p.badge}</Badge>
+                </span>
+              )}
             </Link>
           ))}
         </div>

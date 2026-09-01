@@ -95,3 +95,52 @@ describe("module data", () => {
     });
   });
 });
+
+describe("course metadata", () => {
+  it("every module has difficulty, a positive time estimate, and a track", () => {
+    for (const m of modules) {
+      expect(["beginner", "intermediate", "advanced"], m.slug).toContain(m.difficulty);
+      expect(m.estimatedMinutes ?? 0, m.slug).toBeGreaterThan(0);
+      expect(["beginner-path", "reference", "advanced"], m.slug).toContain(m.track);
+    }
+  });
+
+  it("every module lists at least three learning objectives", () => {
+    for (const m of modules) {
+      expect(m.objectives?.length ?? 0, m.slug).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("every prerequisite resolves to a real, earlier module", () => {
+    for (const m of modules) {
+      for (const slug of m.prerequisites ?? []) {
+        const dep = getModule(slug);
+        expect(dep, `${m.slug} → ${slug}`).toBeDefined();
+        expect(dep!.index, `${m.slug} → ${slug}`).toBeLessThan(m.index);
+      }
+    }
+  });
+
+  it("every further-reading link is absolute https, and Apache Kafka docs links are version-pinned", () => {
+    for (const m of modules) {
+      for (const r of m.furtherReading ?? []) {
+        expect(r.url, `${m.slug}: ${r.label}`).toMatch(/^https:\/\//);
+        // The unversioned kafka.apache.org/documentation/#anchor pages redirect to the docs
+        // landing page — links must target a version-pinned path like /40/….
+        if (/^https:\/\/kafka\.apache\.org\//.test(r.url)) {
+          expect(r.url, `${m.slug}: ${r.label}`).toMatch(/^https:\/\/kafka\.apache\.org\/\d+\//);
+          expect(r.url, `${m.slug}: ${r.label}`).not.toContain("/documentation/#");
+        }
+      }
+    }
+  });
+
+  it("splits cleanly into a beginner path plus reference material", () => {
+    const paths = modules.filter((m) => m.track === "beginner-path");
+    const reference = modules.filter((m) => m.track === "reference");
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths.length + reference.length + modules.filter((m) => m.track === "advanced").length).toBe(
+      modules.length,
+    );
+  });
+});

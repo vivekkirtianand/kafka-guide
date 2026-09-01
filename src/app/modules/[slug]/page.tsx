@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { modules, getModule } from "@/lib/data/modules";
+import { trackNeighbors } from "@/lib/course";
 import SectionHeading from "@/components/SectionHeading";
 import Badge from "@/components/Badge";
 import TopicExplorer from "@/components/TopicExplorer";
+import ModuleMeta from "@/components/ModuleMeta";
 import TroubleshootingCatalog from "@/components/TroubleshootingCatalog";
 import LeaderElectionDemo from "@/components/demos/LeaderElectionDemo";
 import RecordFlowDemo from "@/components/demos/RecordFlowDemo";
@@ -36,7 +38,7 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
   const mod = getModule(slug);
   if (!mod) notFound();
 
-  const next = modules.find((m) => m.index === mod.index + 1);
+  const { prev, next } = trackNeighbors(modules, mod);
 
   const activitiesBlock = mod.activities.length > 0 && (
     <div>
@@ -59,6 +61,8 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         title={mod.title}
         description={mod.summary}
       />
+
+      <ModuleMeta module={mod} />
 
       {mod.slug === "troubleshooting-scenarios" ? (
         <div className="flex flex-col gap-6">
@@ -190,13 +194,45 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         </div>
       )}
 
-      {next && (
-        <div className="mt-12 border-t border-border pt-6">
-          <Link href={`/modules/${next.slug}`} className="group inline-flex items-center gap-2 text-sm text-text-muted hover:text-accent">
-            <span className="font-mono text-[11px] text-text-faint">next</span>
-            <span>{next.title}</span>
-            <span className="transition-transform group-hover:translate-x-0.5">→</span>
-          </Link>
+      {mod.furtherReading && mod.furtherReading.length > 0 && (
+        <div className="mt-10">
+          <h2 className="mb-3 font-display text-lg text-text">Further reading</h2>
+          <ul className="flex flex-col gap-2">
+            {mod.furtherReading.map((r) => (
+              <li key={r.url} className="flex gap-2 text-sm leading-relaxed text-text-muted">
+                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-accent" />
+                <a
+                  href={r.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:underline"
+                >
+                  {r.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(prev || next) && (
+        <div className="mt-12 flex items-center justify-between gap-4 border-t border-border pt-6">
+          {prev ? (
+            <Link href={`/modules/${prev.slug}`} className="group inline-flex items-center gap-2 text-sm text-text-muted hover:text-accent">
+              <span className="transition-transform group-hover:-translate-x-0.5">←</span>
+              <span className="font-mono text-[11px] text-text-faint">prev</span>
+              <span>{prev.title}</span>
+            </Link>
+          ) : (
+            <span />
+          )}
+          {next && (
+            <Link href={`/modules/${next.slug}`} className="group inline-flex items-center gap-2 text-right text-sm text-text-muted hover:text-accent">
+              <span className="font-mono text-[11px] text-text-faint">next</span>
+              <span>{next.title}</span>
+              <span className="transition-transform group-hover:translate-x-0.5">→</span>
+            </Link>
+          )}
         </div>
       )}
     </div>
