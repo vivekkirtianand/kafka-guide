@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 
-// jsdom does not enable the Web Storage API in this setup, so provide a minimal in-memory
-// localStorage / sessionStorage for tests that persist state.
+// jsdom in this setup does not provide the Web Storage API, and merely *reading*
+// `window.localStorage` to feature-detect it makes Node emit an ExperimentalWarning per
+// worker. So install a minimal in-memory implementation unconditionally.
 class MemoryStorage implements Storage {
   private store = new Map<string, string>();
   get length() {
@@ -25,13 +26,5 @@ class MemoryStorage implements Storage {
 }
 
 for (const prop of ["localStorage", "sessionStorage"] as const) {
-  let usable = false;
-  try {
-    usable = typeof window[prop]?.setItem === "function";
-  } catch {
-    usable = false;
-  }
-  if (!usable) {
-    Object.defineProperty(window, prop, { value: new MemoryStorage(), configurable: true });
-  }
+  Object.defineProperty(window, prop, { value: new MemoryStorage(), configurable: true });
 }

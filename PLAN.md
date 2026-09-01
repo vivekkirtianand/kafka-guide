@@ -141,8 +141,9 @@ unless noted.
   a confirm-gated "Reset progress" button (both appear only once there is progress).
 - Tests: `ProgressContext.test.tsx` (new, 8 — persist/restore, toggle, reset, counts, resume
   ordering, throwing-storage resilience); `ModuleCard` + `Sidebar` tests wrapped in the
-  provider. `vitest.setup.ts` gains a minimal in-memory `localStorage` polyfill (jsdom in
-  this setup doesn't provide one). Suite 203 → 211.
+  provider. `vitest.setup.ts` installs a minimal in-memory `localStorage` polyfill
+  unconditionally (jsdom here provides none; probing for one made Node emit an
+  ExperimentalWarning per worker). Suite 203 → 211.
 
 ## Module 1 — Kafka mental model
 
