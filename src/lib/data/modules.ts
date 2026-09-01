@@ -317,7 +317,12 @@ export const modules: Module[] = [
           "That is the whole mental model you need for now. How brokers stay consistent, choose which replica serves a partition, and confirm writes comes later — none of it is needed to understand what Kafka is for.",
       },
     },
-    activities: [],
+    activities: [
+      "Pick the right tool — Kafka, a queue, a database, object storage, or a direct call — for a set of scenarios",
+      "Follow one order-placed event from checkout to billing, email, warehouse, and analytics, then add a new consumer",
+      "Compare a message queue (deliver once, forget) with a Kafka topic (retained, re-readable by many groups)",
+      "Label the key, value, timestamp, and headers in sample events",
+    ],
     status: "available",
   },
   {

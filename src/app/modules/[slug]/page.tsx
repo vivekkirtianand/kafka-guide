@@ -8,6 +8,10 @@ import TopicExplorer from "@/components/TopicExplorer";
 import ModuleMeta from "@/components/ModuleMeta";
 import ModuleCompletion from "@/components/ModuleCompletion";
 import TroubleshootingCatalog from "@/components/TroubleshootingCatalog";
+import TechnologyChoiceDemo from "@/components/demos/TechnologyChoiceDemo";
+import OrderEventFanoutDemo from "@/components/demos/OrderEventFanoutDemo";
+import QueueVsLogDemo from "@/components/demos/QueueVsLogDemo";
+import LabelTheEventDemo from "@/components/demos/LabelTheEventDemo";
 import LeaderElectionDemo from "@/components/demos/LeaderElectionDemo";
 import RecordFlowDemo from "@/components/demos/RecordFlowDemo";
 import PartitionOrderingDemo from "@/components/demos/PartitionOrderingDemo";
@@ -116,6 +120,15 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
           </div>
 
           {activitiesBlock}
+        </div>
+      )}
+
+      {mod.slug === "why-kafka" && (
+        <div className="mt-10 flex flex-col gap-8">
+          <TechnologyChoiceDemo />
+          <OrderEventFanoutDemo />
+          <QueueVsLogDemo />
+          <LabelTheEventDemo />
         </div>
       )}
 

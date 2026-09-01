@@ -179,7 +179,7 @@ unless noted.
 | PR | Scope | Status |
 |---|---|---|
 | 2a | Module 0 shell + Topic-explorer content for all 9 topics | ✅ Done |
-| 2b | 4 interactive activities (tech-choice picker, order-event fan-out, queue-vs-log, label-the-event) | ⭕ Planned |
+| 2b | 4 interactive activities (tech-choice picker, order-event fan-out, queue-vs-log, label-the-event) | ✅ Done |
 | 2c | 10-question beginner knowledge check + "Should this system use Kafka?" design exercise | ⭕ Planned |
 
 ### PR 2a — Module 0 shell + topic content
@@ -220,6 +220,41 @@ unless noted.
 | 1 | Object-storage comparison still said events arrive "in order" | dropped "in order" — the point is about the poll/pull access pattern, not ordering |
 | 2 | "the next topic unpacks this" was wrong (next topic is event fields) | "a later topic unpacks this" |
 | 3 | Acceptance test corpus omitted `m0.activities` (populated in 2b) | `...m0.activities` added to `allText` |
+
+### PR 2b — Module 0 interactive activities
+
+Four demos in `src/components/demos/`, wired into the `[slug]` page under a `why-kafka` block,
+following the established demo idiom (pure logic, teaching disclaimer, `reset`, unique
+`wk-*` testids). `modules.ts` `activities` populated.
+
+- **`TechnologyChoiceDemo`** — 5 scenarios, pick from Kafka / message queue / relational
+  database / object storage / direct API call; predict-then-reveal with a rationale, running
+  score, end summary.
+- **`OrderEventFanoutDemo`** — publish one `order-placed` event; each of billing / email /
+  warehouse / analytics polls it independently (own offset); "add loyalty service" joins at
+  offset 0 with checkout untouched.
+- **`QueueVsLogDemo`** — side-by-side queue vs. one-partition topic: produce events, a queue
+  worker consumes-and-removes, a Kafka group advances an offset while the event stays, add a
+  second group from 0, reset group A to replay.
+- **`LabelTheEventDemo`** — assign key / value / timestamp / headers to the parts of two
+  sample events (`order-placed`, `sensor-reading`), score and reveal each part's role.
+- Tests: one `*.test.tsx` per demo (22 total). Suite 228 → 250.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | QueueVsLogDemo said a queue delivers "once" | reworded — "routes each message to one consumer and drops it once acknowledged"; disclaimer notes redelivery after a failed ack |
+| 2 | "replay costs nothing" | "nothing has to be re-produced … though re-reading still costs broker and consumer work" |
+| 3 | Fan-out demo said adding a consumer "is free" | "needs no change to the producer … (it does add its own infrastructure and load on the brokers)" |
+| 4 | LabelTheEventDemo disclaimer said the key is absent *and* that every event "is a key" | "every Kafka event has a value and a timestamp, plus an optional key and optional headers" |
+| 5 | Key note said it "picks the partition" unconditionally | "by default decides the partition … (an explicit partition or custom partitioner can override this)" |
+
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | LabelTheEventDemo said every event "has a value" — Kafka permits null values (tombstones) | "a value field (whose value can be null — a tombstone on a compacted topic)" |
 
 ## Module 1 — Kafka mental model
 
