@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { glossary, getGlossaryTerm } from "@/lib/data/glossary";
 import { getModule } from "@/lib/data/modules";
@@ -9,13 +9,39 @@ const sorted = [...glossary].sort((a, b) => a.term.localeCompare(b.term));
 
 export default function Glossary() {
   const [query, setQuery] = useState("");
+  // A slug to bring into view once the list has re-rendered without the filter hiding it.
+  const pendingScroll = useRef<string | null>(null);
 
-  // Support landing on /glossary#<slug> — open nothing special, just make sure the row is
-  // scrolled into view once rendered (Next's client nav doesn't always honor the hash).
+  const scrollTo = useCallback((slug: string) => {
+    const el = document.getElementById(slug);
+    if (!el) return false;
+    el.scrollIntoView({ block: "center" });
+    history.replaceState(null, "", `#${slug}`);
+    return true;
+  }, []);
+
+  // Landing on /glossary#<slug> — Next's client nav doesn't always honor the hash.
   useEffect(() => {
     const hash = window.location.hash.slice(1);
-    if (hash) document.getElementById(hash)?.scrollIntoView({ block: "center" });
-  }, []);
+    if (hash) scrollTo(hash);
+  }, [scrollTo]);
+
+  // After a "see also" click cleared the filter, the target row now exists — scroll to it.
+  useEffect(() => {
+    if (pendingScroll.current && scrollTo(pendingScroll.current)) pendingScroll.current = null;
+  }, [query, scrollTo]);
+
+  // A see-also target may be filtered out of the current view; clear the search so the row
+  // renders, then scroll once it does.
+  const goToTerm = useCallback(
+    (slug: string) => {
+      if (!scrollTo(slug)) {
+        pendingScroll.current = slug;
+        setQuery("");
+      }
+    },
+    [scrollTo],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -62,7 +88,14 @@ export default function Glossary() {
                         {seeAlso.map((s, i) => (
                           <span key={s.slug}>
                             {i > 0 && ", "}
-                            <a href={`#${s.slug}`} className="text-accent hover:underline">
+                            <a
+                              href={`#${s.slug}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                goToTerm(s.slug);
+                              }}
+                              className="text-accent hover:underline"
+                            >
                               {s.term}
                             </a>
                           </span>

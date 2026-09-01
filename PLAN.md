@@ -164,7 +164,15 @@ unless noted.
 - `Sidebar` + home "Practice and lookup" gain a Glossary entry.
 - Tests: `glossary.test.ts` (new — unique slugs/terms, `seeAlso`/`modules` resolve, and every
   `[[slug]]` token in module content resolves to a real term); `GlossaryTerm.test.tsx` (new —
-  known/unknown slug rendering, token parsing). Suite 211 → 222.
+  known/unknown slug rendering, token parsing); `Glossary.test.tsx` (new — filtering,
+  see-also-while-filtered). Suite 211 → 224.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | A "See also" link to a term the active search filters out did nothing (dead anchor) | `Glossary` intercepts see-also clicks: if the target row isn't rendered, clear the query, then scroll to it once it re-renders (`pendingScroll` ref + an effect keyed on `query`) |
+| 2 | Glossary "Controller" definition said a controller is a broker | reworded — "a server runs as a controller, as a broker, or (in small clusters) as both — set by `process.roles`", matching the Module 1 / Module 5 content |
 
 ## Module 1 — Kafka mental model
 

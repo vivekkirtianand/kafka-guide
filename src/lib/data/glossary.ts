@@ -215,7 +215,7 @@ export const glossary: GlossaryTerm[] = [
     slug: "controller",
     term: "Controller",
     definition:
-      "The broker responsible for cluster metadata — partition leadership, ISR changes, topic creation. In KRaft mode a small quorum of controllers replicates this metadata as its own log.",
+      "The role that owns cluster metadata — partition leadership, ISR changes, topic creation. In KRaft a quorum of controllers replicates this metadata as its own log, one active and the rest hot standbys. A server runs as a controller, as a broker, or (in small clusters) as both — set by process.roles.",
     seeAlso: ["kraft", "broker", "leader"],
     modules: ["mental-model", "observability"],
   },
