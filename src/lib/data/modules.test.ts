@@ -121,10 +121,16 @@ describe("course metadata", () => {
     }
   });
 
-  it("every further-reading link points at an absolute https URL", () => {
+  it("every further-reading link is absolute https, and Apache Kafka docs links are version-pinned", () => {
     for (const m of modules) {
       for (const r of m.furtherReading ?? []) {
         expect(r.url, `${m.slug}: ${r.label}`).toMatch(/^https:\/\//);
+        // The unversioned kafka.apache.org/documentation/#anchor pages redirect to the docs
+        // landing page — links must target a version-pinned path like /40/….
+        if (/^https:\/\/kafka\.apache\.org\//.test(r.url)) {
+          expect(r.url, `${m.slug}: ${r.label}`).toMatch(/^https:\/\/kafka\.apache\.org\/\d+\//);
+          expect(r.url, `${m.slug}: ${r.label}`).not.toContain("/documentation/#");
+        }
       }
     }
   });

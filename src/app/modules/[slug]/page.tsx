@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { modules, getModule } from "@/lib/data/modules";
+import { trackNeighbors } from "@/lib/course";
 import SectionHeading from "@/components/SectionHeading";
 import Badge from "@/components/Badge";
 import TopicExplorer from "@/components/TopicExplorer";
@@ -37,8 +38,7 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
   const mod = getModule(slug);
   if (!mod) notFound();
 
-  const next = modules.find((m) => m.index === mod.index + 1);
-  const prev = modules.find((m) => m.index === mod.index - 1);
+  const { prev, next } = trackNeighbors(modules, mod);
 
   const activitiesBlock = mod.activities.length > 0 && (
     <div>

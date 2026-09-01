@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { Module } from "@/lib/types";
-import { courseHours, courseWeeks, beginnerPath, referenceModules, advancedModules } from "./course";
+import {
+  courseHours,
+  courseWeeks,
+  beginnerPath,
+  referenceModules,
+  advancedModules,
+  trackNeighbors,
+} from "./course";
 import { modules } from "./data/modules";
 
 const fixture = (over: Partial<Module>): Module => ({
@@ -39,8 +46,33 @@ describe("course helpers", () => {
     expect(beginnerPath(modules).length).toBeGreaterThan(0);
   });
 
-  it("the computed course length is a sane part-time estimate", () => {
-    expect(courseWeeks(modules)).toBeGreaterThanOrEqual(1);
-    expect(courseWeeks(modules)).toBeLessThan(52);
+  it("the beginner-path length is a sane part-time estimate", () => {
+    expect(courseWeeks(beginnerPath(modules))).toBeGreaterThanOrEqual(1);
+    expect(courseWeeks(beginnerPath(modules))).toBeLessThan(52);
+  });
+});
+
+describe("trackNeighbors", () => {
+  const mods = [
+    fixture({ slug: "b1", index: 1, track: "beginner-path" }),
+    fixture({ slug: "b2", index: 2, track: "beginner-path" }),
+    fixture({ slug: "r1", index: 3, track: "reference" }),
+    fixture({ slug: "r2", index: 4, track: "reference" }),
+  ];
+
+  it("never steps from one track into another", () => {
+    const last = trackNeighbors(mods, mods[1]); // b2, last beginner module
+    expect(last.prev?.slug).toBe("b1");
+    expect(last.next).toBeUndefined();
+
+    const first = trackNeighbors(mods, mods[2]); // r1, first reference module
+    expect(first.prev).toBeUndefined();
+    expect(first.next?.slug).toBe("r2");
+  });
+
+  it("keeps the real beginner path's last module from linking into reference material", () => {
+    const path = beginnerPath(modules);
+    const { next } = trackNeighbors(modules, path[path.length - 1]);
+    expect(next).toBeUndefined();
   });
 });

@@ -26,3 +26,17 @@ export function referenceModules(mods: Module[]): Module[] {
 export function advancedModules(mods: Module[]): Module[] {
   return mods.filter((m) => m.track === "advanced");
 }
+
+// Previous/next within the same track, in course order — so "next" from the last beginner
+// module doesn't spill into reference material. Modules with no track fall back to the whole
+// list.
+export function trackNeighbors(
+  mods: Module[],
+  current: Module,
+): { prev?: Module; next?: Module } {
+  const siblings = (current.track ? mods.filter((m) => m.track === current.track) : mods)
+    .slice()
+    .sort((a, b) => a.index - b.index);
+  const pos = siblings.findIndex((m) => m.slug === current.slug);
+  return { prev: siblings[pos - 1], next: siblings[pos + 1] };
+}

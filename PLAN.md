@@ -105,13 +105,22 @@ unless noted.
 - `src/app/modules/[slug]/page.tsx` — renders `<ModuleMeta>`, a "Further reading" block, and
   a **prev** link beside the existing next link.
 - `src/app/page.tsx` — "Learning path" split into **Beginner path** + **Reference modules**;
-  the hardcoded "7 modules · ~8 weeks" is now `${modules.length} · ~${courseWeeks(modules)}`
-  (currently ~3 weeks for the 7 existing modules).
+  the hardcoded "7 modules · ~8 weeks" is now computed from `courseWeeks(beginnerPath(modules))`
+  (currently 2 modules · ~1 week).
 - `src/components/ModuleCard.tsx` — difficulty + `~N min` on the footer line.
 - `src/components/Sidebar.tsx` — "Guide" split into "Beginner path" / "Reference modules".
 - Tests: `modules.test.ts` +6 (metadata present, prereqs resolve to earlier modules,
-  further-reading URLs absolute https, track partition); `ModuleCard.test.tsx` (new);
-  `course.test.ts` (new). Suite 189 → 201.
+  further-reading links version-pinned, track partition); `ModuleCard.test.tsx` (new);
+  `course.test.ts` (new). Suite 189 → 203.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Beginner-path header showed "7 modules · ~3 weeks" over 2 modules | `courseWeeks(beginner)` + `beginner.length` — now "2 modules · ~1 week" |
+| 2 | Prev/next crossed track boundaries (lab → producer-config) | new `trackNeighbors()` in `course.ts` — navigation stays within the module's track; the last beginner module has no "next" |
+| 3 | "version + deployment aware" badge sat on the Reference modules heading | badge moved onto the Configuration Explorer card (the only surface that responds to those selectors); heading now reads "look up as needed" |
+| 4 | `kafka.apache.org/documentation/#anchor` links redirect to the docs landing page | all `furtherReading` links repointed to version-pinned Kafka 4.0 URLs (`/40/configuration/producer-configs/`, `/40/getting-started/introduction/`, …); test rejects unversioned `kafka.apache.org` links |
 
 ## Module 1 — Kafka mental model
 

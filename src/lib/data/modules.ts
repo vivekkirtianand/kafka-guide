@@ -22,8 +22,8 @@ export const modules: Module[] = [
       "You can explain, without notes, what happens to consumers when a partition leader fails",
     ],
     furtherReading: [
-      { label: "Apache Kafka — Introduction", url: "https://kafka.apache.org/documentation/#introduction" },
-      { label: "Apache Kafka — Design", url: "https://kafka.apache.org/documentation/#design" },
+      { label: "Apache Kafka 4.0 — Introduction", url: "https://kafka.apache.org/40/getting-started/introduction/" },
+      { label: "Apache Kafka 4.0 — Design", url: "https://kafka.apache.org/40/design/design/" },
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",
@@ -237,8 +237,8 @@ export const modules: Module[] = [
       "You have completed every activity in local-cluster-lab/README.md at least once",
     ],
     furtherReading: [
-      { label: "Apache Kafka — Quickstart", url: "https://kafka.apache.org/quickstart" },
-      { label: "Apache Kafka — Operations", url: "https://kafka.apache.org/documentation/#operations" },
+      { label: "Apache Kafka 4.0 — Quickstart", url: "https://kafka.apache.org/40/getting-started/quickstart/" },
+      { label: "Apache Kafka 4.0 — Operations", url: "https://kafka.apache.org/40/operations/" },
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",
@@ -435,7 +435,7 @@ export const modules: Module[] = [
       "You can explain why acks=all alone does not prevent data loss",
     ],
     furtherReading: [
-      { label: "Apache Kafka — Producer configs", url: "https://kafka.apache.org/documentation/#producerconfigs" },
+      { label: "Apache Kafka 4.0 — Producer configs", url: "https://kafka.apache.org/40/configuration/producer-configs/" },
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",
@@ -674,7 +674,7 @@ export const modules: Module[] = [
       "You can describe an at-least-once consumer that never loses an acknowledged record",
     ],
     furtherReading: [
-      { label: "Apache Kafka — Consumer configs", url: "https://kafka.apache.org/documentation/#consumerconfigs" },
+      { label: "Apache Kafka 4.0 — Consumer configs", url: "https://kafka.apache.org/40/configuration/consumer-configs/" },
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",
@@ -933,8 +933,8 @@ export const modules: Module[] = [
       "You can explain what NOT_ENOUGH_REPLICAS means and the safe ways to clear it",
     ],
     furtherReading: [
-      { label: "Apache Kafka — Broker configs", url: "https://kafka.apache.org/documentation/#brokerconfigs" },
-      { label: "Apache Kafka — Topic configs", url: "https://kafka.apache.org/documentation/#topicconfigs" },
+      { label: "Apache Kafka 4.0 — Broker configs", url: "https://kafka.apache.org/40/configuration/broker-configs/" },
+      { label: "Apache Kafka 4.0 — Topic configs", url: "https://kafka.apache.org/40/configuration/topic-level-configs/" },
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",
@@ -1255,7 +1255,7 @@ export const modules: Module[] = [
       "You know which signals kafka-exporter alone cannot see (GC, heap) and why that matters",
     ],
     furtherReading: [
-      { label: "Apache Kafka — Monitoring", url: "https://kafka.apache.org/documentation/#monitoring" },
+      { label: "Apache Kafka 4.0 — Monitoring", url: "https://kafka.apache.org/40/operations/monitoring/" },
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",
@@ -1555,7 +1555,7 @@ export const modules: Module[] = [
       "You can explain why lowering a durability setting is rarely the right incident response",
     ],
     furtherReading: [
-      { label: "Apache Kafka — Operations", url: "https://kafka.apache.org/documentation/#operations" },
+      { label: "Apache Kafka 4.0 — Operations", url: "https://kafka.apache.org/40/operations/" },
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",

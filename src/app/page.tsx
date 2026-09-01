@@ -4,12 +4,13 @@ import { courseWeeks, beginnerPath, referenceModules } from "@/lib/course";
 import ModuleCard from "@/components/ModuleCard";
 import Badge from "@/components/Badge";
 
-const pillars = [
+const pillars: { href: string; label: string; description: string; badge?: string }[] = [
   {
     href: "/config-explorer",
     label: "Configuration explorer",
     description:
       "Every setting filterable by version, deployment type, goal, and risk — with rollback and verification steps.",
+    badge: "version + deployment aware",
   },
   {
     href: "/troubleshooting",
@@ -26,7 +27,7 @@ const pillars = [
 export default function Home() {
   const beginner = beginnerPath(modules);
   const reference = referenceModules(modules);
-  const weeks = courseWeeks(modules);
+  const weeks = courseWeeks(beginner);
 
   return (
     <div className="max-w-6xl">
@@ -62,7 +63,7 @@ export default function Home() {
         <div className="mb-5 flex items-baseline justify-between">
           <h2 className="font-display text-xl text-text">Beginner path</h2>
           <span className="font-mono text-[11px] text-text-faint">
-            {modules.length} modules · ~{weeks} {weeks === 1 ? "week" : "weeks"} part-time
+            {beginner.length} modules · ~{weeks} {weeks === 1 ? "week" : "weeks"} part-time
           </span>
         </div>
         <p className="mb-5 max-w-2xl text-sm leading-relaxed text-text-muted">
@@ -79,7 +80,7 @@ export default function Home() {
       <section className="mb-16">
         <div className="mb-5 flex items-baseline justify-between">
           <h2 className="font-display text-xl text-text">Reference modules</h2>
-          <Badge tone="accent">version + deployment aware</Badge>
+          <span className="font-mono text-[11px] text-text-faint">look up as needed</span>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {reference.map((m) => (
@@ -101,6 +102,11 @@ export default function Home() {
             >
               <h3 className="font-display text-lg text-text group-hover:text-stream">{p.label}</h3>
               <p className="mt-2 text-sm leading-relaxed text-text-muted">{p.description}</p>
+              {p.badge && (
+                <span className="mt-3">
+                  <Badge tone="accent">{p.badge}</Badge>
+                </span>
+              )}
             </Link>
           ))}
         </div>
