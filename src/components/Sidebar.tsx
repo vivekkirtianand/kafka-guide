@@ -25,6 +25,7 @@ const sections = [
   {
     label: "Reference",
     items: [
+      { href: "/glossary", label: "Glossary" },
       { href: "/config-explorer", label: "Configuration explorer" },
       { href: "/troubleshooting", label: "Troubleshooting catalog" },
       { href: "/runbooks", label: "Production runbooks" },

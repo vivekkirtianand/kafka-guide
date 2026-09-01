@@ -198,6 +198,19 @@ export interface TroubleshootingEntry {
   watchOut?: string;
 }
 
+export interface GlossaryTerm {
+  // URL-safe id used for the `/glossary#<slug>` anchor and for `[[slug]]` inline links.
+  slug: string;
+  // The term as it reads in a heading.
+  term: string;
+  // One or two sentences. Plain text.
+  definition: string;
+  // Slugs of related glossary terms.
+  seeAlso?: string[];
+  // Module slugs where this term is taught or used.
+  modules?: string[];
+}
+
 export interface Runbook {
   slug: string;
   title: string;

@@ -85,7 +85,7 @@ unless noted.
 |---|---|---|
 | 1a | Course data model + per-module metadata + beginner/reference IA + computed course length | ✅ Done |
 | 1b | Progress tracking (localStorage): completion state, resume, progress %, reset | ✅ Done |
-| 1c | Glossary route + data + inline term component | ⭕ Planned |
+| 1c | Glossary route + data + inline term component | ✅ Done |
 
 ### PR 1a — data model + metadata + IA
 
@@ -144,6 +144,35 @@ unless noted.
   provider. `vitest.setup.ts` installs a minimal in-memory `localStorage` polyfill
   unconditionally (jsdom here provides none; probing for one made Node emit an
   ExperimentalWarning per worker). Suite 203 → 211.
+
+### PR 1c — glossary
+
+- `src/lib/data/glossary.ts` (new) — 35 core terms `{ slug, term, definition, seeAlso?,
+  modules? }`, from `event` / `offset` / `partition` through `idempotence`, `exactly-once`,
+  `schema-registry`, `dead-letter-queue`. `GlossaryTerm` type added to `types.ts`.
+- `src/app/glossary/page.tsx` + `src/components/Glossary.tsx` (new) — alphabetical `<dl>`,
+  each row `id`'d for `/glossary#<slug>` deep links (`scroll-mt` + a `scrollIntoView` assist),
+  `type=search` filter with an `aria-label`, "See also" (anchor links) and "Appears in"
+  (module links) per term.
+- `src/components/GlossaryTerm.tsx` (new) — inline `<GlossaryTerm slug>` (dotted-underline
+  link to the anchor; renders plain text if the slug is unknown) plus `renderGlossaryText()`,
+  which turns `[[slug]]` / `[[slug|display]]` tokens in a string into those links and returns
+  the string untouched when there are none.
+- `src/components/TopicExplorer.tsx` — runs `summary`, each `point.detail`, and `watchOut`
+  through `renderGlossaryText`. Module 1's topic summaries carry a handful of `[[…]]` tokens
+  as the first real use.
+- `Sidebar` + home "Practice and lookup" gain a Glossary entry.
+- Tests: `glossary.test.ts` (new — unique slugs/terms, `seeAlso`/`modules` resolve, and every
+  `[[slug]]` token in module content resolves to a real term); `GlossaryTerm.test.tsx` (new —
+  known/unknown slug rendering, token parsing); `Glossary.test.tsx` (new — filtering,
+  see-also-while-filtered). Suite 211 → 224.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | A "See also" link to a term the active search filters out did nothing (dead anchor) | `Glossary` intercepts see-also clicks: if the target row isn't rendered, clear the query, then scroll to it once it re-renders (`pendingScroll` ref + an effect keyed on `query`) |
+| 2 | Glossary "Controller" definition said a controller is a broker | reworded — "a server runs as a controller, as a broker, or (in small clusters) as both — set by `process.roles`", matching the Module 1 / Module 5 content |
 
 ## Module 1 — Kafka mental model
 

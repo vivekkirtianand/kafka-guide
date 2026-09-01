@@ -31,6 +31,7 @@ src/
   app/
     page.tsx                        Dashboard / home
     modules/                        Module index + dynamic module pages (7 modules from the plan)
+    glossary/                       Core Kafka vocabulary, linked to the modules that teach each term
     config-explorer/                Filterable configuration reference
     troubleshooting/                Symptom → evidence → cause → resolution catalog
     runbooks/                       Production operations runbook index + dynamic runbook pages
@@ -79,6 +80,12 @@ last visited, in `localStorage` (`kafka-guide:progress`). It drives the completi
 the bottom of each module, the "✓ done" markers on cards and in the sidebar, and the
 beginner-path progress bar + "Resume" link on the home page. A blocked/unavailable store
 degrades gracefully — progress just doesn't persist.
+
+**Glossary** (`/glossary`, data in `src/lib/data/glossary.ts`) defines the core Kafka
+vocabulary, each term linking to the modules that teach it. `GlossaryTerm.tsx` exports both
+an inline `<GlossaryTerm slug>` link and `renderGlossaryText()`, which the Topic explorer
+uses to turn `[[slug]]` / `[[slug|display]]` tokens in lesson content into dotted-underline
+links back to the glossary.
 
 ## What's scaffolded vs. what's next
 
