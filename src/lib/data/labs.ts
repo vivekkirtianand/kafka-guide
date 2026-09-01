@@ -32,9 +32,9 @@ export const labA: Lab = {
         "Before anything else, check that the broker inside the container is actually serving requests — 'the container is Up' and 'Kafka is ready' are a few seconds apart.",
       command:
         "docker exec kafka-lab-a /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 | head -1",
-      expected: "localhost:9092 (id: 1 rack: null) -> (",
+      expected: "localhost:9092 (id: 1 rack: null isFenced: false) -> (\n(followed by a long list of API name/version ranges — `head -1` trims it to this line)",
       observe:
-        "Did you get that `id: 1` line, or a connection error? There is exactly one broker and its node id is 1 — every partition you create will be led by broker 1 because there is nowhere else for it to go.",
+        "Did you get a line starting `localhost:9092 (id: 1`, or a connection error? There is exactly one broker and its node id is 1 — every partition you create will be led by broker 1 because there is nowhere else for it to go.",
       commonError: {
         symptom:
           "`Connection to node -1 (localhost/127.0.0.1:9092) could not be established` or `Broker may not be available`.",
@@ -92,16 +92,16 @@ export const labA: Lab = {
       id: "consume-from-beginning",
       title: "Consume the records back",
       intro:
-        "Read the topic from the start. `--timeout-ms 5000` makes the consumer exit after 5 seconds of no new records instead of waiting forever.",
+        "Read the topic from the start. `--max-messages 3` stops the consumer once it has the three records, so there is no timeout to wait out; `--timeout-ms 20000` is just a backstop in case fewer than three were produced.",
       command:
-        "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --timeout-ms 5000",
+        "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 3 --timeout-ms 20000",
       expected: "first\nsecond\nthird\nProcessed a total of 3 messages",
       observe:
-        "Did the three lines come back in the order you sent them? They might not. Kafka only orders records within a single partition, and with no key these three were free to land on different partitions. The console consumer reads partition by partition, not in send order.",
+        "All three came back, most likely in the order you sent them. With only three records they landed on one partition (the next step confirms that), and a single partition is always read in order. Ordering is only *guaranteed* per partition — spread records across several partitions and the console consumer, which drains one partition at a time, stops showing send order.",
       commonError: {
-        symptom: "`[...] org.apache.kafka.common.errors.TimeoutException` is printed after the messages.",
-        cause: "Not an error here — that is just how `--timeout-ms` ends the consumer once no new records arrive. The `Processed a total of 3 messages` line above it is what matters.",
-        recovery: "Nothing to fix. If you saw fewer than 3 messages, re-run the produce step and check for a typo in the topic name.",
+        symptom: "The command prints one or two lines then hangs, ending after 20s with `Processed a total of 2 messages` and a `TimeoutException`.",
+        cause: "Fewer than three records reached the topic — usually a typo in the topic name on the produce step, so the records went to a different (auto-rejected or mis-named) topic.",
+        recovery: "Re-run the produce step exactly, then this one. `docker exec kafka-lab-a /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list` shows which topics actually exist.",
       },
     },
     {
@@ -109,11 +109,11 @@ export const labA: Lab = {
       title: "See which partition each record landed on",
       intro: "Same consumer, now asking it to print the partition and key alongside each value.",
       command:
-        "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --timeout-ms 5000 --property print.partition=true --property print.key=true",
+        "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 3 --timeout-ms 20000 --property print.partition=true --property print.key=true",
       expected:
-        "Partition:2\tnull\tfirst\nPartition:0\tnull\tsecond\nPartition:1\tnull\tthird\nProcessed a total of 3 messages",
+        "Partition:1\tnull\tfirst\nPartition:1\tnull\tsecond\nPartition:1\tnull\tthird\nProcessed a total of 3 messages\n(your partition number will differ — the point is that all three share it)",
       observe:
-        "The key column is `null` for every record, and the partitions differ (your exact numbers will vary). With no key, the producer spreads records across partitions on its own. So what decides the partition when you *do* provide a key?",
+        "All three records are on the same partition, and the key column is `null`. Without a key the producer does not round-robin record by record — it fills one partition per batch (this is 'sticky' partitioning) and only moves to another partition for a later batch. 'No key' means 'the producer chooses', not 'evenly spread'. So what happens when you *do* provide a key?",
     },
     {
       id: "produce-with-key",
@@ -124,7 +124,7 @@ export const labA: Lab = {
         "printf 'west:order A\\nwest:order B\\neast:order C\\n' | docker exec -i kafka-lab-a /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic orders --property parse.key=true --property key.separator=:",
       expected: "(no output — three keyed records sent)",
       observe:
-        "You now have 6 records in the topic: 3 unkeyed from before and 3 keyed. The next step shows where the keyed ones went.",
+        "You now have 6 records in the topic: 3 unkeyed from before and 3 keyed (2 for `west`, 1 for `east`). The next step shows where the keyed ones went.",
       commonError: {
         symptom: "Records show up later with keys like `west` glued onto the value, e.g. `west	west:order A`.",
         cause: "`--property parse.key=true` or `--property key.separator=:` was missing, so the whole line was treated as the value.",
@@ -135,17 +135,17 @@ export const labA: Lab = {
     {
       id: "verify-key-partition",
       title: "Confirm same key → same partition",
-      intro: "Read everything back with key and partition shown.",
+      intro: "Read all six records back with key and partition shown.",
       command:
-        "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --timeout-ms 5000 --property print.partition=true --property print.key=true",
+        "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 6 --timeout-ms 20000 --property print.partition=true --property print.key=true",
       expected:
-        "Partition:2\tnull\tfirst\nPartition:0\tnull\tsecond\nPartition:1\tnull\tthird\nPartition:1\twest\torder A\nPartition:1\twest\torder B\nPartition:0\teast\torder C\nProcessed a total of 3 messages\n(6 records total; your partition numbers will differ but both `west` records share one)",
+        "Partition:0\teast\torder C\nPartition:1\twest\torder A\nPartition:1\twest\torder B\nPartition:2\tnull\tfirst\nPartition:2\tnull\tsecond\nPartition:2\tnull\tthird\nProcessed a total of 6 messages\n(your partition numbers will differ, and the consumer prints one whole partition before the next — so this grouping is not send order. What is reliable: both `west` records sit on one partition in send order, and all three unkeyed records sit on one partition.)",
       observe:
-        "Both `west` records are on the same partition, in send order. `east` may be on a different one. Kafka hashes the key and takes it modulo the partition count, so a given key always maps to the same partition — that is the mechanism behind per-key ordering.",
+        "Same key, same partition — every time. Kafka hashes the key and takes it modulo the partition count (`murmur2(key) % partitionCount`), so `west` always resolves to the same partition and its two records keep their relative order. That is the mechanism behind per-key ordering.",
       commonError: {
-        symptom: "Only the `Processed a total of 0 messages` line prints.",
-        cause: "`--from-beginning` was left off, so the consumer only looked for records newer than the moment it started.",
-        recovery: "Add `--from-beginning`. Without it a fresh consumer with no committed offset starts at the end of the log.",
+        symptom: "The command hangs and ends after 20s with `Processed a total of 0 messages` and a `TimeoutException`.",
+        cause: "`--from-beginning` was left off, so the consumer waited for six *new* records instead of reading the existing ones.",
+        recovery: "Add `--from-beginning`. Without it a fresh consumer with no committed offset starts at the end of the log and only sees records produced after it connects.",
       },
     },
     {
@@ -154,11 +154,11 @@ export const labA: Lab = {
       intro:
         "Run a consumer with a named `--group`, so Kafka records how far it has read, then ask Kafka to describe that group.",
       command:
-        "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --group order-readers --from-beginning --timeout-ms 5000 && docker exec kafka-lab-a /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group order-readers",
+        "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --group order-readers --from-beginning --max-messages 6 --timeout-ms 20000 && docker exec kafka-lab-a /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group order-readers",
       expected:
-        "Processed a total of 6 messages\n\nGROUP\tTOPIC\tPARTITION\tCURRENT-OFFSET\tLOG-END-OFFSET\tLAG\tCONSUMER-ID\tHOST\tCLIENT-ID\norder-readers\torders\t0\t2\t2\t0\t-\t-\t-\norder-readers\torders\t1\t3\t3\t0\t-\t-\t-\norder-readers\torders\t2\t1\t1\t0\t-\t-\t-",
+        "Processed a total of 6 messages\n\nGROUP\tTOPIC\tPARTITION\tCURRENT-OFFSET\tLOG-END-OFFSET\tLAG\tCONSUMER-ID\tHOST\tCLIENT-ID\norder-readers\torders\t0\t1\t1\t0\t-\t-\t-\norder-readers\torders\t1\t2\t2\t0\t-\t-\t-\norder-readers\torders\t2\t3\t3\t0\t-\t-\t-\n(the offsets per partition depend on where your records landed; they sum to 6, and every LAG is 0)",
       observe:
-        "`LAG` is `CURRENT-OFFSET` subtracted from `LOG-END-OFFSET` per partition — how many records the group has not read yet. It is 0 now because the consumer read to the end before it timed out. The `CONSUMER-ID` is `-` because the consumer already exited; lag is stored server-side and outlives the process.",
+        "`LAG` is `CURRENT-OFFSET` subtracted from `LOG-END-OFFSET` per partition — how many records the group has not read yet. It is 0 because the consumer read every record. The `CONSUMER-ID` is `-` because the consumer already exited; the offsets are stored server-side and outlive the process.",
     },
     {
       id: "reset-and-replay",

@@ -9,12 +9,13 @@ function CommandBlock({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
+    if (!navigator.clipboard) return; // no Clipboard API (insecure context / old browser) — text is still selectable
     try {
-      await navigator.clipboard?.writeText(command);
+      await navigator.clipboard.writeText(command);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Clipboard blocked (insecure context / permissions) — the command is still selectable.
+      // Write rejected (permissions) — leave the button unchanged rather than claim success.
     }
   }
 

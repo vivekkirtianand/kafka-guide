@@ -335,6 +335,18 @@ partitions, keys, offsets, and consumer groups.
   persistence across remount, "lab complete" at 10/10); `ProgressContext.test.tsx` +2 (step
   toggle/persist/restore). Suite 263 → 278.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | `--timeout-ms 5000` races the cold consumer-group coordinator setup — first consume returns `0 messages` | every consume step now bounds with `--max-messages N` (deterministic) plus a 20s backstop; test asserts no consume step uses a <15s timeout |
+| 2 | Kafka 4.0's default producer sticks to one partition per batch — the three unkeyed records all landed on one partition, not one-per-partition | `consume-show-partition` expected shows all three on the same partition; observe teaches sticky/batch-wise placement; test asserts the expected output has a single distinct partition |
+| 3 | Six-record read prints `Processed a total of 6 messages`, but expected said 3 | `verify-key-partition` uses `--max-messages 6`, expected says "6 messages"; test rejects "total of 3 messages" on that step |
+| 4 | 4.0.2's `kafka-broker-api-versions.sh` prints `rack: null isFenced: false`, not `rack: null` | `broker-up` expected includes `isFenced: false` and notes the trailing API list; observe only checks the line starts `localhost:9092 (id: 1` |
+| 5 | `await navigator.clipboard?.writeText(...)` resolves even with no Clipboard API, so the button showed "copied" without copying | `CommandBlock` returns early when `navigator.clipboard` is absent and only sets "copied" after `writeText` resolves; test covers the missing-API case |
+
+Suite 278 → 283.
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

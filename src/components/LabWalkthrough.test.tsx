@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LabWalkthrough from "./LabWalkthrough";
 import { ProgressProvider, __resetProgressCacheForTests } from "@/lib/context/ProgressContext";
@@ -78,6 +78,20 @@ describe("LabWalkthrough", () => {
     renderLab();
     expect(screen.getByLabelText("Mark done: First step")).toBeChecked();
     expect(screen.getByTestId("lab-progress")).toHaveTextContent("1 / 2 steps done");
+  });
+
+  it("does not claim to have copied when the Clipboard API is unavailable", () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    try {
+      renderLab();
+      const copyButton = screen.getAllByRole("button", { name: "copy" })[0];
+      fireEvent.click(copyButton);
+      expect(copyButton).toHaveTextContent("copy");
+      expect(copyButton).not.toHaveTextContent("copied");
+    } finally {
+      if (original) Object.defineProperty(navigator, "clipboard", original);
+    }
   });
 
   it("marks the lab complete once every step is checked", async () => {

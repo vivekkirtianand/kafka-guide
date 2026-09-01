@@ -58,6 +58,39 @@ describe("lab data", () => {
       expect(verify.observe).toMatch(/hash(es)? the key|modulo the partition count/i);
     });
 
+    it("consumes deterministically — every consume step bounds itself with --max-messages, not a short timeout", () => {
+      const consumeSteps = labA.steps.filter((s) => s.command.includes("kafka-console-consumer.sh"));
+      expect(consumeSteps.length).toBeGreaterThanOrEqual(3);
+      for (const s of consumeSteps) {
+        expect(s.command, s.id).toMatch(/--max-messages \d+/);
+        // no five-second (or shorter) timeout — the cold consumer-group coordinator setup can eat it
+        const timeout = s.command.match(/--timeout-ms (\d+)/);
+        if (timeout) expect(Number(timeout[1]), s.id).toBeGreaterThanOrEqual(15000);
+      }
+    });
+
+    it("teaches sticky (batch-wise) placement for unkeyed records, not one-per-partition", () => {
+      const showPartition = labA.steps.find((s) => s.id === "consume-show-partition")!;
+      expect(showPartition.observe).toMatch(/sticky|one partition per batch|fills one partition/i);
+      // the expected output must not show the three unkeyed records on three different partitions
+      const partitions = [...showPartition.expected.matchAll(/Partition:(\d+)/g)].map((m) => m[1]);
+      expect(partitions.length).toBeGreaterThan(0);
+      expect(new Set(partitions).size).toBe(1);
+    });
+
+    it("reports the processed total that Kafka actually prints for the six-record read", () => {
+      const verify = labA.steps.find((s) => s.id === "verify-key-partition")!;
+      expect(verify.command).toMatch(/--max-messages 6\b/);
+      expect(verify.expected).toMatch(/6 messages/);
+      expect(verify.expected).not.toMatch(/total of 3 messages/);
+    });
+
+    it("shows a broker-readiness line that matches the pinned 4.0.2 image", () => {
+      const up = labA.steps.find((s) => s.id === "broker-up")!;
+      // 4.0.2 prints `... rack: null isFenced: false) -> (` — the expected line must not stop at `rack: null`
+      expect(up.expected).toMatch(/isFenced|rack: null[^)]*\.\.\./);
+    });
+
     it("frames replay as moving the reader, not the data", () => {
       const replay = labA.steps.find((s) => s.id === "reset-and-replay")!;
       expect(replay.command).toMatch(/--reset-offsets .*--to-earliest/);
