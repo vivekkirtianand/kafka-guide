@@ -156,6 +156,7 @@ describe("Module 0 — Why Kafka?", () => {
     ...(m0.objectives ?? []),
     ...(m0.completionCriteria ?? []),
     ...m0.topics,
+    ...m0.activities,
     ...(m0.furtherReading ?? []).flatMap((r) => [r.label, r.url]),
     ...Object.values(m0.topicDetail!).flatMap((d) => [
       d.summary,

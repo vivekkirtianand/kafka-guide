@@ -56,7 +56,7 @@ export const modules: Module[] = [
           {
             term: "Kept in order",
             detail:
-              "Kafka stores events in the order they were appended and hands them back to a reader in that order. That ordering guarantee is scoped — it holds within a [[partition|partition]] (the next topic unpacks this), not across a whole topic — but the core idea is that Kafka preserves sequence, which a plain datastore usually doesn't.",
+              "Kafka stores events in the order they were appended and hands them back to a reader in that order. That ordering guarantee is scoped — it holds within a [[partition|partition]] (a later topic unpacks this), not across a whole topic — but the core idea is that Kafka preserves sequence, which a plain datastore usually doesn't.",
           },
           {
             term: "Small and continuous",
@@ -196,7 +196,7 @@ export const modules: Module[] = [
           {
             term: "Access pattern",
             detail:
-              "You list a bucket and fetch whole objects. With Kafka a consumer polls a topic and pulls each new event shortly after it is written, in order — Kafka doesn't push; the consumer asks.",
+              "You list a bucket and fetch whole objects. With Kafka a consumer polls a topic and pulls each new event shortly after it is written — Kafka doesn't push, the consumer asks.",
           },
           {
             term: "Cost over time",

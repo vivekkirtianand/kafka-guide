@@ -213,6 +213,14 @@ unless noted.
 | 5 | Module 0 not linked to the glossary | 13 inline `[[…]]` links added across Module 0; `why-kafka` added to `modules` on 15 glossary terms (event, topic, partition, offset, key, broker, cluster, producer, consumer, consumer-group, replication-factor, retention, log-compaction, schema-registry, serialization) |
 | 6 | Acceptance test scanned only the Topic-explorer body and missed `acknowledge`/`acknowledgment` | `allText` now includes title, summary, objectives, completion criteria, topic strings, and further-reading; regex broadened to `/\backnowledg/` and `/\backs?\b/` |
 
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Object-storage comparison still said events arrive "in order" | dropped "in order" — the point is about the poll/pull access pattern, not ordering |
+| 2 | "the next topic unpacks this" was wrong (next topic is event fields) | "a later topic unpacks this" |
+| 3 | Acceptance test corpus omitted `m0.activities` (populated in 2b) | `...m0.activities` added to `allText` |
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer
