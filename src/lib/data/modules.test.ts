@@ -148,9 +148,21 @@ describe("course metadata", () => {
 
 describe("Module 0 — Why Kafka?", () => {
   const m0 = getModule("why-kafka")!;
-  const allText = Object.values(m0.topicDetail!)
-    .flatMap((d) => [d.summary, d.watchOut ?? "", ...d.points.flatMap((p) => [p.term, p.detail])])
-    .join(" ");
+  // Every learner-visible string on the module — header metadata included, not just the
+  // Topic-explorer body.
+  const allText = [
+    m0.title,
+    m0.summary,
+    ...(m0.objectives ?? []),
+    ...(m0.completionCriteria ?? []),
+    ...m0.topics,
+    ...(m0.furtherReading ?? []).flatMap((r) => [r.label, r.url]),
+    ...Object.values(m0.topicDetail!).flatMap((d) => [
+      d.summary,
+      d.watchOut ?? "",
+      ...d.points.flatMap((p) => [p.term, p.detail]),
+    ]),
+  ].join(" ");
 
   it("is the first module, on the beginner path, with no prerequisites", () => {
     expect(m0.index).toBe(0);
@@ -168,10 +180,11 @@ describe("Module 0 — Why Kafka?", () => {
   });
 
   it("does not introduce ISR / acknowledgements / KRaft / controller-quorum before the problem is understood", () => {
-    // Acceptance criterion for Phase 2.
-    expect(allText).not.toMatch(/\bISR\b|in-sync replica/i);
-    expect(allText).not.toMatch(/\backnowledgement|\backs\b|acks=/i);
-    expect(allText).not.toMatch(/KRaft|controller quorum|controller-quorum|quorum/i);
+    // Acceptance criterion for Phase 2 — checked across every learner-visible field.
+    expect(allText).not.toMatch(/\bISR\b|in[- ]sync replica/i);
+    // acknowledge / acknowledged / acknowledgment / acknowledgement / ack / acks
+    expect(allText).not.toMatch(/\backnowledg|\backs?\b/i);
+    expect(allText).not.toMatch(/\bKRaft\b|controller[- ]quorum|controller quorum|\bquorum\b/i);
   });
 
   it("frames Kafka against the alternatives a beginner would actually weigh", () => {

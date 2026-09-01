@@ -9,7 +9,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A single immutable fact written to Kafka — something that happened, with a timestamp. Carries a key, a value, and optional headers. Also called a record or a message.",
     seeAlso: ["key", "offset", "topic"],
-    modules: ["mental-model"],
+    modules: ["why-kafka", "mental-model"],
   },
   {
     slug: "topic",
@@ -17,7 +17,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A named, append-only log that events are published to and read from. Split into partitions for scale; retained by time or size regardless of who has read it.",
     seeAlso: ["partition", "retention", "log-compaction"],
-    modules: ["mental-model", "broker-topic-configuration"],
+    modules: ["why-kafka", "mental-model", "broker-topic-configuration"],
   },
   {
     slug: "partition",
@@ -25,7 +25,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "One ordered, append-only slice of a topic, and Kafka's unit of parallelism and ordering. Each partition is stored and replicated independently. Ordering is guaranteed only within a single partition.",
     seeAlso: ["topic", "offset", "key", "replica"],
-    modules: ["mental-model"],
+    modules: ["why-kafka", "mental-model"],
   },
   {
     slug: "offset",
@@ -33,7 +33,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "The position of a record within its partition — a monotonically increasing integer assigned by the broker on append. Consumers track an offset to know where they are; reading does not consume.",
     seeAlso: ["partition", "consumer-group", "lag"],
-    modules: ["mental-model", "consumer-configuration"],
+    modules: ["why-kafka", "mental-model", "consumer-configuration"],
   },
   {
     slug: "key",
@@ -41,7 +41,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "An optional field on a record. Its hash picks the partition, so all records with the same key land on the same partition and stay ordered. A null key spreads records across partitions.",
     seeAlso: ["partition", "event", "log-compaction"],
-    modules: ["mental-model", "producer-configuration"],
+    modules: ["why-kafka", "mental-model", "producer-configuration"],
   },
   {
     slug: "broker",
@@ -49,7 +49,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "One Kafka server process. A cluster is a set of brokers; each holds a subset of the cluster's partitions and serves reads and writes for the partitions it leads.",
     seeAlso: ["cluster", "controller", "leader"],
-    modules: ["mental-model", "broker-topic-configuration"],
+    modules: ["why-kafka", "mental-model", "broker-topic-configuration"],
   },
   {
     slug: "cluster",
@@ -57,7 +57,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A group of brokers working together, coordinated by a controller quorum. Topics, partitions and their replicas are distributed across the cluster's brokers.",
     seeAlso: ["broker", "controller", "kraft"],
-    modules: ["mental-model", "local-cluster-lab"],
+    modules: ["why-kafka", "mental-model", "local-cluster-lab"],
   },
   {
     slug: "producer",
@@ -65,7 +65,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A client that publishes records to topics. Chooses the partition (via the key or a partitioner), batches records, and — depending on acks — waits for the broker to acknowledge the write.",
     seeAlso: ["consumer", "acks", "idempotence"],
-    modules: ["producer-configuration"],
+    modules: ["why-kafka", "producer-configuration"],
   },
   {
     slug: "consumer",
@@ -73,7 +73,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A client that reads records from topic-partitions, tracking its offset as it goes. Consumers usually run as part of a consumer group.",
     seeAlso: ["consumer-group", "offset", "lag", "rebalance"],
-    modules: ["consumer-configuration"],
+    modules: ["why-kafka", "consumer-configuration"],
   },
   {
     slug: "consumer-group",
@@ -81,7 +81,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A set of consumers that share the work of a subscription: each partition is assigned to exactly one member. Adding members scales throughput up to the partition count; the group commits offsets collectively.",
     seeAlso: ["consumer", "rebalance", "offset"],
-    modules: ["consumer-configuration"],
+    modules: ["why-kafka", "consumer-configuration"],
   },
   {
     slug: "rebalance",
@@ -105,7 +105,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "The number of replicas Kafka keeps for each partition of a topic. A factor of R needs at least R brokers and tolerates up to R−1 broker failures for availability (fewer for guaranteed durability).",
     seeAlso: ["replica", "isr", "min-insync-replicas"],
-    modules: ["broker-topic-configuration"],
+    modules: ["why-kafka", "broker-topic-configuration"],
   },
   {
     slug: "leader",
@@ -193,7 +193,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "The policy that ages records out of a topic by time (retention.ms) or size (retention.bytes, per partition). Independent of whether any consumer has read them.",
     seeAlso: ["log-compaction", "topic", "lag"],
-    modules: ["broker-topic-configuration"],
+    modules: ["why-kafka", "broker-topic-configuration"],
   },
   {
     slug: "log-compaction",
@@ -201,7 +201,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A cleanup policy that keeps only the latest record per key, instead of deleting by age. Used for changelog-style topics; a null value (a tombstone) marks a key for removal.",
     seeAlso: ["tombstone", "retention", "key"],
-    modules: ["broker-topic-configuration"],
+    modules: ["why-kafka", "broker-topic-configuration"],
   },
   {
     slug: "tombstone",
@@ -265,7 +265,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A service that stores versioned record schemas (Avro, Protobuf, JSON Schema) and enforces compatibility rules, so producers and consumers can evolve independently. Records carry a schema id, not the schema.",
     seeAlso: ["serialization", "event"],
-    modules: [],
+    modules: ["why-kafka"],
   },
   {
     slug: "serialization",
@@ -273,7 +273,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "Turning a record's key and value into the bytes Kafka stores. Kafka itself only moves bytes; the serializer (and matching deserializer on the consumer) defines the format.",
     seeAlso: ["schema-registry", "event"],
-    modules: ["producer-configuration"],
+    modules: ["why-kafka", "producer-configuration"],
   },
   {
     slug: "bootstrap-servers",

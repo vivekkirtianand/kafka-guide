@@ -54,9 +54,9 @@ export const modules: Module[] = [
               "Once written, an event never changes. A correction is a new event, not an edit. That is exactly what lets many independent systems read the same history and still agree on it.",
           },
           {
-            term: "Ordered in time",
+            term: "Kept in order",
             detail:
-              "Every event carries a timestamp, and within one stream events keep the order they were appended in. \"What happened, and in what order\" is the question Kafka is built to answer.",
+              "Kafka stores events in the order they were appended and hands them back to a reader in that order. That ordering guarantee is scoped — it holds within a [[partition|partition]] (the next topic unpacks this), not across a whole topic — but the core idea is that Kafka preserves sequence, which a plain datastore usually doesn't.",
           },
           {
             term: "Small and continuous",
@@ -74,7 +74,7 @@ export const modules: Module[] = [
           {
             term: "Value",
             detail:
-              "The payload: the actual data describing what happened, serialized to bytes — commonly JSON, Avro, or Protobuf. Kafka never looks inside it.",
+              "The payload: the actual data describing what happened, [[serialization|serialized]] to bytes — commonly JSON, Avro, or Protobuf. Kafka never looks inside it.",
           },
           {
             term: "Key",
@@ -94,7 +94,7 @@ export const modules: Module[] = [
           {
             term: "Schema",
             detail:
-              "The agreed structure of the value. Kafka stores only bytes, so the schema is a contract between producers and consumers — often written down and enforced by a separate schema registry.",
+              "The agreed structure of the value. Kafka stores only bytes, so the schema is a contract between producers and consumers — often written down and enforced by a separate [[schema-registry|schema registry]].",
           },
         ],
         watchOut:
@@ -102,7 +102,7 @@ export const modules: Module[] = [
       },
       "Event streaming versus request/response": {
         summary:
-          "Request/response is one caller asking one service for an answer now. Event streaming is one producer publishing facts that any number of consumers read later, each on its own schedule.",
+          "Request/response is one caller asking one service for an answer now. Event streaming is one [[producer|producer]] publishing facts that any number of [[consumer|consumers]] read later, each on its own schedule.",
         points: [
           {
             term: "Who knows whom",
@@ -135,12 +135,12 @@ export const modules: Module[] = [
           {
             term: "Retention",
             detail:
-              "A queue is empty once its messages are consumed. A Kafka topic retains events for a configured time or size no matter who has read them, so a brand-new consumer can start from the beginning.",
+              "A queue is empty once its messages are consumed. A Kafka [[topic|topic]] keeps events for a configured time or size no matter who has read them ([[retention|retention]]), so a brand-new consumer can start from the beginning.",
           },
           {
             term: "Many independent readers",
             detail:
-              "A queue message goes to one worker. A Kafka event is available to every consumer group independently — billing and analytics both see the full stream.",
+              "A queue message goes to one worker. A Kafka event is available to every [[consumer-group|consumer group]] independently — billing and analytics both see the full stream.",
           },
           {
             term: "Replay",
@@ -178,11 +178,11 @@ export const modules: Module[] = [
           {
             term: "Compaction narrows the gap slightly",
             detail:
-              "A compacted topic keeps only the latest event per key — effectively a key/value snapshot — but it is still read start-to-end, not queried like a table.",
+              "A [[log-compaction|compacted topic]] keeps only the latest event per key — effectively a key/value snapshot — but it is still read start-to-end, not queried like a table.",
           },
         ],
         watchOut:
-          "Kafka is not a system of record you query directly. Lookups, joins, and transactions across entities are a database's job — put one after Kafka.",
+          "Kafka can be the system of record for events — the authoritative log that other systems are derived from, which many event-sourced designs rely on. What it is not is a query database: lookups, joins, and transactions across entities are a database's job, downstream.",
       },
       "Kafka versus object storage": {
         summary:
@@ -191,12 +191,12 @@ export const modules: Module[] = [
           {
             term: "Latency",
             detail:
-              "Object storage is built for throughput on large objects, not for delivering the next small record quickly. Kafka pushes new events to consumers in milliseconds.",
+              "Object storage is built for throughput on large objects, not for serving the next small record quickly. A Kafka consumer can fetch new events within milliseconds of them being written.",
           },
           {
             term: "Access pattern",
             detail:
-              "You list a bucket and fetch whole objects. You subscribe to a Kafka topic and receive each new event as it arrives, in order.",
+              "You list a bucket and fetch whole objects. With Kafka a consumer polls a topic and pulls each new event shortly after it is written, in order — Kafka doesn't push; the consumer asks.",
           },
           {
             term: "Cost over time",
@@ -295,22 +295,22 @@ export const modules: Module[] = [
           {
             term: "Broker",
             detail:
-              "One Kafka server. A cluster is several brokers; each holds some of the partitions so storage and traffic spread across them, and each partition is copied to more than one broker so losing a machine doesn't lose data.",
+              "One Kafka server. A [[cluster|cluster]] is several brokers; each holds some of the partitions so storage and traffic spread across them. You can also configure a partition to be copied onto more than one broker (its replication factor) so losing a machine doesn't lose data — most production topics do, but it is a setting, not automatic.",
           },
           {
             term: "Producer",
             detail:
-              "A client that publishes events to a topic, choosing a partition — usually derived from the event key.",
+              "A client that publishes events to a topic, choosing a partition — usually derived from the event [[key|key]].",
           },
           {
             term: "Consumer and consumer group",
             detail:
-              "A client that reads events from a topic's partitions. Members of a consumer group divide the partitions between them to share the work.",
+              "A client that reads events from a topic's partitions by polling the broker for more. Members of a [[consumer-group|consumer group]] divide the partitions between them to share the work.",
           },
           {
             term: "Offset",
             detail:
-              "Each consumer tracks how far it has read in each partition, so it can stop and resume later without losing its place — and can move that position back to re-read.",
+              "Each consumer tracks how far it has read in each partition (its [[offset|offset]]), so it can stop and resume later without losing its place — and can move that position back to re-read.",
           },
         ],
         watchOut:

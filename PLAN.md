@@ -202,6 +202,17 @@ unless noted.
   replica/`, `/acknowledgement|acks/`, `/KRaft|controller quorum|quorum/`; frames Kafka
   against queues / databases / "poor choice" / request-response. Suite 224 → 228.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Ordering described as topic/stream-wide | reworded to "scoped — it holds within a partition, not across a whole topic" |
+| 2 | Said Kafka "pushes" records to consumers | reworded — "a consumer polls a topic and pulls each new event … Kafka doesn't push; the consumer asks"; consumer component now says "by polling the broker" |
+| 3 | Replication presented as automatic | "You can also configure a partition to be copied … (its replication factor) … it is a setting, not automatic" |
+| 4 | Said Kafka is "not a system of record" | "Kafka can be the system of record for events — the authoritative log … What it is not is a query database" |
+| 5 | Module 0 not linked to the glossary | 13 inline `[[…]]` links added across Module 0; `why-kafka` added to `modules` on 15 glossary terms (event, topic, partition, offset, key, broker, cluster, producer, consumer, consumer-group, replication-factor, retention, log-compaction, schema-registry, serialization) |
+| 6 | Acceptance test scanned only the Topic-explorer body and missed `acknowledge`/`acknowledgment` | `allText` now includes title, summary, objectives, completion criteria, topic strings, and further-reading; regex broadened to `/\backnowledg/` and `/\backs?\b/` |
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer
