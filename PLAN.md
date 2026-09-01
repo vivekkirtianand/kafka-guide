@@ -174,6 +174,34 @@ unless noted.
 | 1 | A "See also" link to a term the active search filters out did nothing (dead anchor) | `Glossary` intercepts see-also clicks: if the target row isn't rendered, clear the query, then scroll to it once it re-renders (`pendingScroll` ref + an effect keyed on `query`) |
 | 2 | Glossary "Controller" definition said a controller is a broker | reworded — "a server runs as a controller, as a broker, or (in small clusters) as both — set by `process.roles`", matching the Module 1 / Module 5 content |
 
+## Phase 2 — Module 0: Why Kafka?
+
+| PR | Scope | Status |
+|---|---|---|
+| 2a | Module 0 shell + Topic-explorer content for all 9 topics | ✅ Done |
+| 2b | 4 interactive activities (tech-choice picker, order-event fan-out, queue-vs-log, label-the-event) | ⭕ Planned |
+| 2c | 10-question beginner knowledge check + "Should this system use Kafka?" design exercise | ⭕ Planned |
+
+### PR 2a — Module 0 shell + topic content
+
+- `src/lib/data/modules.ts` — new first entry `why-kafka` (**`index: 0`**), `track:
+  "beginner-path"`, `status: "available"`, `activities: []` (2b), full `topicDetail` for all
+  9 topics: what an event is · key/value/timestamp/headers/schema · streaming vs
+  request/response · Kafka vs queues / databases / object storage · common use cases · when
+  Kafka is a poor choice · main components at a high level. `mental-model` now lists
+  `why-kafka` as a prerequisite.
+- **Module indexes are now 0-based** — the array is `why-kafka`(0) … `troubleshooting`(7),
+  so `index === arrayPosition`. `modules.test.ts`'s sequential-index check updated from
+  `i + 1` to `i`. Display strings already `padStart(2, "0")`, so headings read "Module 00".
+  `trackNeighbors` / `ModuleMeta` / sidebar unaffected (all key off `index` order, not a
+  starting value).
+- `src/app/page.tsx` — hero CTA now links `beginnerPath(modules)[0]` ("Start the beginner
+  path") instead of the hardcoded mental-model link.
+- Tests: `modules.test.ts` +4 — Module 0 is index 0 / beginner-path / no prereqs; covers
+  every topic; **acceptance criterion**: its content matches none of `/ISR|in-sync
+  replica/`, `/acknowledgement|acks/`, `/KRaft|controller quorum|quorum/`; frames Kafka
+  against queues / databases / "poor choice" / request-response. Suite 224 → 228.
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

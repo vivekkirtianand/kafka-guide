@@ -2,6 +2,325 @@ import { Module } from "@/lib/types";
 
 export const modules: Module[] = [
   {
+    slug: "why-kafka",
+    index: 0,
+    title: "Why Kafka and when to use it",
+    summary:
+      "What an event is, how streaming differs from request/response and from queues, databases, and object storage — and the cases where Kafka is the wrong tool.",
+    difficulty: "beginner",
+    estimatedMinutes: 45,
+    prerequisites: [],
+    track: "beginner-path",
+    objectives: [
+      "Explain what an event is and identify its key, value, timestamp, and headers in a sample",
+      "Describe how event streaming differs from request/response",
+      "Say when Kafka fits better than a queue, a database, or object storage — and when it doesn't",
+      "Name Kafka's main components (topic, partition, broker, producer, consumer, offset) at a high level",
+    ],
+    completionCriteria: [
+      "Given a system description, you can argue for or against using Kafka and say which alternative you'd reach for instead",
+      "You can point at a sample event and label its key, value, timestamp, and headers",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka 4.0 — Introduction", url: "https://kafka.apache.org/40/getting-started/introduction/" },
+      { label: "Apache Kafka 4.0 — Use cases", url: "https://kafka.apache.org/40/getting-started/uses/" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-01",
+    topics: [
+      "What an event is",
+      "Event key, value, timestamp, headers, and schema",
+      "Event streaming versus request/response",
+      "Kafka versus queues",
+      "Kafka versus databases",
+      "Kafka versus object storage",
+      "Common use cases",
+      "When Kafka is a poor choice",
+      "Kafka's main components at a high level",
+    ],
+    topicDetail: {
+      "What an event is": {
+        summary:
+          "An event is an immutable record of something that already happened, at a point in time — the unit Kafka stores and moves.",
+        points: [
+          {
+            term: "Something happened",
+            detail:
+              "An event states a fact about the past — \"order 1234 was placed\", \"sensor 9 read 21.4°C\", \"user 42 logged out\". It isn't a command or a question; nothing is being asked, something is being reported.",
+          },
+          {
+            term: "Immutable",
+            detail:
+              "Once written, an event never changes. A correction is a new event, not an edit. That is exactly what lets many independent systems read the same history and still agree on it.",
+          },
+          {
+            term: "Ordered in time",
+            detail:
+              "Every event carries a timestamp, and within one stream events keep the order they were appended in. \"What happened, and in what order\" is the question Kafka is built to answer.",
+          },
+          {
+            term: "Small and continuous",
+            detail:
+              "Events are usually small — bytes to a few kilobytes — and produced steadily rather than in occasional big batches. Thousands per second from one source is ordinary.",
+          },
+        ],
+        watchOut:
+          "\"Event\" is an overloaded word. Here it always means a stored, immutable record on a log — not an in-memory callback, a UI click handler, or a webhook call.",
+      },
+      "Event key, value, timestamp, headers, and schema": {
+        summary:
+          "Every Kafka event has the same shape: a value, an optional key, a timestamp, optional headers, and — by convention — a schema for the value.",
+        points: [
+          {
+            term: "Value",
+            detail:
+              "The payload: the actual data describing what happened, serialized to bytes — commonly JSON, Avro, or Protobuf. Kafka never looks inside it.",
+          },
+          {
+            term: "Key",
+            detail:
+              "An optional identifier used to group related events — an order id, a customer id, a device id. Events sharing a key are kept together and in order. It is not a unique primary key; many events can and do share one.",
+          },
+          {
+            term: "Timestamp",
+            detail:
+              "When the event happened, set by the producer — or when the broker stored it. You pick which of the two a topic uses.",
+          },
+          {
+            term: "Headers",
+            detail:
+              "Optional key/value metadata carried alongside the payload: a trace id, a schema version, the source system. Useful for routing decisions in your own code, but Kafka doesn't route on them.",
+          },
+          {
+            term: "Schema",
+            detail:
+              "The agreed structure of the value. Kafka stores only bytes, so the schema is a contract between producers and consumers — often written down and enforced by a separate schema registry.",
+          },
+        ],
+        watchOut:
+          "The key's job is grouping and ordering, not identity or uniqueness. Reaching for it as a database-style primary key is the most common early mistake.",
+      },
+      "Event streaming versus request/response": {
+        summary:
+          "Request/response is one caller asking one service for an answer now. Event streaming is one producer publishing facts that any number of consumers read later, each on its own schedule.",
+        points: [
+          {
+            term: "Who knows whom",
+            detail:
+              "In request/response the caller must know the callee and both must be up at once. With streaming the producer doesn't know who consumes, and consumers can be offline when an event is produced and catch up afterwards.",
+          },
+          {
+            term: "Timing",
+            detail:
+              "A request blocks until it gets a reply. A consumer reads when it is ready — milliseconds or hours later — and can move its position back to re-read.",
+          },
+          {
+            term: "Adding a reader",
+            detail:
+              "A second consumer of a stream costs the producer nothing. A second caller in request/response adds load to the callee and another dependency to manage.",
+          },
+          {
+            term: "They coexist",
+            detail:
+              "You still call a payment API request/response to charge a card. You then publish \"payment succeeded\" as an event so billing, email, and analytics each react without the payment service having to call them.",
+          },
+        ],
+        watchOut:
+          "Streaming doesn't replace request/response. It removes the need for the producer to know about and call every downstream system.",
+      },
+      "Kafka versus queues": {
+        summary:
+          "A traditional message queue hands each message to one consumer and then deletes it. Kafka keeps every event in an ordered log that many consumers read independently — and can re-read.",
+        points: [
+          {
+            term: "Retention",
+            detail:
+              "A queue is empty once its messages are consumed. A Kafka topic retains events for a configured time or size no matter who has read them, so a brand-new consumer can start from the beginning.",
+          },
+          {
+            term: "Many independent readers",
+            detail:
+              "A queue message goes to one worker. A Kafka event is available to every consumer group independently — billing and analytics both see the full stream.",
+          },
+          {
+            term: "Replay",
+            detail:
+              "Because the log stays put, you can move a consumer back to an earlier position and reprocess — after fixing a bug, or to backfill a new system from history.",
+          },
+          {
+            term: "Kafka can still act like a queue",
+            detail:
+              "One consumer group with several members splits the partitions between them and processes the work in parallel, queue-style — you simply keep the option to add more readers or to replay.",
+          },
+        ],
+        watchOut:
+          "If you specifically need to track delivery of each message individually, priority levels, or long delayed redelivery, a dedicated queue such as SQS or RabbitMQ may fit better than Kafka.",
+      },
+      "Kafka versus databases": {
+        summary:
+          "A database answers \"what is the current state?\" Kafka answers \"what happened, and in what order?\" One holds the latest value; the other holds the history that produced it.",
+        points: [
+          {
+            term: "Query model",
+            detail:
+              "A database lets you query by any field, update rows, and enforce constraints. Kafka has no queries — a consumer reads a partition from one end to the other. You build the queryable view you need in a database downstream.",
+          },
+          {
+            term: "State versus log",
+            detail:
+              "A database row shows an account balance now. A Kafka topic shows every deposit and withdrawal. The log can rebuild the row; the row cannot rebuild the log.",
+          },
+          {
+            term: "Kafka usually feeds databases",
+            detail:
+              "A common setup is events in Kafka with connectors continuously writing them into Postgres, Elasticsearch, or a warehouse, which is where the actual lookups happen.",
+          },
+          {
+            term: "Compaction narrows the gap slightly",
+            detail:
+              "A compacted topic keeps only the latest event per key — effectively a key/value snapshot — but it is still read start-to-end, not queried like a table.",
+          },
+        ],
+        watchOut:
+          "Kafka is not a system of record you query directly. Lookups, joins, and transactions across entities are a database's job — put one after Kafka.",
+      },
+      "Kafka versus object storage": {
+        summary:
+          "Object storage (S3, GCS) is cheap, durable storage for large files written once and read occasionally. Kafka is for a continuous stream of small events that many systems react to within seconds.",
+        points: [
+          {
+            term: "Latency",
+            detail:
+              "Object storage is built for throughput on large objects, not for delivering the next small record quickly. Kafka pushes new events to consumers in milliseconds.",
+          },
+          {
+            term: "Access pattern",
+            detail:
+              "You list a bucket and fetch whole objects. You subscribe to a Kafka topic and receive each new event as it arrives, in order.",
+          },
+          {
+            term: "Cost over time",
+            detail:
+              "Object storage is far cheaper per byte for long-term retention. Kafka keeps a recent window readily available; some deployments move older data to object storage behind the scenes.",
+          },
+          {
+            term: "They compose well",
+            detail:
+              "A very common pipeline uses Kafka for the live stream and a connector that continuously archives events into object storage for cheap long-term history and batch analytics.",
+          },
+        ],
+        watchOut:
+          "Don't use Kafka as a bulk file store or a data lake. It is a moving pipe, not a warehouse.",
+      },
+      "Common use cases": {
+        summary:
+          "Kafka fits wherever many systems need to react to the same stream of events, decoupled from whoever produced them.",
+        points: [
+          {
+            term: "Event-driven services",
+            detail:
+              "Services publish domain events — \"order placed\", \"shipment dispatched\" — instead of calling each other directly, so adding a new reaction doesn't touch the producer.",
+          },
+          {
+            term: "Data integration and change capture",
+            detail:
+              "Capture every change from a source database and feed search indexes, caches, and warehouses from one shared stream instead of many point-to-point jobs.",
+          },
+          {
+            term: "Activity and telemetry feeds",
+            detail:
+              "Clickstreams, application logs, IoT sensor readings — high-volume feeds collected once and consumed several different ways.",
+          },
+          {
+            term: "Stream processing",
+            detail:
+              "Compute running aggregates, joins, and alerts continuously as events arrive: order totals per minute, fraud signals, live dashboards.",
+          },
+          {
+            term: "Buffering and decoupling",
+            detail:
+              "Absorb bursts in front of a slower system so producers aren't blocked when consumers fall behind.",
+          },
+        ],
+        watchOut:
+          "The common thread is many consumers, retained history, and decoupling — not simply \"moving data around\". Plain point-to-point transfer rarely needs Kafka.",
+      },
+      "When Kafka is a poor choice": {
+        summary:
+          "Kafka pays back its operational cost when the streaming need is real. Without one, it is a heavy dependency that a simpler tool would beat.",
+        points: [
+          {
+            term: "Low volume, single consumer",
+            detail:
+              "A few thousand messages a day going to one service — a managed queue or even a database table is simpler, cheaper, and easier to operate.",
+          },
+          {
+            term: "You need an answer back",
+            detail:
+              "If the caller expects a response, that is an RPC or HTTP call. Modelling it as an event just adds a round trip you have to build yourself.",
+          },
+          {
+            term: "The real need is queries",
+            detail:
+              "If the job is \"look up X by Y\", use a database. Kafka can't do it, and bolting a lookup layer onto Kafka reinvents one badly.",
+          },
+          {
+            term: "Per-message workflow features",
+            detail:
+              "Priority ordering, per-message time-to-live, scheduled retries, dead-letter with redrive — these are queue features Kafka does not provide natively.",
+          },
+          {
+            term: "No capacity to operate it",
+            detail:
+              "Self-hosting Kafka is genuine ongoing work. If a managed service isn't an option, weigh that cost honestly against the benefit.",
+          },
+        ],
+        watchOut:
+          "\"We might need to scale one day\" is not a reason to adopt Kafka today. Adopt it when the streaming problem is real — moving to it later is a normal, well-trodden path.",
+      },
+      "Kafka's main components at a high level": {
+        summary:
+          "A few parts: producers write events, brokers store them in topics that are split into partitions, and consumers read them — with a cluster of brokers sharing the load.",
+        points: [
+          {
+            term: "Topic",
+            detail:
+              "A named stream of events, like \"orders\" or \"page-views\". You publish to a topic and you subscribe to a topic.",
+          },
+          {
+            term: "Partition",
+            detail:
+              "A topic is split into partitions so it can scale. Each partition is its own ordered log, and different partitions can live on different machines.",
+          },
+          {
+            term: "Broker",
+            detail:
+              "One Kafka server. A cluster is several brokers; each holds some of the partitions so storage and traffic spread across them, and each partition is copied to more than one broker so losing a machine doesn't lose data.",
+          },
+          {
+            term: "Producer",
+            detail:
+              "A client that publishes events to a topic, choosing a partition — usually derived from the event key.",
+          },
+          {
+            term: "Consumer and consumer group",
+            detail:
+              "A client that reads events from a topic's partitions. Members of a consumer group divide the partitions between them to share the work.",
+          },
+          {
+            term: "Offset",
+            detail:
+              "Each consumer tracks how far it has read in each partition, so it can stop and resume later without losing its place — and can move that position back to re-read.",
+          },
+        ],
+        watchOut:
+          "That is the whole mental model you need for now. How brokers stay consistent, choose which replica serves a partition, and confirm writes comes later — none of it is needed to understand what Kafka is for.",
+      },
+    },
+    activities: [],
+    status: "available",
+  },
+  {
     slug: "mental-model",
     index: 1,
     title: "Kafka mental model",
@@ -9,7 +328,7 @@ export const modules: Module[] = [
       "The append-only log, brokers, partitions, replicas, and the ordering and delivery guarantees everything else is built on.",
     difficulty: "beginner",
     estimatedMinutes: 60,
-    prerequisites: [],
+    prerequisites: ["why-kafka"],
     track: "beginner-path",
     objectives: [
       "Describe a topic-partition as an ordered, append-only log and explain what an offset is",
