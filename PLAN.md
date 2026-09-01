@@ -250,6 +250,12 @@ following the established demo idiom (pure logic, teaching disclaimer, `reset`, 
 | 4 | LabelTheEventDemo disclaimer said the key is absent *and* that every event "is a key" | "every Kafka event has a value and a timestamp, plus an optional key and optional headers" |
 | 5 | Key note said it "picks the partition" unconditionally | "by default decides the partition … (an explicit partition or custom partitioner can override this)" |
 
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | LabelTheEventDemo said every event "has a value" — Kafka permits null values (tombstones) | "a value field (whose value can be null — a tombstone on a compacted topic)" |
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

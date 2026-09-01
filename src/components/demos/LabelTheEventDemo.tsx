@@ -92,8 +92,8 @@ export default function LabelTheEventDemo() {
 
       <p className="mb-4 text-xs leading-relaxed text-text-faint">
         Simplified for teaching — on the wire these parts are bytes with a fixed record layout. What carries
-        over: every Kafka event has a value and a timestamp, plus an optional key and optional headers, and
-        each part has a distinct job.
+        over: every Kafka record has a timestamp and a value field (whose value can be null — a tombstone on a
+        compacted topic), plus an optional key and optional headers, and each part has a distinct job.
       </p>
 
       <div className="mb-3 font-mono text-[11px] text-text-faint">
