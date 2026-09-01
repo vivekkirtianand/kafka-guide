@@ -320,8 +320,139 @@ export const modules: Module[] = [
     activities: [
       "Pick the right tool — Kafka, a queue, a database, object storage, or a direct call — for a set of scenarios",
       "Follow one order-placed event from checkout to billing, email, warehouse, and analytics, then add a new consumer",
-      "Compare a message queue (deliver once, forget) with a Kafka topic (retained, re-readable by many groups)",
+      "Compare a message queue (one consumer per message, then dropped) with a Kafka topic (retained, re-readable by many groups)",
       "Label the key, value, timestamp, and headers in sample events",
+    ],
+    knowledgeChecks: [
+      {
+        question: "What is an event in Kafka?",
+        options: [
+          "A request for another service to do something",
+          "An immutable record of something that already happened, with a timestamp",
+          "A row in a database table that gets updated in place",
+          "A background job waiting in a queue to be run",
+        ],
+        answerIndex: 1,
+        explanation:
+          "An event is a fact about the past — immutable, timestamped, appended to a log. Corrections are new events, not edits.",
+      },
+      {
+        question: "How does event streaming differ from request/response?",
+        options: [
+          "Streaming is always faster than a direct call",
+          "Streaming guarantees every consumer processes each event exactly once",
+          "The producer publishes without knowing who consumes, and consumers read on their own schedule",
+          "Streaming replaces the need for any synchronous API calls",
+        ],
+        answerIndex: 2,
+        explanation:
+          "The producer publishes once and doesn't know its readers; each consumer reads when it's ready and tracks its own position. Synchronous calls are still used where a caller needs an answer back.",
+      },
+      {
+        question:
+          "Billing already consumes \"order-placed\" events. A new team wants to react to the same events. What has to change in the checkout service?",
+        options: [
+          "Checkout adds a call to the new service",
+          "Checkout republishes the events to a second topic",
+          "Nothing — the new team subscribes to the same topic independently",
+          "Checkout has to increase the topic's partition count",
+        ],
+        answerIndex: 2,
+        explanation:
+          "Adding a consumer needs no producer change — the new team reads the existing topic on its own. (It does add its own infrastructure and some load on the brokers.)",
+      },
+      {
+        question: "When is a plain database a better fit than Kafka?",
+        options: [
+          "When many systems need to react to the same stream of changes",
+          "When you need to look up the current value for a key on every request",
+          "When you want to replay history to rebuild a downstream system",
+          "When you need to retain events for a long time",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Kafka has no queries — a consumer reads a partition end to end. Keyed lookups of current state are a database's job.",
+      },
+      {
+        question: "What does a Kafka topic do that a traditional message queue does not?",
+        options: [
+          "Deliver each message to exactly one worker",
+          "Guarantee ordering across the whole topic",
+          "Retain events so multiple consumer groups can each read them, and re-read them",
+          "Automatically retry failed messages with backoff",
+        ],
+        answerIndex: 2,
+        explanation:
+          "A queue routes each message to one consumer and removes it once handled. A Kafka topic keeps events, so any number of groups can read — and rewind and re-read — them.",
+      },
+      {
+        question: "By default, what decides which partition a record lands in?",
+        options: [
+          "The record's key",
+          "The size of the record",
+          "The time the record was produced",
+          "Whichever partition has the least data",
+        ],
+        answerIndex: 0,
+        explanation:
+          "By default the key's hash picks the partition, so same-key records stay together and in order. An explicit partition or a custom partitioner can override this; a record with no key is spread across partitions.",
+      },
+      {
+        question: "A partner downloads one 5 GB report file once a day. Where should it live?",
+        options: ["A Kafka topic", "Object storage (S3, GCS)", "A relational database", "A message queue"],
+        answerIndex: 1,
+        explanation:
+          "One large file, written once, read occasionally — object storage is cheap and built for it. Kafka is a moving pipe for small events, not a file store.",
+      },
+      {
+        question: "What is an offset?",
+        options: [
+          "The number of partitions in a topic",
+          "How long an event is retained before deletion",
+          "A consumer's position — how far it has read in a partition",
+          "The delay between producing an event and it becoming readable",
+        ],
+        answerIndex: 2,
+        explanation:
+          "Each consumer tracks an offset per partition. Reading doesn't consume; a consumer can move its offset back to re-read.",
+      },
+      {
+        question: "Which is a poor reason to adopt Kafka?",
+        options: [
+          "Several independent systems need the same stream of events",
+          "You need to replay events to backfill a new service",
+          "\"We might need to scale someday\"",
+          "You want to decouple a fast producer from a slower consumer",
+        ],
+        answerIndex: 2,
+        explanation:
+          "Adopt Kafka when the streaming problem is real. Speculative future scale isn't a reason — moving to Kafka later is a normal, well-trodden path.",
+      },
+      {
+        question: "Charging a customer's card at checkout should be modelled as…",
+        options: [
+          "An event published to a \"charges\" topic",
+          "A synchronous call to the payment service that returns success or failure",
+          "A row inserted into a database that a consumer polls for",
+          "A message on a queue with no reply",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The caller needs an answer back before continuing — that's request/response. You'd then publish \"payment succeeded\" as an event so other systems can react.",
+      },
+    ],
+    exercises: [
+      {
+        prompt:
+          "A subscription-box company processes about 2,000 orders a day. When an order is placed they need to charge the card, email a receipt, tell the warehouse to pick it, and update an analytics dashboard — and they expect to add a loyalty-points service and a fraud check within a year. Write a one-paragraph recommendation: put an event stream (Kafka) at the centre, or wire the services together with direct calls?",
+        successCriteria: [
+          "You give a clear recommendation (event stream / direct calls / hybrid), not just a list of pros and cons",
+          "You name the deciding factor: several independent consumers of the same \"order placed\" event, with more coming",
+          "You keep charging the card as a synchronous call, not an event",
+          "You call out the cost: someone has to operate Kafka, or pay for a managed service",
+          "Your recommendation would not flip if the volume were 200 orders/day instead of 2,000 — throughput isn't what decides it here",
+        ],
+      },
     ],
     status: "available",
   },

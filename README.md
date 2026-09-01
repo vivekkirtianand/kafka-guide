@@ -98,7 +98,8 @@ links back to the glossary.
   common use cases, when Kafka is the wrong tool, and the components at a high level. It
   deliberately stops short of ISR / acks / KRaft. Four interactive activities — a
   technology-choice picker, an order-event fan-out walkthrough, a queue-vs-retained-log
-  comparison, and a label-the-event exercise. The knowledge check is still to come (Phase 2c).
+  comparison, and a label-the-event exercise — plus a 10-question knowledge check and a
+  "should this system use Kafka?" design exercise.
 - **Module 1 (Kafka mental model)** is built: scannable Topic explorer content for all 6
   topics (append-only log, brokers/partitions/replicas, leaders/ISR/controllers,
   producers/consumers/offsets/groups, ordering guarantees, delivery semantics) plus the
