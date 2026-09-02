@@ -77,8 +77,12 @@ if command -v curl >/dev/null 2>&1; then
   else
     bad "kafka-exporter is not returning broker metrics — the Grafana dashboard will be empty"
   fi
-  up="$(curl -sf --max-time 5 'http://127.0.0.1:9090/api/v1/query?query=up{job="kafka-exporter"}' 2>/dev/null || true)"
-  if printf '%s' "$up" | grep -q '"value":\[[^,]*,"1"\]'; then
+  # --get --data-urlencode so curl encodes the PromQL braces/quotes itself; passing them
+  # raw in the URL triggers curl's {} glob syntax and it errors out (exit 22).
+  up="$(curl -sf --max-time 5 --get \
+    --data-urlencode 'query=up{job="kafka-exporter"}' \
+    http://127.0.0.1:9090/api/v1/query 2>/dev/null || true)"
+  if printf '%s' "$up" | grep -q '"value":\[[^]]*,"1"\]'; then
     ok "Prometheus is scraping kafka-exporter"
   else
     bad "Prometheus is not scraping kafka-exporter (target down)"

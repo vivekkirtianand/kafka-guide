@@ -416,6 +416,14 @@ automated health check, and a spelled-out volume-delete warning.
 
 Suite 294 → 300.
 
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | The round-1 Prometheus check put raw PromQL (`?query=up{job="kafka-exporter"}`) in the URL — curl reads `{…}` as its glob syntax and errors (exit 22), so the check always reported "target down" | switched to `curl --get --data-urlencode 'query=…'` so curl encodes it; added `src/lib/data/verify-lab.test.ts` — an **executable** test that stands up mock kafka-exporter + Prometheus endpoints (the Prometheus mock 400s on a mangled query, like the real thing), runs `verify-lab.sh`, and asserts both metrics-pipeline checks pass. Verified it fails against the pre-fix script |
+
+Suite 300 → 302.
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer
