@@ -22,8 +22,10 @@ or Lab B** — this project adds no infrastructure of its own.
 | `shared/OrderEventJson.java` | JSON ⇄ `OrderEvent`. One definition of the wire format, used by both sides. |
 | `producer/OrderProducer.java` | Wraps a `KafkaProducer`, keys each event by `customerId`, `acks=all` + idempotence. |
 | `producer/ProducerApp.java` | `main()` — sends four demo orders and exits. |
-| `consumer/OrderConsumer.java` | The poll-process-commit loop. Manual commit, at-least-once. |
-| `consumer/ConsumerApp.java` | `main()` — prints each order until Ctrl-C. |
+| `consumer/OrderConsumer.java` | The poll-process-commit loop. Manual commit, at-least-once. Logs rebalances; routes un-parseable records to a `PoisonPolicy`. |
+| `consumer/PoisonPolicy.java` | What to do with a record that won't parse: `propagate` (stop), `skip`, or `deadLetter`. |
+| `consumer/ConsumerApp.java` | `main()` — prints each order until Ctrl-C. 3rd arg picks the poison policy. |
+| `producer/PoisonProducerApp.java` | `main()` — sends good orders plus one malformed record, to exercise the policies. |
 | `src/test/**` | Unit tests using `MockProducer` / `MockConsumer` — **no broker required**. |
 
 ## Prerequisites
@@ -79,8 +81,26 @@ Lab B's brokers publish `localhost:29092`, `29093`, `29094`:
 ### See a consumer group split the work
 
 Run **two** consumers with the **same** group id (`--args="localhost:9092 team-a"`) in two
-terminals, then produce again: the three partitions are divided between the two instances,
-each record handled once. Give them **different** group ids and both get every record.
+terminals, then produce again: the three partitions are divided between the two instances
+(each logs `rebalance: … assigned`), and each partition is read by exactly one of them. Give
+them **different** group ids and both get every record.
+
+## Failure drills
+
+`OrderConsumer` takes a `PoisonPolicy` for records it can't parse. `PoisonProducerApp` sends
+two good orders with one malformed record between them (all keyed `alice`, so on one
+partition in order) to trigger it:
+
+```bash
+./gradlew runProducerPoison                                    # 2 good + 1 poison
+
+./gradlew runConsumer                                          # propagate (default): stops on the bad record, and stays stuck on restart
+./gradlew runConsumer --args="localhost:9092 team-a skip"      # logs and drops it, commits past it
+./gradlew runConsumer --args="localhost:9092 team-a deadletter" # copies the raw bytes to orders.DLT, commits past it
+```
+
+To see **at-least-once** redelivery: start `./gradlew runConsumer`, hard-kill it while it's
+printing, and start it again — the un-committed batch replays.
 
 ## Design choices (and where they change later)
 
@@ -88,7 +108,8 @@ each record handled once. Give them **different** group ids and both get every r
 |--|--|--|
 | Value is JSON in a `String` | Keeps serialization visible — you can `kafka-console-consumer.sh` the topic and read it. | **Module 5** swaps in Avro + Schema Registry. |
 | `acks=all` + `enable.idempotence=true` | The safe default for a pipeline you care about; no silent loss, no duplicates on retry. | Module 4 covers the delivery-guarantee trade-offs. |
-| Manual `commitSync()` after the batch | At-least-once: a crash mid-batch reprocesses, never skips. | **Phase 4c** adds a poison-record exercise that makes the trade-off bite. |
+| Manual `commitSync()` after the batch | At-least-once: a crash mid-batch reprocesses, never skips. | The **Failure drills** above make the trade-off bite. |
+| `PoisonPolicy` is `propagate` by default | The naive "no handling" behaviour, so you feel why `skip` / `deadLetter` exist. | A real service picks one deliberately and alerts on the dead-letter topic. |
 | `customerId` as the key | Per-customer ordering; different customers stay parallelisable. | Module 4 goes deeper on keys and partitioning. |
 
 ## Troubleshooting

@@ -53,9 +53,16 @@ tasks.named<JavaExec>("run") {
 
 tasks.register<JavaExec>("runConsumer") {
     group = "application"
-    description = "Consume order events until Ctrl-C. Override with --args=\"host:port groupId\"."
+    description = "Consume order events until Ctrl-C. Override with --args=\"host:port groupId [propagate|skip|deadletter]\"."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.example.orderpipeline.consumer.ConsumerApp"
+}
+
+tasks.register<JavaExec>("runProducerPoison") {
+    group = "application"
+    description = "Send good orders plus one malformed record, to exercise the poison-record policies."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.example.orderpipeline.producer.PoisonProducerApp"
 }
 
 tasks.withType<JavaCompile>().configureEach {

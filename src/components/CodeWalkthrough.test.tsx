@@ -14,6 +14,7 @@ const walkthrough: Walkthrough = {
   lessons: [
     {
       id: "one",
+      section: "Build it",
       title: "First lesson",
       intro: "Look at the config.",
       file: "src/Config.java",
@@ -26,6 +27,7 @@ const walkthrough: Walkthrough = {
     },
     {
       id: "two",
+      section: "Break it",
       title: "Second lesson",
       intro: "Look at the loop.",
       file: "src/Loop.java",
@@ -57,6 +59,12 @@ describe("CodeWalkthrough", () => {
     expect(screen.getByText('props.put(ACKS_CONFIG, "all");')).toBeInTheDocument();
     expect(screen.getByText("wait for the replicas")).toBeInTheDocument();
     expect(screen.getByText("Open examples/test-project/ in your editor.")).toBeInTheDocument();
+  });
+
+  it("renders a section heading before each lesson that opens one", () => {
+    renderWalkthrough();
+    const sections = screen.getAllByTestId("walkthrough-section").map((el) => el.textContent);
+    expect(sections).toEqual(["Build it", "Break it"]);
   });
 
   it("shows the 'Try it' command only where the lesson defines one", () => {

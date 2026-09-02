@@ -47,7 +47,7 @@ unless noted.
 | **1** | **Course framework** | 1a data model + metadata + IA + computed duration; 1b progress tracking (localStorage); 1c glossary | — | M1 |
 | 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
 | 3 | Rework local lab | **3a ✅** Lab A single-broker in-app walkthrough; **3b ✅** Lab B (3-broker) in-app walkthrough + OS matrix + resource floor + `verify-lab.sh` + volume-delete warning | 1a, 1b | M1 |
-| 4 | Java producer/consumer module | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; **4b ✅** Module 3 (new, `index: 3`) — an 11-lesson in-app `CodeWalkthrough` over the scaffold; reference config modules renumbered 3–7 → 4–8; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
+| 4 | Java producer/consumer module ✅ | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; **4b ✅** Module 3 (new, `index: 3`) — an in-app `CodeWalkthrough` over the scaffold; reference config modules renumbered 3–7 → 4–8; **4c ✅** rebalance listener + `PoisonPolicy` (propagate/skip/dead-letter) + `PoisonProducerApp` + 5 "Break it on purpose" lessons | 3a | M2 |
 | 5 | Schemas & serialization | 5a Module 5 topic content (bytes, JSON/Avro/Protobuf, Schema Registry, compatibility modes, poison records); 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams | 7a Module 7 Connect content + file/DB↔Kafka lab (lab stack already has `cp-kafka-connect`); 7b Streams content + order-total aggregation lab | 4, 5 | M2 |
@@ -554,6 +554,51 @@ Suite 322 → 325 (+3 assertions locking in findings 1, 3, 4).
 | 1 (P2) | Round 1 only fixed lesson 1 and the setup note — the other "Try it" commands still started with a bare `./gradlew`, which fails from the repo root (there is no root `gradlew`) | every `./gradlew` "Try it" command now begins `cd examples/order-pipeline-java && …`, so each is independently copy-safe; `cloneNote` explains they run from the repo root and to drop the `cd` if already inside the example. Test asserts every `./gradlew` command is `cd`-prefixed |
 
 Suite 325 → 326.
+
+### PR 4c — multi-consumer + intentional-failure drills
+
+The walkthrough gains a second phase, **"Break it on purpose"**, over real failure-handling
+code added to the example. (`AskUserQuestion`: extend the walkthrough rather than a separate
+exercise block; stay MockConsumer-only, no Testcontainers.)
+
+- `examples/order-pipeline-java/`:
+  - `consumer/PoisonPolicy.java` (new) — a functional interface for a record that won't
+    parse, with `propagate()` (rethrow → the poll loop stops), `skip()` (log + move on,
+    commit past it), `deadLetter(Producer, topic)` (copy the raw bytes to a DLT, then move
+    on).
+  - `consumer/OrderConsumer.java` — `runOnce` wraps the parse in try/catch and hands a
+    failure to the policy (default `propagate`); a genuine handler exception still
+    propagates. `subscribe()` now installs a `ConsumerRebalanceListener` that logs
+    assignment/revocation. New constructor overloads take a `PoisonPolicy`.
+  - `consumer/ConsumerApp.java` — 3rd arg picks the policy (`propagate` | `skip` |
+    `deadletter`); builds and closes a DLT producer for `deadletter`.
+  - `producer/PoisonProducerApp.java` (new) + a `runProducerPoison` Gradle task — sends two
+    good orders and one malformed record on one key.
+- Tests (MockConsumer/MockProducer, still no broker): `OrderConsumerPoisonTest` — propagate
+  throws and leaves the offset uncommitted; skip drops it and commits past; deadLetter
+  copies the raw record to a MockProducer and commits past; a handler exception is *not*
+  swallowed. `OrderConsumerTest` — subscribing with the rebalance listener doesn't break the
+  loop. 13 → 18 Java tests.
+- `src/lib/types.ts` — `WalkthroughLesson.section?` (a group heading). `CodeWalkthrough.tsx`
+  renders a `<li data-testid="walkthrough-section">` when it changes.
+- `src/lib/data/walkthroughs.ts` — lesson 1 opens "Build the happy path"; 5 new lessons open
+  "Break it on purpose": watching a rebalance, a poison record stops everything, skip it,
+  dead-letter it, prove at-least-once (hard-kill drill). Lessons 8/10/11's snippets updated
+  for the `runOnce` / `ConsumerApp` changes. 11 → 16 lessons.
+- `src/lib/data/modules.ts` — Module 3 `estimatedMinutes` 90 → 120, +1 objective and +1
+  completion criterion on poison handling, +5 `topics`.
+- Tests: `walkthroughs.test.ts` (16-count, section split, per-policy trade-off assertions),
+  `CodeWalkthrough.test.tsx` (section headings render), `order-pipeline-java.test.ts` (new
+  files + `PoisonPolicy` factories + `ConsumerRebalanceListener` + `runProducerPoison`).
+  Suite 326 → 330.
+- `examples/order-pipeline-java/README.md` — "Failure drills" section; root `README.md` —
+  Module 3 bullet rewritten (16 lessons, two phases).
+
+Local verification: `./gradlew build` green on Temurin 21 (18 Java tests, no `-Xlint:all`
+warnings); `npm run typecheck` / `lint` / `test` (330) / `build` green; browser — the module
+renders 16 lessons under two section headings, checkboxes persist.
+
+**Phase 4 complete** — PRs 4a + 4b + 4c. The Java developer path (Module 3) is done.
 
 ---
 

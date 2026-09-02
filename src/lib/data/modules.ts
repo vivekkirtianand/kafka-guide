@@ -883,7 +883,7 @@ export const modules: Module[] = [
     summary:
       "Read a real Kafka client end to end — a Java producer that sends keyed order events, and a consumer that reads them back in a poll–process–commit loop. The code ships in examples/order-pipeline-java/; this module walks the lines that matter.",
     difficulty: "beginner",
-    estimatedMinutes: 90,
+    estimatedMinutes: 120,
     prerequisites: ["mental-model", "local-cluster-lab"],
     track: "beginner-path",
     objectives: [
@@ -892,11 +892,13 @@ export const modules: Module[] = [
       "Configure a KafkaConsumer with a group id and run a poll–process–commit loop",
       "Explain at-least-once delivery and say where duplicates come from",
       "Add a shutdown hook so the consumer leaves its group cleanly instead of waiting for a timeout",
+      "Handle a poison record deliberately — skip it or dead-letter it — instead of letting it stall the partition",
     ],
     completionCriteria: [
       "You have run ./gradlew build (no broker needed) and ./gradlew run + runConsumer against Lab A",
       "You can point at the lines that set the message key, commit offsets, and handle shutdown, and say what each does",
       "You can predict what happens when a second consumer joins with the same group id, and with a different one",
+      "You have fed the poison producer to the consumer and seen propagate stall it, then skip / deadletter get past it",
     ],
     furtherReading: [
       {
@@ -923,6 +925,11 @@ export const modules: Module[] = [
       "Offsets and committing",
       "Consumer groups: scaling the read side",
       "Graceful shutdown",
+      "Watching a rebalance",
+      "A poison record stops everything",
+      "Skip the poison record",
+      "Dead-letter the poison record",
+      "Prove at-least-once",
     ],
     activities: [],
     status: "available",
