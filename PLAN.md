@@ -404,6 +404,18 @@ automated health check, and a spelled-out volume-delete warning.
   volume-delete warning; module carries `[labA, labB]`); `LabWalkthrough.test.tsx` +2
   (collapsed `<details>` render, new sections render). Suite 285 → 294.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | The min-ISR step stopped two of three brokers — that also loses the KRaft controller quorum (2 of 3), so the failure isn't a clean `NotEnoughReplicasException` | reworked: stop **one** broker, and make the floor bite by raising the topic's own `min.insync.replicas=3` (stricter than the cluster default of 2). Test asserts no step stops two brokers and that the step raises the topic config |
+| 2 | `verify-lab.sh` passed with `kafka-exporter` stopped, so the Grafana step could fail silently | added `kafka-ui` / `kafka-exporter` / `prometheus` / `grafana` running checks, a port-9308 check, and (when `curl` is present) a `kafka_brokers` metric check + a Prometheus "is it scraping kafka-exporter" check. Test reads the script and asserts the exporter/prometheus checks exist |
+| 3 | `stop-leader` invited "substitute the broker you saw leading" while every later step hardcodes `kafka-2` | `stop-leader` now targets `kafka-2` deterministically (each broker leads one of three partitions); the substitution wording is gone. Test asserts every `docker compose stop/start` in the lab names `kafka-2` |
+| 4 | `dynamic-config` and `describe-replicated` expected output showed an inherited `min.insync.replicas` line — `--describe` only lists topic-level overrides | removed those lines; the expected output and observe text now explain that inherited broker defaults need `--all`. Test rejects `Configs: min.insync.replicas` and the inherited line |
+| 5 | `local-cluster-lab/README.md` activity examples still used `--timeout-ms 5000` | activities 2 and 5 use `--max-messages` + a 20s backstop (matching the Lab A fix); activity 4 also made deterministic on `kafka-2` |
+
+Suite 294 → 300.
+
 ## Module 1 — Kafka mental model
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer

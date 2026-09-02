@@ -135,8 +135,14 @@ Then type lines like `customer-42:first order` / `customer-42:second order` and
 ```bash
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server kafka-1:19092 --topic orders --from-beginning \
-  --property print.key=true --property print.partition=true --timeout-ms 5000
+  --property print.key=true --property print.partition=true \
+  --max-messages 3 --timeout-ms 20000
 ```
+
+`--max-messages` makes the consumer exit as soon as it has read that many records, so there
+is no timeout to sit through; `--timeout-ms 20000` is only a backstop if fewer were produced
+(a short 5s timeout can expire during the cold consumer-group coordinator setup and look
+like a failed produce).
 
 ### 3. Observe partition placement
 
@@ -148,22 +154,24 @@ on.
 
 ### 4. Stop and restart brokers
 
-Find which broker leads a partition, then stop it and watch a follower get elected:
+Describe the topic, then stop `kafka-2` — with three partitions across three brokers it
+leads one of them — and describe again:
 
 ```bash
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server kafka-1:19092 --describe --topic orders
 
-docker compose stop kafka-2   # substitute whichever broker is the leader
+docker compose stop kafka-2
 
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server kafka-1:19092 --describe --topic orders
 ```
 
-`Leader` changes to a surviving replica and the stopped broker drops out of `Isr`. Restart
-it and re-describe after a few seconds — it rejoins `Isr` once it's caught up, but does
-*not* automatically reclaim leadership (that's expected KRaft behavior; a later
-"preferred leader" election would be needed to move leadership back):
+The partition kafka-2 was leading gets a new `Leader` (a surviving in-sync replica) and
+kafka-2 drops out of every `Isr`. Stopping one of three brokers keeps the KRaft controller
+quorum, so the rest of the cluster is unaffected. Restart it and re-describe after a few
+seconds — it rejoins `Isr` once it's caught up, but does *not* automatically reclaim
+leadership (expected KRaft behavior; a later "preferred leader" election would move it back):
 
 ```bash
 docker compose start kafka-2
@@ -176,7 +184,7 @@ Consume with a named group, then describe it:
 ```bash
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server kafka-1:19092 --topic orders --group order-processors \
-  --from-beginning --timeout-ms 5000
+  --from-beginning --timeout-ms 20000
 
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server kafka-1:19092 --describe --group order-processors

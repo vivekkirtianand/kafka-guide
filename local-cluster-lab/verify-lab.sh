@@ -43,6 +43,15 @@ for b in kafka-1 kafka-2 kafka-3; do
   fi
 done
 
+echo "Supporting services"
+for s in kafka-ui kafka-exporter prometheus grafana; do
+  if printf '%s\n' "$running" | grep -qx "$s"; then
+    ok "$s running"
+  else
+    bad "$s is not running (the Grafana dashboard needs kafka-exporter and prometheus)"
+  fi
+done
+
 echo "Host ports"
 check_port() {
   # bash /dev/tcp — a refused connection returns immediately, no 'nc' or 'timeout' needed.
@@ -57,8 +66,24 @@ check_port 29092 "kafka-1 bootstrap"
 check_port 29093 "kafka-2 bootstrap"
 check_port 29094 "kafka-3 bootstrap"
 check_port 8080  "Kafka UI"
+check_port 9308  "kafka-exporter"
 check_port 9090  "Prometheus"
 check_port 3001  "Grafana"
+
+if command -v curl >/dev/null 2>&1; then
+  echo "Metrics pipeline"
+  if curl -sf --max-time 5 http://127.0.0.1:9308/metrics 2>/dev/null | grep -q '^kafka_brokers '; then
+    ok "kafka-exporter is producing kafka_* metrics"
+  else
+    bad "kafka-exporter is not returning broker metrics — the Grafana dashboard will be empty"
+  fi
+  up="$(curl -sf --max-time 5 'http://127.0.0.1:9090/api/v1/query?query=up{job="kafka-exporter"}' 2>/dev/null || true)"
+  if printf '%s' "$up" | grep -q '"value":\[[^,]*,"1"\]'; then
+    ok "Prometheus is scraping kafka-exporter"
+  else
+    bad "Prometheus is not scraping kafka-exporter (target down)"
+  fi
+fi
 
 echo
 if [ "$fail" -eq 0 ]; then

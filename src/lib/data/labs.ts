@@ -275,9 +275,9 @@ export const labB: Lab = {
       command:
         "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic orders",
       expected:
-        "Topic: orders\tPartitionCount: 3\tReplicationFactor: 3\tConfigs: min.insync.replicas=2\n\tTopic: orders\tPartition: 0\tLeader: 1\tReplicas: 1,2,3\tIsr: 1,2,3\n\tTopic: orders\tPartition: 1\tLeader: 2\tReplicas: 2,3,1\tIsr: 2,3,1\n\tTopic: orders\tPartition: 2\tLeader: 3\tReplicas: 3,1,2\tIsr: 3,1,2\n(your leader assignment will vary; the point is that leadership is spread, not all on one broker)",
+        "Topic: orders\tPartitionCount: 3\tReplicationFactor: 3\tConfigs:\n\tTopic: orders\tPartition: 0\tLeader: 1\tReplicas: 1,2,3\tIsr: 1,2,3\n\tTopic: orders\tPartition: 1\tLeader: 2\tReplicas: 2,3,1\tIsr: 2,3,1\n\tTopic: orders\tPartition: 2\tLeader: 3\tReplicas: 3,1,2\tIsr: 3,1,2\n(your leader assignment will vary; the point is that leadership is spread, not all on one broker)",
       observe:
-        "`Replicas` lists all three brokers for every partition; `Isr` (in-sync replicas) currently matches it. `min.insync.replicas=2` is a topic config here — remember that number for the broker-stop step.",
+        "`Replicas` lists all three brokers for every partition and `Isr` (in-sync replicas) currently matches. `Configs:` is blank — `--describe` only shows *topic-level* overrides, and this topic has none. The cluster still has a default `min.insync.replicas=2` (a broker setting); you'll turn it into a topic override in the ISR-floor step.",
     },
     {
       id: "produce-consume-keyed",
@@ -288,63 +288,64 @@ export const labB: Lab = {
       expected:
         "Partition:1\twest\tA\nPartition:1\twest\tB\nPartition:2\teast\tC\nProcessed a total of 3 messages\n(partition numbers vary; both `west` records share one)",
       observe:
-        "Same behaviour as Lab A — the key decides the partition. What is different now is that the partition's leader is on a specific broker, and that is the broker you will stop next.",
+        "Same behaviour as Lab A — the key decides the partition. What is different now is that each partition's leader sits on a specific broker (from the describe output), so stopping a broker takes some partition's leader down with it.",
     },
     {
       id: "stop-leader",
-      title: "Stop the broker leading a partition",
+      title: "Stop kafka-2 and watch leadership move",
       intro:
-        "Find a partition's leader from the describe output, then stop that broker and describe again. Substitute the broker number you actually saw leading.",
+        "Stop `kafka-2` and describe `orders` again. With three partitions across three brokers, each broker is the preferred leader for exactly one partition, so kafka-2 was leading one of them. (Every later step also uses kafka-2, so stop that one, not whichever you saw leading.)",
       command:
         "docker compose stop kafka-2\ndocker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic orders",
       expected:
-        "\tTopic: orders\tPartition: 1\tLeader: 3\tReplicas: 2,3,1\tIsr: 3,1\n(the partition kafka-2 was leading has a new leader, and 2 has dropped out of every Isr list)",
+        "\tTopic: orders\tPartition: 0\tLeader: 1\tReplicas: 1,2,3\tIsr: 1,3\n\tTopic: orders\tPartition: 1\tLeader: 3\tReplicas: 2,3,1\tIsr: 3,1\n\tTopic: orders\tPartition: 2\tLeader: 3\tReplicas: 3,1,2\tIsr: 3,1\n(the partition kafka-2 was leading has a new leader, and 2 is gone from every Isr list)",
       observe:
-        "Leadership moved to a surviving in-sync replica within a second or two, and `Isr` for every partition shrank from `1,2,3` to two brokers. Producers and consumers using `acks=all` kept working because two in-sync replicas still meet `min.insync.replicas=2`.",
+        "Leadership moved to a surviving in-sync replica within a second or two, and `Isr` for every partition shrank from three brokers to two. `acks=all` producers and consumers kept working: two in-sync replicas still meet the cluster default `min.insync.replicas=2`, and the KRaft controller quorum (2 of 3) is intact.",
       commonError: {
-        symptom: "`--describe` still shows `Leader: 2` for some partition.",
-        cause: "You stopped a broker that was not leading that partition — leadership only moves for partitions whose leader went away.",
-        recovery: "That is fine. Look at the partition kafka-2 *was* leading; that one has a new leader.",
+        symptom: "`--describe` still shows `Leader: 2` for a partition.",
+        cause: "Kafka-2 has not fully stopped yet, or you are looking at cached output.",
+        recovery: "Give it a few seconds and re-run the `--describe`. `docker compose ps` should show kafka-2 absent from the running list.",
+      },
+    },
+    {
+      id: "min-isr-floor",
+      title: "Make the ISR floor bite: acks=all stops accepting writes",
+      intro:
+        "With kafka-2 still stopped from the previous step, raise `orders` to `min.insync.replicas=3` — stricter than the cluster default of 2 — then try an `acks=all` write. Only two replicas are in sync, below the topic's floor, so Kafka can't accept it. Just one broker is down, so the KRaft controller quorum (2 of 3) and every other operation stay healthy.",
+      command:
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka-1:19092 --entity-type topics --entity-name orders --alter --add-config min.insync.replicas=3\nprintf 'blocked\\n' | docker exec -i kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server kafka-1:19092 --topic orders --producer-property acks=all --producer-property retries=0",
+      expected:
+        "org.apache.kafka.common.errors.NotEnoughReplicasException: The size of the current ISR [1,3] is insufficient to satisfy the min.insync.replicas requirement of [3] for partition orders-N",
+      observe:
+        "This is admission control, not data loss — Kafka refused a write it could not replicate to three in-sync replicas rather than quietly accept a weaker guarantee. An `acks=1` or `acks=0` producer would still have been accepted. Remove the override now (`kafka-configs.sh --bootstrap-server kafka-1:19092 --entity-type topics --entity-name orders --alter --delete-config min.insync.replicas`); leave kafka-2 stopped — the next step brings it back.",
+      commonError: {
+        symptom: "The produce succeeds instead of failing.",
+        cause: "The `--add-config min.insync.replicas=3` did not take, or kafka-2 came back up so the ISR is 3 again.",
+        recovery: "Confirm the override with `kafka-configs.sh ... --describe` and that `docker compose ps` shows kafka-2 stopped, then retry the produce.",
       },
     },
     {
       id: "restart-broker",
-      title: "Restart the broker and watch it rejoin the ISR",
-      intro: "Bring the stopped broker back and describe once more after a few seconds.",
+      title: "Restart kafka-2 and watch it rejoin the ISR",
+      intro: "Bring kafka-2 back and describe once more after a few seconds.",
       command:
-        "docker compose start kafka-2\nsleep 10 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic orders",
+        "docker compose start kafka-2\nsleep 15 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic orders",
       expected:
         "\tTopic: orders\tPartition: 1\tLeader: 3\tReplicas: 2,3,1\tIsr: 3,1,2\n(kafka-2 is back in every Isr list, but it did NOT automatically take leadership back)",
       observe:
-        "kafka-2 caught up and rejoined the ISR, so you are back to three in-sync replicas. It did not reclaim the partitions it used to lead — KRaft leaves leadership where it is until a preferred-leader election moves it. That is expected; leadership imbalance after a restart is normal and self-corrects on the next rebalance.",
-    },
-    {
-      id: "min-isr-floor",
-      title: "Drop the ISR below the floor and watch acks=all stop accepting writes",
-      intro:
-        "`min.insync.replicas=2` means an `acks=all` write is only accepted while at least two replicas are in sync. Stop two of the three brokers and every partition's ISR falls to one.",
-      command:
-        "docker compose stop kafka-2 kafka-3\nprintf 'blocked\\n' | docker exec -i kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server kafka-1:19092 --topic orders --producer-property acks=all --producer-property retries=0",
-      expected:
-        "org.apache.kafka.common.errors.NotEnoughReplicasException: The size of the current ISR ... is insufficient to satisfy the min.insync.replicas requirement of [2] for partition orders-N",
-      observe:
-        "This is admission control, not data loss. Kafka refused the write rather than accept something it could only store on one broker. An `acks=1` or `acks=0` producer would still have been accepted here — with a weaker durability guarantee. Bring the brokers back with `docker compose start kafka-2 kafka-3` and the same produce succeeds once the ISR is back to two.",
-      commonError: {
-        symptom: "The produce succeeds instead of failing.",
-        cause: "One of the two brokers you stopped is still (or already) running, so a partition still has two in-sync replicas.",
-        recovery: "`docker compose ps` should show only kafka-1 up among the brokers. Stop whichever of kafka-2 / kafka-3 is still running and retry.",
-      },
+        "kafka-2 caught up and rejoined the ISR, so you are back to three in-sync replicas. It did not reclaim the partitions it used to lead — KRaft leaves leadership where it is until a preferred-leader election moves it. Leadership imbalance after a restart is expected and self-corrects on the next rebalance.",
     },
     {
       id: "grafana-dashboard",
       title: "Read the same story on the Grafana dashboard",
       intro:
-        "Everything you just did by hand is on a dashboard. Start the brokers back up, open Grafana, and stop a broker again while watching.",
-      command: "docker compose start kafka-2 kafka-3   # then open http://localhost:3001",
+        "Everything you just did by hand is on a dashboard. Make sure all three brokers are back and healthy (`docker compose ps`), open Grafana, then stop kafka-2 once more while watching.",
+      command:
+        "# open http://localhost:3001 -> Dashboards -> \"Kafka lab overview\", then:\ndocker compose stop kafka-2\nsleep 20\ndocker compose start kafka-2",
       expected:
-        "Grafana (anonymous access, no login) → Dashboards → \"Kafka lab overview\". Panels: brokers reporting, under-replicated partitions, consumer-group lag, per-topic write rate, ISR vs total replicas.",
+        "Grafana (anonymous access, no login). While kafka-2 is stopped: \"brokers reporting\" drops from 3 to 2 and \"under-replicated partitions\" climbs above 0. After the restart both return to normal within a minute.",
       observe:
-        "Stop a broker and the \"under-replicated partitions\" panel jumps from 0 and \"brokers reporting\" drops to 2; start it and both recover. This is the metric an on-call engineer actually watches — the CLI `--describe` is the same information one snapshot at a time.",
+        "This is the view an on-call engineer actually watches — `kafka-topics.sh --describe` is the same information one snapshot at a time. The dashboard reads from kafka-exporter via Prometheus; if the panels are empty, kafka-exporter or Prometheus is not running (`verify-lab.sh` checks both).",
     },
     {
       id: "dynamic-config",
@@ -353,9 +354,9 @@ export const labB: Lab = {
       command:
         "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka-1:19092 --entity-type topics --entity-name orders --alter --add-config retention.ms=3600000\ndocker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka-1:19092 --entity-type topics --entity-name orders --describe",
       expected:
-        "Completed updating config for topic orders.\nDynamic configs for topic orders are:\n  retention.ms=3600000 sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:retention.ms=3600000}\n  min.insync.replicas=2 ...",
+        "Completed updating config for topic orders.\nDynamic configs for topic orders are:\n  retention.ms=3600000 sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:retention.ms=3600000}\n(only topic-level overrides are listed — if you did not run --delete-config min.insync.replicas from the previous step, that line shows here too)",
       observe:
-        "No broker restart, no downtime — the change is stored in cluster metadata and every broker picks it up. Remove the override with `--delete-config retention.ms` to fall back to the broker default.",
+        "No broker restart, no downtime — the change is stored in cluster metadata and every broker picks it up. `--describe` lists only this topic's own overrides; inherited broker defaults need `--all`. Remove the override with `--delete-config retention.ms` to fall back to the default.",
     },
   ],
   troubleshooting: [
