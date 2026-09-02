@@ -28,9 +28,11 @@ or Lab B** — this project adds no infrastructure of its own.
 
 ## Prerequisites
 
-- **A JDK.** The build declares a Java 21 toolchain; if your `java` is a different version
-  Gradle downloads a matching JDK the first time (via the `foojay-resolver` plugin). CI
-  installs Temurin 21.
+- **A JDK to launch the Gradle wrapper.** The pinned Gradle (9.1.0) runs on Java 17–25;
+  any JDK in that range works. The build then *compiles and tests* against a **Java 21**
+  toolchain — if you don't have a JDK 21, Gradle downloads one the first time (via the
+  `foojay-resolver` plugin). The `.java-version` file pins 21 for tools that read it
+  (jenv, asdf), and CI installs Temurin 21.
 - **A running broker** for the `run` tasks (not for `build`/`test`). Start one with Lab A:
 
   ```bash
@@ -53,15 +55,17 @@ drive `MockProducer` and `MockConsumer` in memory.
 Two terminals, broker already up with an `orders` topic:
 
 ```bash
-# terminal 1 — start the consumer first so it sees every record
+# terminal 1 — start the consumer (Ctrl-C to stop it)
 ./gradlew runConsumer
 
 # terminal 2 — send the demo orders
 ./gradlew run
 ```
 
-The consumer prints four orders. Two of them are for `alice`; because the key is the
-customer id, both `alice` records are on the same partition and always print in send order.
+The consumer prints four orders. It's a fresh group, so it reads from the start of the
+topic whether you start it before or after producing; run it first to watch them arrive
+live. Two orders are for `alice`; because the key is the customer id, both `alice` records
+are on the same partition and always print in send order.
 
 ### Point at Lab B instead
 
@@ -92,6 +96,7 @@ each record handled once. Give them **different** group ids and both get every r
 | Symptom | Fix |
 |--|--|
 | `./gradlew` downloads a JDK on first run | Expected — the Java 21 toolchain isn't on your machine. One-time. |
+| `Could not determine Java version` / Gradle refuses to start | Your launch JDK is newer than Gradle 9.1.0 supports (Java > 25). Run the wrapper with a JDK 17–25 (`JAVA_HOME=… ./gradlew …`, or let `.java-version` select it). |
 | `Connection to node -1 could not be established` | No broker on that address. Start Lab A / Lab B, or pass the right `--args`. |
-| Consumer prints nothing | The `orders` topic doesn't exist yet, or you produced before subscribing. Create the topic, re-run the consumer, then produce. |
-| `UnknownTopicOrPartitionException` | Same — create the topic first. |
+| Consumer prints nothing | Either the `orders` topic doesn't exist (create it, then re-run), or the group id you passed has already committed past those records — a **new** group id reads from the start (`auto.offset.reset=earliest`). |
+| `UnknownTopicOrPartitionException` | The topic doesn't exist yet — create it first. |

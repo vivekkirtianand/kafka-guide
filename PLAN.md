@@ -442,10 +442,11 @@ poll-process-commit loop. It runs against the Lab A / Lab B broker the learner a
 starts — no infrastructure of its own — and its tests need no broker at all.
 
 - **Build tool: Gradle (Kotlin DSL)** (the `AskUserQuestion` decision). `build.gradle.kts`
-  + `settings.gradle.kts`; wrapper generated at 8.14.3 and pinned with
-  `distributionSha256Sum`; `settings.gradle.kts` applies `foojay-resolver-convention` so a
-  machine without JDK 21 auto-downloads the toolchain. Dependency versions pinned in one
-  block (`kafka-clients` 4.0.0, Jackson 2.18.2, slf4j 2.0.16, JUnit 5.11.4).
+  + `settings.gradle.kts`; wrapper pinned to Gradle 9.1.0 (runs on Java 17–25, so a dev on
+  a current JDK 25 isn't blocked) with `distributionSha256Sum`; `settings.gradle.kts`
+  applies `foojay-resolver-convention` so a machine without JDK 21 auto-downloads the
+  toolchain; `.java-version` pins 21 for jenv/asdf. Dependency versions pinned in one block
+  (`kafka-clients` 4.0.0, Jackson 2.18.2, slf4j 2.0.16, JUnit 5.11.4).
 - `src/main/java/com/example/orderpipeline/`:
   - `shared/OrderEvent.java` — an immutable `record` (orderId, customerId, item, quantity,
     amountCents, occurredAt) with a compact constructor that rejects bad data early.
@@ -481,6 +482,17 @@ starts — no infrastructure of its own — and its tests need no broker at all.
 
 Local verification: `./gradlew build` green on Temurin 21 (13 Java tests pass, no compiler
 warnings under `-Xlint:all`); `npm run typecheck` / `lint` / `test` (307) / `build` all green.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | `ProducerApp` ignored the send `Future`s — an async send failure could still end with "Sent 4 orders" and exit 0 | collect every `Future<RecordMetadata>`, `flush()`, then `get()` each: failures print to stderr, the summary is `Sent N/4`, and the process `System.exit(1)`s if `N < 4`. Doc comment now explains `send` is async |
+| 2 (P1) | Gradle 8.14.3 won't launch under JDK 25 (its max is 24), so `./gradlew` fails before the Java 21 toolchain can be downloaded — contradicting the README | bumped the wrapper to **Gradle 9.1.0** (runs on Java 17–25); added `.java-version` (21) for jenv/asdf; README prerequisite rewritten to separate the *launch* JDK (17–25) from the *toolchain* (21), and a troubleshooting row for a too-new launch JDK |
+| 3 (P2) | README said producing before the consumer subscribes can leave it empty — false for a new group with `auto.offset.reset=earliest` | corrected: a fresh group reads from the start regardless of start order; "prints nothing" is now the topic missing or a **reused** group id that already committed past those offsets |
+
+Suite 307 (unchanged — the Java-side fixes are covered by the Gradle CI job; finding 1's
+behaviour is exercised by `./gradlew run` against a broker, not a unit test).
 
 ## Module 1 — Kafka mental model
 
