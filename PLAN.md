@@ -47,7 +47,7 @@ unless noted.
 | **1** | **Course framework** | 1a data model + metadata + IA + computed duration; 1b progress tracking (localStorage); 1c glossary | — | M1 |
 | 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
 | 3 | Rework local lab | **3a ✅** Lab A single-broker in-app walkthrough; **3b ✅** Lab B (3-broker) in-app walkthrough + OS matrix + resource floor + `verify-lab.sh` + volume-delete warning | 1a, 1b | M1 |
-| 4 | Java producer/consumer module | 4a `examples/order-pipeline-java/` scaffold (producer/consumer/shared/tests) + CI; 4b Module 3 lessons 1–11; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
+| 4 | Java producer/consumer module | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; 4b Module 3 lessons 1–11; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
 | 5 | Schemas & serialization | 5a Module 5 topic content (bytes, JSON/Avro/Protobuf, Schema Registry, compatibility modes, poison records); 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams | 7a Module 7 Connect content + file/DB↔Kafka lab (lab stack already has `cp-kafka-connect`); 7b Streams content + order-total aggregation lab | 4, 5 | M2 |
@@ -66,6 +66,9 @@ unless noted.
 
 - **Java toolchain in CI** (Phase 4): the repo is Node-only today. `examples/order-pipeline-java/`
   needs its own Gradle/Maven build + a separate CI job. Decide Gradle vs Maven at 4a.
+  → **Resolved in 4a**: Gradle (Kotlin DSL), wrapper pinned by SHA-256, Java 21 toolchain
+  (`foojay-resolver` auto-downloads it locally), `verify-order-pipeline-java` job on
+  `ubuntu-latest` with `actions/setup-java@v4` + `gradle/actions/setup-gradle@v4`.
 - **Renumber timing** (Phase 6): doing it before Module 0 exists means a throwaway 0-based
   shuffle — Module 0 (Phase 2) is sequenced before the renumber so there's an anchor. Slugs
   are already semantic, so the renumber is the `index` field + array order + nav, not routes.
@@ -423,6 +426,73 @@ Suite 294 → 300.
 | 1 | The round-1 Prometheus check put raw PromQL (`?query=up{job="kafka-exporter"}`) in the URL — curl reads `{…}` as its glob syntax and errors (exit 22), so the check always reported "target down" | switched to `curl --get --data-urlencode 'query=…'` so curl encodes it; added `src/lib/data/verify-lab.test.ts` — an **executable** test that stands up mock kafka-exporter + Prometheus endpoints (the Prometheus mock 400s on a mangled query, like the real thing), runs `verify-lab.sh`, and asserts both metrics-pipeline checks pass. Verified it fails against the pre-fix script |
 
 Suite 300 → 302.
+
+## Phase 4 — Java producer/consumer module
+
+Module 3 ("Build a producer and consumer") is the first module backed by real application
+code. Phase 4 builds that code (`examples/order-pipeline-java/`) and the lessons that walk
+through it. 4a is the scaffold and the CI wiring; 4b writes the lessons; 4c adds the
+multi-consumer and intentional-failure exercises.
+
+### PR 4a — order-pipeline-java scaffold + CI
+
+The smallest thing that is still a real Kafka client: a producer that sends structured
+events to a topic keyed by customer id, and a consumer that reads them back in a
+poll-process-commit loop. It runs against the Lab A / Lab B broker the learner already
+starts — no infrastructure of its own — and its tests need no broker at all.
+
+- **Build tool: Gradle (Kotlin DSL)** (the `AskUserQuestion` decision). `build.gradle.kts`
+  + `settings.gradle.kts`; wrapper pinned to Gradle 9.1.0 (runs on Java 17–25, so a dev on
+  a current JDK 25 isn't blocked) with `distributionSha256Sum`; `settings.gradle.kts`
+  applies `foojay-resolver-convention` so a machine without JDK 21 auto-downloads the
+  toolchain; `.java-version` pins 21 for jenv/asdf. Dependency versions pinned in one block
+  (`kafka-clients` 4.0.0, Jackson 2.18.2, slf4j 2.0.16, JUnit 5.11.4).
+- `src/main/java/com/example/orderpipeline/`:
+  - `shared/OrderEvent.java` — an immutable `record` (orderId, customerId, item, quantity,
+    amountCents, occurredAt) with a compact constructor that rejects bad data early.
+  - `shared/OrderEventJson.java` — one `ObjectMapper`, `toJson` / `fromJson`. Instant as
+    ISO-8601, `FAIL_ON_UNKNOWN_PROPERTIES` off (a newer producer shouldn't break an older
+    consumer). Comment points forward to Phase 5 (Avro + Schema Registry).
+  - `producer/OrderProducer.java` — wraps `Producer<String,String>`, keys each record by
+    `customerId`, `acks=all` + `enable.idempotence=true`. Package-private constructor takes
+    any `Producer` so the test passes a `MockProducer`.
+  - `producer/ProducerApp.java` — `main()`, sends four demo orders (two share a customer).
+  - `consumer/OrderConsumer.java` — `runOnce` (one poll → parse → hand off → `commitSync`)
+    and `run` (loop until `stop()` via `wakeup()`). `enable.auto.commit=false`,
+    at-least-once.
+  - `consumer/ConsumerApp.java` — `main()`, prints each order until Ctrl-C (shutdown hook →
+    `stop()`).
+- `src/test/java/**` — `MockProducer` / `MockConsumer` unit tests, **no broker**: JSON
+  round-trip + unknown-field tolerance + compact-constructor rejection; producer keys by
+  customer, puts JSON in the value, `flush()` completes pending sends; consumer parses
+  records back, commits only after handling a non-empty batch, preserves per-key order.
+  `TestClusters` helper builds the minimal `Cluster` metadata `MockProducer` needs in
+  Kafka 4.0 (the old no-partitioner constructor is gone). 13 Java tests.
+- `.github/workflows/ci.yml` — new `verify-order-pipeline-java` job on `ubuntu-latest`:
+  `actions/setup-java@v4` (Temurin 21) + `gradle/actions/setup-gradle@v4` (caches the
+  distribution + deps, validates the wrapper jar checksum) + `./gradlew build`.
+- `src/lib/data/order-pipeline-java.test.ts` — a Node-suite guard: the wrapper is
+  SHA-pinned, the build targets Java 21 and pins `kafka-clients`, all producer/consumer/
+  shared/test sources exist, records are keyed by `customerId` with manual commit, and the
+  CI job is wired. Suite 302 → 307.
+- `README.md` (root) — `examples/order-pipeline-java/` in the project tree + a "Module 3"
+  bullet in "What's scaffolded". `examples/order-pipeline-java/README.md` — build/test,
+  run against Lab A and Lab B, the consumer-group experiment, and a table of design choices
+  with where each one changes later.
+
+Local verification: `./gradlew build` green on Temurin 21 (13 Java tests pass, no compiler
+warnings under `-Xlint:all`); `npm run typecheck` / `lint` / `test` (307) / `build` all green.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | `ProducerApp` ignored the send `Future`s — an async send failure could still end with "Sent 4 orders" and exit 0 | collect every `Future<RecordMetadata>`, `flush()`, then `get()` each: failures print to stderr, the summary is `Sent N/4`, and the process `System.exit(1)`s if `N < 4`. Doc comment now explains `send` is async |
+| 2 (P1) | Gradle 8.14.3 won't launch under JDK 25 (its max is 24), so `./gradlew` fails before the Java 21 toolchain can be downloaded — contradicting the README | bumped the wrapper to **Gradle 9.1.0** (runs on Java 17–25); added `.java-version` (21) for jenv/asdf; README prerequisite rewritten to separate the *launch* JDK (17–25) from the *toolchain* (21), and a troubleshooting row for a too-new launch JDK |
+| 3 (P2) | README said producing before the consumer subscribes can leave it empty — false for a new group with `auto.offset.reset=earliest` | corrected: a fresh group reads from the start regardless of start order; "prints nothing" is now the topic missing or a **reused** group id that already committed past those offsets |
+
+Suite 307 (unchanged — the Java-side fixes are covered by the Gradle CI job; finding 1's
+behaviour is exercised by `./gradlew run` against a broker, not a unit test).
 
 ## Module 1 — Kafka mental model
 

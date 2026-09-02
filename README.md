@@ -74,6 +74,13 @@ src/
     data/labs.ts                    In-app hands-on lab walkthroughs (Lab A: single-broker first workflow)
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
     context/ProgressContext.tsx     Per-module completion + resume state + lab step checkboxes, persisted to localStorage
+
+examples/
+  order-pipeline-java/              Java producer/consumer for Module 3 — own Gradle build + CI job
+    src/main/java/…/shared/         OrderEvent record + JSON serialization
+    src/main/java/…/producer/       OrderProducer (keyed by customerId, acks=all) + ProducerApp
+    src/main/java/…/consumer/       OrderConsumer (manual commit, at-least-once) + ConsumerApp
+    src/test/java/…                 MockProducer / MockConsumer unit tests — no broker needed
 ```
 
 `ModuleMeta.tsx` renders the per-module header (difficulty, estimated time, prerequisites,
@@ -161,3 +168,10 @@ links back to the glossary.
   check, and a README with the service inventory, per-OS setup, and troubleshooting. CI
   (`verify-local-cluster-lab`) validates the compose graphs, the dashboard JSON, and
   `verify-lab.sh` (`bash -n` + `shellcheck`).
+- **Module 3 (Build a producer and consumer)** has its code scaffold at
+  [`examples/order-pipeline-java/`](examples/order-pipeline-java/): a plain-Java Kafka
+  producer and consumer (`OrderEvent` → JSON → `orders` topic, keyed by customer id,
+  `acks=all` + idempotence on the producer, manual at-least-once commit on the consumer),
+  with `MockProducer` / `MockConsumer` unit tests that need no broker. Its own Gradle build
+  (wrapper pinned by SHA-256, Java 21 toolchain, Kafka 4.0 clients) runs in a dedicated CI
+  job (`verify-order-pipeline-java`). The Module 3 lessons that walk through it are Phase 4b.

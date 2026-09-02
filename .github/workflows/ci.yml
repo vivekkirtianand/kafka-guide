@@ -29,3 +29,18 @@ jobs:
       - run: jq empty local-cluster-lab/grafana/dashboards/kafka-overview.json
       - run: bash -n local-cluster-lab/verify-lab.sh
       - run: shellcheck local-cluster-lab/verify-lab.sh
+
+  verify-order-pipeline-java:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/order-pipeline-java
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      # Caches the Gradle distribution + dependencies and validates the wrapper jar checksum.
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew build --no-daemon
