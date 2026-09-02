@@ -1,6 +1,13 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { labs, labA } from "./labs";
+import { labs, labA, labB } from "./labs";
 import { modules } from "./modules";
+
+const verifyLabScript = readFileSync(
+  join(process.cwd(), "local-cluster-lab/verify-lab.sh"),
+  "utf8",
+);
 
 describe("lab data", () => {
   it("has unique lab slugs", () => {
@@ -121,9 +128,112 @@ describe("lab data", () => {
     });
   });
 
-  it("the local-cluster-lab module carries Lab A and is available", () => {
+  describe("Lab B — three-broker cluster", () => {
+    it("is a multi-step three-broker walkthrough backed by the Compose project", () => {
+      expect(labB.steps.length).toBeGreaterThanOrEqual(8);
+      expect(labB.setup.some((c) => /git clone/.test(c.command))).toBe(true);
+      expect(labB.setup.some((c) => /docker compose up -d/.test(c.command))).toBe(true);
+    });
+
+    it("has an OS matrix covering macOS, Windows/WSL, and Linux", () => {
+      const platforms = (labB.platformNotes ?? []).map((p) => p.platform.toLowerCase());
+      expect(platforms.some((p) => p.includes("mac"))).toBe(true);
+      expect(platforms.some((p) => p.includes("windows") || p.includes("wsl"))).toBe(true);
+      expect(platforms.some((p) => p.includes("linux"))).toBe(true);
+    });
+
+    it("states a memory/disk floor and what happens below it", () => {
+      expect(labB.resourceFloor).toBeDefined();
+      expect(labB.resourceFloor!).toMatch(/\bGB\b/);
+      expect(labB.resourceFloor!).toMatch(/memory|RAM/i);
+    });
+
+    it("offers verify-lab.sh as an automated check", () => {
+      expect(labB.verify?.command).toMatch(/verify-lab\.sh/);
+    });
+
+    it("has lab-level troubleshooting entries, each with a cause and a fix", () => {
+      expect((labB.troubleshooting ?? []).length).toBeGreaterThanOrEqual(3);
+      for (const t of labB.troubleshooting ?? []) {
+        expect(t.symptom.length).toBeGreaterThan(0);
+        expect(t.cause.length).toBeGreaterThan(0);
+        expect(t.fix.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("teaches leader election / ISR and acks=all admission control", () => {
+      const ids = labB.steps.map((s) => s.id);
+      expect(ids).toContain("stop-leader");
+      expect(ids).toContain("min-isr-floor");
+      const minIsr = labB.steps.find((s) => s.id === "min-isr-floor")!;
+      expect(minIsr.expected).toMatch(/NotEnoughReplicas|min\.insync\.replicas/i);
+    });
+
+    it("triggers the ISR floor without breaking the KRaft controller quorum", () => {
+      const minIsr = labB.steps.find((s) => s.id === "min-isr-floor")!;
+      // it must NOT stop two brokers (that loses the 2-of-3 controller quorum)
+      expect(minIsr.command).not.toMatch(/stop\s+kafka-\d+\s+kafka-\d+/);
+      // it makes the floor bite by raising the topic's own min.insync.replicas instead
+      expect(minIsr.command).toMatch(/--add-config min\.insync\.replicas=3/);
+      expect(minIsr.intro + minIsr.observe).toMatch(/controller quorum/i);
+    });
+
+    it("keeps broker references consistent — stop-leader targets kafka-2, not a substituted broker", () => {
+      const stopLeader = labB.steps.find((s) => s.id === "stop-leader")!;
+      expect(stopLeader.command).toMatch(/docker compose stop kafka-2\b/);
+      expect(stopLeader.intro).not.toMatch(/substitute the broker/i);
+      // every stop/start in the walkthrough names kafka-2 specifically
+      for (const s of labB.steps) {
+        for (const m of s.command.matchAll(/docker compose (?:stop|start) (\S+)/g)) {
+          expect(m[1], s.id).toBe("kafka-2");
+        }
+      }
+    });
+
+    it("does not use the unreliable short consumer timeout", () => {
+      for (const s of labB.steps) {
+        const t = s.command.match(/--timeout-ms (\d+)/);
+        if (t) expect(Number(t[1]), s.id).toBeGreaterThanOrEqual(15000);
+      }
+    });
+
+    it("does not present inherited broker configs as topic-level in describe output", () => {
+      const describe = labB.steps.find((s) => s.id === "describe-replicated")!;
+      expect(describe.expected).not.toMatch(/Configs:\s*min\.insync\.replicas/);
+      const dyn = labB.steps.find((s) => s.id === "dynamic-config")!;
+      // the dynamic-config describe output lists retention.ms but not an inherited min.insync.replicas line
+      expect(dyn.expected).toMatch(/retention\.ms=3600000/);
+      expect(dyn.expected).not.toMatch(/\n\s*min\.insync\.replicas=2 /);
+    });
+
+    it("warns before the destructive volume delete and distinguishes it from a plain down", () => {
+      expect(labB.teardown.some((c) => /down -v/.test(c.command))).toBe(true);
+      expect(labB.teardownWarning).toMatch(/-v/);
+      expect(labB.teardownWarning).toMatch(/no undo|permanently|destructive/i);
+    });
+  });
+
+  it("the local-cluster-lab module carries Lab A then Lab B and is available", () => {
     const mod = modules.find((m) => m.slug === "local-cluster-lab")!;
     expect(mod.status).toBe("available");
-    expect(mod.lab?.slug).toBe(labA.slug);
+    expect(mod.labs?.map((l) => l.slug)).toEqual([labA.slug, labB.slug]);
+  });
+
+  describe("verify-lab.sh", () => {
+    it("checks the metrics-pipeline services the Grafana step depends on, not just the brokers", () => {
+      // kafka-exporter is what makes the dashboard non-empty — the verifier must not pass without it
+      expect(verifyLabScript).toMatch(/kafka-exporter/);
+      expect(verifyLabScript).toMatch(/9308/);
+      expect(verifyLabScript).toMatch(/prometheus/);
+    });
+
+    it("checks all three brokers and every host port", () => {
+      for (const port of ["29092", "29093", "29094", "8080", "9090", "3001"]) {
+        expect(verifyLabScript, port).toContain(port);
+      }
+      for (const b of ["kafka-1", "kafka-2", "kafka-3"]) {
+        expect(verifyLabScript, b).toContain(b);
+      }
+    });
   });
 });

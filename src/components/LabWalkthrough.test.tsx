@@ -34,10 +34,22 @@ const lab: Lab = {
   teardownWarning: "This deletes your data.",
 };
 
-const renderLab = () =>
+const richLab: Lab = {
+  ...lab,
+  slug: "rich-lab",
+  platformNotes: [
+    { platform: "macOS", note: "raise the memory limit" },
+    { platform: "Linux", note: "join the docker group" },
+  ],
+  resourceFloor: "at least 4 GB of memory",
+  verify: { command: "./verify-lab.sh", note: "checks every port" },
+  troubleshooting: [{ symptom: "containers restart", cause: "low memory", fix: "raise it" }],
+};
+
+const renderLab = (props: { defaultCollapsed?: boolean } = {}) =>
   render(
     <ProgressProvider>
-      <LabWalkthrough lab={lab} />
+      <LabWalkthrough lab={lab} {...props} />
     </ProgressProvider>,
   );
 
@@ -101,5 +113,39 @@ describe("LabWalkthrough", () => {
     await user.click(screen.getByLabelText("Mark done: Second step"));
     expect(screen.getByTestId("lab-progress")).toHaveTextContent("lab complete");
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
+  });
+
+  it("renders the OS matrix, resource floor, verify command, and troubleshooting when present", () => {
+    render(
+      <ProgressProvider>
+        <LabWalkthrough lab={richLab} />
+      </ProgressProvider>,
+    );
+    expect(screen.getByText("Setup by platform")).toBeInTheDocument();
+    expect(screen.getByText("raise the memory limit")).toBeInTheDocument();
+    expect(screen.getByText(/Resource floor/i)).toBeInTheDocument();
+    expect(screen.getByText("at least 4 GB of memory")).toBeInTheDocument();
+    expect(screen.getByText("./verify-lab.sh")).toBeInTheDocument();
+    expect(screen.getByText("Troubleshooting")).toBeInTheDocument();
+    expect(screen.getByText("containers restart")).toBeInTheDocument();
+  });
+
+  it("renders collapsed: a summary with step count, steps hidden until opened", () => {
+    render(
+      <ProgressProvider>
+        <div>
+          <LabWalkthrough lab={richLab} defaultCollapsed />
+        </div>
+      </ProgressProvider>,
+    );
+    const details = screen.getByTestId("lab-walkthrough").querySelector("details")!;
+    expect(details.open).toBe(false);
+    // the summary carries the title + step count
+    expect(screen.getByText("· 2 steps")).toBeInTheDocument();
+    // content is in the DOM (so progress still persists) but the <details> is closed
+    expect(screen.getByTestId("lab-progress")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(richLab.title));
+    expect(details.open).toBe(true);
   });
 });

@@ -72,9 +72,11 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
 
       <ModuleMeta module={mod} />
 
-      {mod.lab && (
-        <div className="mt-8">
-          <LabWalkthrough lab={mod.lab} />
+      {mod.labs && mod.labs.length > 0 && (
+        <div className="mt-8 flex flex-col gap-6">
+          {mod.labs.map((lab, i) => (
+            <LabWalkthrough key={lab.slug} lab={lab} defaultCollapsed={i > 0} />
+          ))}
         </div>
       )}
 
@@ -202,14 +204,11 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
 
       {mod.slug === "local-cluster-lab" && (
         <div className="mt-10 rounded-lg border border-border bg-bg-elevated p-5 text-sm text-text-muted">
-          <Badge tone="success">lab built</Badge>
-          <p className="mt-3">
-            <strong className="text-text">Lab B — the three-broker cluster.</strong> Once Lab A
-            feels routine, step up to the full setup: three Kafka brokers in KRaft mode, a web UI,
-            and Prometheus/Grafana. It is the smallest cluster where replication and leader
-            election behave like production — the topics above walk through what is in it. It is a
-            reproducible Docker Compose project in the repo; a future update brings its walkthrough
-            in-app too.
+          <p>
+            Lab B runs from the Docker Compose project in the repo. Browse what is in it —
+            <code className="mx-1 rounded bg-bg-inset px-1 py-0.5 font-mono text-[12px]">docker-compose.yml</code>,
+            the Grafana dashboards, and the <code className="mx-1 rounded bg-bg-inset px-1 py-0.5 font-mono text-[12px]">verify-lab.sh</code>
+            script — on GitHub.
           </p>
           <a
             href="https://github.com/vivekkirtianand/kafka-guide/tree/main/local-cluster-lab"
@@ -217,7 +216,7 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
             rel="noopener noreferrer"
             className="mt-3 inline-flex items-center gap-2 text-accent hover:underline"
           >
-            Open the local cluster lab
+            local-cluster-lab/ on GitHub
             <span aria-hidden>→</span>
           </a>
         </div>

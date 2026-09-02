@@ -39,7 +39,7 @@ src/
   components/
     Sidebar.tsx, TopBar.tsx         App shell (nav + persistent version/deployment context)
     LogStrip.tsx                    Signature append-only-log motif (used in the top bar)
-    LabWalkthrough.tsx             In-app hands-on lab: setup, per-step command/output/observe/recovery, persisted checkboxes
+    LabWalkthrough.tsx             In-app hands-on lab: setup, per-step command/output/observe/recovery, persisted checkboxes; collapsible for secondary labs
     demos/
       TechnologyChoiceDemo.tsx     Module 0 activity: pick Kafka / queue / DB / object store / API call per scenario
       OrderEventFanoutDemo.tsx     Module 0 activity: one order-placed event → billing, email, warehouse, analytics
@@ -144,14 +144,20 @@ links back to the glossary.
   reassignment, rolling app and broker restarts, certificate/credential rotation, capacity
   planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery,
   handling a full disk, and broker/AZ failures.
-- **Module 2 (Your first local Kafka workflow)** now opens with **Lab A**, an in-app
-  hands-on walkthrough (`LabWalkthrough`, data in `src/lib/data/labs.ts`): one broker via a
-  single `docker run`, then 10 steps through create-topic → produce (keyed and unkeyed) →
-  consume → partition placement → consumer group + lag → reset offsets and replay. Every step
-  shows the exact command, the expected output, a "what did you observe?" prompt, a common
-  error with recovery, and a checkbox that persists via `ProgressContext`.
-- The **local cluster lab** (three-broker KRaft + Kafka UI + Prometheus/Grafana via
-  containers) is **Lab B** — the step up from Lab A, still a separate Docker Compose
-  deliverable at [`local-cluster-lab/`](local-cluster-lab/) (its own `docker-compose.yml` and
-  README) with a walkthrough for all six activities. Module 2's page links out to it; a
-  future update brings that walkthrough in-app too.
+- **Module 2 (Your first local Kafka workflow)** is two in-app hands-on labs
+  (`LabWalkthrough`, data in `src/lib/data/labs.ts`), each step showing the exact command,
+  the expected output, a "what did you observe?" prompt, a common error with recovery, and a
+  checkbox that persists via `ProgressContext`:
+  - **Lab A** — one broker via a single `docker run`, 10 steps: create-topic → produce
+    (keyed and unkeyed) → consume → partition placement → consumer group + lag → reset
+    offsets and replay.
+  - **Lab B** — the three-broker cluster (renders collapsed below Lab A), 9 steps:
+    replication factor 3 → leader election when a broker stops → ISR shrink and recovery →
+    `acks=all` admission control below `min.insync.replicas` → the Grafana dashboard →
+    dynamic topic config. Carries an OS matrix (macOS / Windows-WSL / Linux), a Docker
+    memory floor, and lab-level troubleshooting.
+- The **local cluster lab** at [`local-cluster-lab/`](local-cluster-lab/) is the Docker
+  Compose project Lab B drives — its own `docker-compose.yml`, a `verify-lab.sh` health
+  check, and a README with the service inventory, per-OS setup, and troubleshooting. CI
+  (`verify-local-cluster-lab`) validates the compose graphs, the dashboard JSON, and
+  `verify-lab.sh` (`bash -n` + `shellcheck`).

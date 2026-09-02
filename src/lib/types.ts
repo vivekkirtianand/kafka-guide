@@ -83,6 +83,21 @@ export interface LabStep {
   };
 }
 
+// A per-platform setup note — the OS matrix shown before a lab's prerequisites.
+export interface LabPlatformNote {
+  // "macOS" | "Windows (WSL 2)" | "Linux"
+  platform: string;
+  note: string;
+}
+
+// A lab-level failure mode (as opposed to a per-step one) — environment problems that can
+// hit at any point: too little memory, a port clash, a stale container.
+export interface LabTroubleshootingEntry {
+  symptom: string;
+  cause: string;
+  fix: string;
+}
+
 // An in-app, step-by-step lab the learner works through against a real Kafka broker.
 export interface Lab {
   // Stable id; also the progress-store namespace for the step checkboxes.
@@ -90,11 +105,19 @@ export interface Lab {
   title: string;
   // One or two sentences: what the learner builds and why it is the smallest useful setup.
   summary: string;
+  // Per-OS setup differences. Omitted for a lab with no meaningful OS variation.
+  platformNotes?: LabPlatformNote[];
+  // The memory / disk floor and what happens below it.
+  resourceFloor?: string;
   // What must be true before starting — tooling, resources.
   prerequisites: string[];
   // Commands that bring the environment up, before the numbered steps.
   setup: LabCommand[];
+  // An automated health check the learner can run to confirm setup worked.
+  verify?: LabCommand;
   steps: LabStep[];
+  // Environment-level failure modes and their fixes.
+  troubleshooting?: LabTroubleshootingEntry[];
   // Commands that bring the environment down. Carries the destructive-cleanup warning.
   teardown: LabCommand[];
   // The one thing to be careful about when tearing down — rendered as a callout.
@@ -129,8 +152,9 @@ export interface Module {
   // and types are stable.
   knowledgeChecks?: KnowledgeCheck[];
   exercises?: Exercise[];
-  // An in-app, step-by-step hands-on lab rendered above the topic content.
-  lab?: Lab;
+  // In-app, step-by-step hands-on labs rendered above the topic content. The first renders
+  // expanded; any others render collapsed.
+  labs?: Lab[];
   topics: string[];
   // Full lesson prose for a topic, keyed by the exact string in `topics`. Paragraphs are
   // separated by a blank line. Omitted (or partial) where the topic is still an outline

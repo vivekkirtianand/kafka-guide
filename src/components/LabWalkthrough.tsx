@@ -48,7 +48,7 @@ function CommandList({ commands }: { commands: LabCommand[] }) {
   );
 }
 
-export default function LabWalkthrough({ lab }: { lab: Lab }) {
+function LabBody({ lab }: { lab: Lab }) {
   const { hydrated, stepDone, toggleStep, completedStepCount } = useProgress();
   const stepIds = lab.steps.map((s) => s.id);
   const done = completedStepCount(lab.slug, stepIds);
@@ -56,16 +56,29 @@ export default function LabWalkthrough({ lab }: { lab: Lab }) {
   const pct = Math.round((done / total) * 100);
 
   return (
-    <section
-      className="rounded-lg border border-border bg-bg-elevated p-5 sm:p-6"
-      data-testid="lab-walkthrough"
-      aria-labelledby="lab-walkthrough-heading"
-    >
-      <div className="mb-1 font-mono text-xs uppercase tracking-wide text-text-faint">Hands-on lab</div>
-      <h2 id="lab-walkthrough-heading" className="font-display text-xl text-text">
-        {lab.title}
-      </h2>
-      <p className="mt-2 text-sm leading-relaxed text-text-muted">{lab.summary}</p>
+    <>
+      <p className="text-sm leading-relaxed text-text-muted">{lab.summary}</p>
+
+      {lab.platformNotes && lab.platformNotes.length > 0 && (
+        <div className="mt-5">
+          <h3 className="mb-2 font-display text-sm text-text">Setup by platform</h3>
+          <dl className="flex flex-col gap-2 rounded-md border border-border-soft bg-bg-inset p-4">
+            {lab.platformNotes.map((p) => (
+              <div key={p.platform}>
+                <dt className="font-mono text-[11px] uppercase tracking-wide text-text-faint">{p.platform}</dt>
+                <dd className="mt-0.5 text-[13px] leading-relaxed text-text-muted">{p.note}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      {lab.resourceFloor && (
+        <div className="mt-4 rounded-md border-l-2 border-accent bg-accent-soft px-3 py-2">
+          <span className="font-mono text-[10px] uppercase tracking-wide text-accent">Resource floor</span>
+          <p className="mt-1 text-[13px] leading-relaxed text-text">{lab.resourceFloor}</p>
+        </div>
+      )}
 
       <div className="mt-5 rounded-md border border-border-soft bg-bg-inset p-4">
         <h3 className="mb-2 font-display text-sm text-text">Before you start</h3>
@@ -80,9 +93,19 @@ export default function LabWalkthrough({ lab }: { lab: Lab }) {
       </div>
 
       <div className="mt-5">
-        <h3 className="mb-2 font-display text-sm text-text">Start the broker</h3>
+        <h3 className="mb-2 font-display text-sm text-text">Bring it up</h3>
         <CommandList commands={lab.setup} />
       </div>
+
+      {lab.verify && (
+        <div className="mt-5">
+          <h3 className="mb-2 font-display text-sm text-text">Check it worked</h3>
+          <div className="flex flex-col gap-1.5">
+            <CommandBlock command={lab.verify.command} />
+            <p className="text-[13px] leading-relaxed text-text-muted">{lab.verify.note}</p>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6" data-testid="lab-progress">
         <div className="mb-1.5 flex items-center justify-between font-mono text-[11px] text-text-faint">
@@ -177,6 +200,24 @@ export default function LabWalkthrough({ lab }: { lab: Lab }) {
         })}
       </ol>
 
+      {lab.troubleshooting && lab.troubleshooting.length > 0 && (
+        <div className="mt-6">
+          <h3 className="mb-2 font-display text-sm text-text">Troubleshooting</h3>
+          <dl className="flex flex-col gap-3">
+            {lab.troubleshooting.map((t) => (
+              <div key={t.symptom} className="rounded-md border border-border-soft bg-bg-inset p-3 text-[13px] leading-relaxed">
+                <dt className="font-medium text-text">{t.symptom}</dt>
+                <dd className="mt-1 text-text-muted">
+                  <span className="text-text-faint">Cause:</span> {t.cause}
+                  <br />
+                  <span className="text-text-faint">Fix:</span> {t.fix}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
       <div className="mt-6">
         <h3 className="mb-2 font-display text-sm text-text">Clean up</h3>
         <CommandList commands={lab.teardown} />
@@ -187,6 +228,56 @@ export default function LabWalkthrough({ lab }: { lab: Lab }) {
           <span className="font-mono text-[10px] uppercase tracking-wide text-danger">Before you delete anything</span>
           <p className="mt-1 text-[13px] leading-relaxed text-text">{lab.teardownWarning}</p>
         </div>
+      </div>
+    </>
+  );
+}
+
+export default function LabWalkthrough({
+  lab,
+  defaultCollapsed = false,
+}: {
+  lab: Lab;
+  defaultCollapsed?: boolean;
+}) {
+  const { hydrated, completedStepCount } = useProgress();
+  const total = lab.steps.length;
+  const done = completedStepCount(lab.slug, lab.steps.map((s) => s.id));
+
+  if (defaultCollapsed) {
+    return (
+      <section className="rounded-lg border border-border bg-bg-elevated" data-testid="lab-walkthrough">
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="mr-2 font-mono text-xs uppercase tracking-wide text-text-faint">Hands-on lab</span>
+              <span className="font-display text-lg text-text">{lab.title}</span>
+              <span className="ml-2 text-sm text-text-muted">· {total} steps</span>
+            </span>
+            <span className="shrink-0 font-mono text-[11px] text-text-faint">
+              {hydrated && done > 0 ? `${done} / ${total} done` : "expand"}
+            </span>
+          </summary>
+          <div className="border-t border-border-soft p-5 sm:p-6">
+            <LabBody lab={lab} />
+          </div>
+        </details>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className="rounded-lg border border-border bg-bg-elevated p-5 sm:p-6"
+      data-testid="lab-walkthrough"
+      aria-labelledby="lab-walkthrough-heading"
+    >
+      <div className="mb-1 font-mono text-xs uppercase tracking-wide text-text-faint">Hands-on lab</div>
+      <h2 id="lab-walkthrough-heading" className="font-display text-xl text-text">
+        {lab.title}
+      </h2>
+      <div className="mt-2">
+        <LabBody lab={lab} />
       </div>
     </section>
   );

@@ -1,5 +1,5 @@
 import { Module } from "@/lib/types";
-import { labA } from "./labs";
+import { labA, labB } from "./labs";
 
 export const modules: Module[] = [
   {
@@ -681,7 +681,7 @@ export const modules: Module[] = [
     summary:
       "Run Kafka on your own machine and drive the whole loop — topic, produce, consume, consumer group, replay — from the command line. Lab A is a single broker in one `docker run`; Lab B is the full three-broker cluster with a UI and metrics.",
     difficulty: "beginner",
-    estimatedMinutes: 90,
+    estimatedMinutes: 150,
     prerequisites: ["mental-model"],
     track: "beginner-path",
     objectives: [
@@ -689,10 +689,12 @@ export const modules: Module[] = [
       "Create a topic, produce records with and without keys, and consume them back",
       "Read which partition each record landed on and explain why keyed records stay together",
       "Use a consumer group, read its lag, then reset its offsets and replay the topic",
+      "On a three-broker cluster: stop a broker and watch leader election and ISR shrink, then see acks=all admission control when the ISR falls below min.insync.replicas",
     ],
     completionCriteria: [
       "You have worked through every step of Lab A against a running broker",
       "You can explain, from what you saw, why a keyed record's partition is fixed and what 'replay' actually changes",
+      "You have run Lab B far enough to have stopped a broker and seen leadership move and the ISR shrink",
     ],
     furtherReading: [
       { label: "Apache Kafka 4.0 — Quickstart", url: "https://kafka.apache.org/40/getting-started/quickstart/" },
@@ -700,7 +702,7 @@ export const modules: Module[] = [
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-01",
-    lab: labA,
+    labs: [labA, labB],
     topics: [
       "Three Kafka brokers in KRaft mode",
       "Kafka CLI tools",

@@ -1,9 +1,14 @@
 # Local cluster lab
 
-Module 2 of the guide ([`../README.md`](../README.md), [`../PLAN.md`](../PLAN.md)). A
+**Lab B** of Module 2 ([`../README.md`](../README.md), [`../PLAN.md`](../PLAN.md)). A
 reproducible three-broker Kafka cluster in KRaft mode, plus the tooling to observe it: a
 web UI, and a Prometheus/Grafana stack for metrics. This is a standalone Docker Compose
 project — it has no dependency on the Next.js app in the repo root and isn't served by it.
+
+The Module 2 page has a **step-by-step in-app walkthrough** of this lab (bring the cluster
+up, create a replicated topic, stop a broker and watch leader election, drop the ISR below
+`min.insync.replicas`, read the Grafana dashboard). This README is the reference the
+walkthrough points at — service inventory, per-OS setup, and troubleshooting.
 
 ## What's in the cluster
 
@@ -32,6 +37,22 @@ Docker and Docker Compose (v2 — the `docker compose` subcommand, not the stand
 `docker-compose` binary). No other local tooling required; the Kafka CLI is used via
 `docker exec` into the broker containers.
 
+### Resources
+
+Give Docker **at least 4 GB of memory** (6 GB is comfortable) and keep **~5 GB of free
+disk**. The stack is three Kafka JVMs plus kafka-ui, Prometheus, and Grafana. Below ~4 GB
+the brokers can't allocate their heap and the containers restart in a loop — the most
+common "the lab won't start" cause. On Docker Desktop the limit is under
+**Settings → Resources → Advanced**.
+
+### By platform
+
+| Platform | Notes |
+|---|---|
+| **macOS** | Docker Desktop. Raise the memory limit as above (the default is often 2 GB). Apple Silicon needs nothing special — every image here is multi-arch. |
+| **Windows** | Use the **WSL 2** backend and work entirely inside a WSL 2 (Ubuntu) shell. Clone this repo into the Linux home directory (`~`), **not** `/mnt/c/...` — Compose bind mounts onto the Windows filesystem are slow enough to fail the broker health checks. |
+| **Linux** | Docker Engine plus the Compose plugin. Your user must be in the `docker` group, or prefix commands with `sudo`. |
+
 ## Quick start
 
 ```bash
@@ -48,7 +69,16 @@ First run pulls several images and can take a few minutes. Once up:
 | Prometheus | http://localhost:9090 |
 | Kafka bootstrap (from host) | `localhost:29092,localhost:29093,localhost:29094` |
 
-Check broker health:
+Check the whole lab at once:
+
+```bash
+./verify-lab.sh
+```
+
+`verify-lab.sh` confirms all three brokers report `healthy` and that every host port
+(29092–29094, 8080, 9090, 3001) is accepting connections. It exits non-zero if anything is
+wrong and points you at the [Troubleshooting](#troubleshooting) section below. Re-run it any
+time the lab seems off. To check just the containers:
 
 ```bash
 docker compose ps
@@ -105,8 +135,14 @@ Then type lines like `customer-42:first order` / `customer-42:second order` and
 ```bash
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server kafka-1:19092 --topic orders --from-beginning \
-  --property print.key=true --property print.partition=true --timeout-ms 5000
+  --property print.key=true --property print.partition=true \
+  --max-messages 3 --timeout-ms 20000
 ```
+
+`--max-messages` makes the consumer exit as soon as it has read that many records, so there
+is no timeout to sit through; `--timeout-ms 20000` is only a backstop if fewer were produced
+(a short 5s timeout can expire during the cold consumer-group coordinator setup and look
+like a failed produce).
 
 ### 3. Observe partition placement
 
@@ -118,22 +154,24 @@ on.
 
 ### 4. Stop and restart brokers
 
-Find which broker leads a partition, then stop it and watch a follower get elected:
+Describe the topic, then stop `kafka-2` — with three partitions across three brokers it
+leads one of them — and describe again:
 
 ```bash
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server kafka-1:19092 --describe --topic orders
 
-docker compose stop kafka-2   # substitute whichever broker is the leader
+docker compose stop kafka-2
 
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server kafka-1:19092 --describe --topic orders
 ```
 
-`Leader` changes to a surviving replica and the stopped broker drops out of `Isr`. Restart
-it and re-describe after a few seconds — it rejoins `Isr` once it's caught up, but does
-*not* automatically reclaim leadership (that's expected KRaft behavior; a later
-"preferred leader" election would be needed to move leadership back):
+The partition kafka-2 was leading gets a new `Leader` (a surviving in-sync replica) and
+kafka-2 drops out of every `Isr`. Stopping one of three brokers keeps the KRaft controller
+quorum, so the rest of the cluster is unaffected. Restart it and re-describe after a few
+seconds — it rejoins `Isr` once it's caught up, but does *not* automatically reclaim
+leadership (expected KRaft behavior; a later "preferred leader" election would move it back):
 
 ```bash
 docker compose start kafka-2
@@ -146,7 +184,7 @@ Consume with a named group, then describe it:
 ```bash
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server kafka-1:19092 --topic orders --group order-processors \
-  --from-beginning --timeout-ms 5000
+  --from-beginning --timeout-ms 20000
 
 docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server kafka-1:19092 --describe --group order-processors
@@ -201,12 +239,30 @@ and an ISR-vs-total-replicas table. Open Grafana (anonymous access, no login nee
 dashboard is provisioned under Dashboards → "Kafka lab overview". Prometheus's own UI
 (http://localhost:9090) is useful for ad hoc queries against raw `kafka_*` metrics.
 
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A `kafka-*` container restarts in a loop or never becomes `healthy` | Docker has too little memory for three broker JVMs, so the OS kills them as they start | Raise Docker's memory to ≥ 4 GB (Docker Desktop → Settings → Resources), then `docker compose down && docker compose up -d` |
+| `verify-lab.sh` or `docker compose up` reports a port is already allocated | Another process — often a local Kafka or a previous run of this lab — holds 29092–29094, 8080, 9090, or 3001 | `docker compose down`, find the process (`lsof -i :29092`), stop it, retry. Or change the published ports in `docker-compose.yml` |
+| Kafka UI (`localhost:8080`) shows no cluster / an "offline" status | It connected before the brokers were ready and cached the failure | `docker compose restart kafka-ui`, then reload |
+| On Windows: `docker compose up` fails on a bind mount, or brokers never pass health checks | The repo is checked out under `/mnt/c/...` and Compose bind mounts onto the Windows filesystem are too slow | Clone into the WSL 2 home directory (`~`) and run the lab from there |
+| `InvalidReplicationFactorException` creating a topic | Fewer than three brokers are actually up | Wait for `docker compose ps` to show all three `(healthy)`, then retry |
+| Brokers healthy but `kafka-topics.sh` from your host can't connect | You used the in-container listener (`kafka-1:19092`) from the host, or vice versa | From inside a container use `kafka-1:19092`; from your host use `localhost:29092` |
+
 ## Cleaning up
 
 ```bash
-docker compose down        # stop and remove containers, keep data volumes
-docker compose down -v     # also remove data volumes (fresh cluster next time)
+docker compose stop        # stop containers, keep them and their volumes — `start` resumes
+docker compose down        # remove containers + network, KEEP the data volumes
+docker compose down -v     # ALSO delete the data volumes — every topic, record, and
+                           # Grafana/Prometheus history is gone, next start is a new cluster
 ```
+
+**`docker compose down -v` is destructive and has no undo.** The named volumes are what make
+this lab's data survive a restart; `-v` deletes them. Use it only when a genuinely fresh
+cluster is what you want. Plain `docker compose down` (no `-v`) is safe — the next
+`docker compose up -d` brings the same cluster back with all its data.
 
 ## Notes
 

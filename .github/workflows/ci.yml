@@ -27,3 +27,5 @@ jobs:
       - run: docker compose -f local-cluster-lab/docker-compose.yml config --quiet
       - run: docker compose --profile extras -f local-cluster-lab/docker-compose.yml config --quiet
       - run: jq empty local-cluster-lab/grafana/dashboards/kafka-overview.json
+      - run: bash -n local-cluster-lab/verify-lab.sh
+      - run: shellcheck local-cluster-lab/verify-lab.sh
