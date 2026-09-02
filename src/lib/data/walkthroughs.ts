@@ -11,7 +11,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
     "Read the smallest Kafka client that is still real: a producer that sends keyed order events to a topic, and a consumer that reads them back in a poll–process–commit loop. The code is in examples/order-pipeline-java/; each lesson points at the lines that matter.",
   repoPath: "examples/order-pipeline-java",
   cloneNote:
-    "Open examples/order-pipeline-java/ in your editor (it ships in this repo). You can follow every lesson by reading; lessons marked “Try it” also need Lab A running — one broker via `docker run -d --name kafka-lab-a -p 9092:9092 apache/kafka:4.0.2` with an `orders` topic created.",
+    "Open examples/order-pipeline-java/ in your editor (it ships in this repo) and `cd` into it — every `./gradlew` command below is run from that directory. You can follow every lesson by reading; lessons marked “Try it” also need Lab A running: one broker via `docker run -d --name kafka-lab-a -p 9092:9092 apache/kafka:4.0.2`, with an `orders` topic created (`docker exec kafka-lab-a /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic orders --partitions 3 --replication-factor 1`).",
   lessons: [
     {
       id: "the-project",
@@ -43,9 +43,9 @@ export const producerConsumerWalkthrough: Walkthrough = {
             "The code compiles against the slf4j API; the binding (which decides where logs go) is chosen at runtime. slf4j-simple prints to stderr; a real service swaps in logback.",
         },
       ],
-      run: "./gradlew build",
+      run: "cd examples/order-pipeline-java && ./gradlew build",
       watchOut:
-        "`./gradlew build` compiles everything and runs the unit tests — with no broker. The tests drive MockProducer / MockConsumer in memory. You only need a broker for the `run` tasks.",
+        "`./gradlew build` compiles everything and runs the unit tests — with no broker. The tests drive MockProducer / MockConsumer in memory. You only need a broker for the `run` tasks. Run this and every later `./gradlew` command from `examples/order-pipeline-java/`.",
     },
     {
       id: "the-event",
@@ -147,7 +147,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "send() is asynchronous",
           detail:
-            "It adds the record to an in-memory batch and returns a `Future<RecordMetadata>` immediately. A background thread sends the batch. Nothing has reached the broker yet when send() returns.",
+            "It appends the record to an in-memory batch and returns a `Future<RecordMetadata>` right away. A background sender thread transmits batches on its own schedule — one may already be in flight, or none — so a returning send() tells you nothing about delivery. The Future is how you find out.",
         },
         {
           term: "the callback",
@@ -288,7 +288,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "poll does more than fetch",
           detail:
-            "It sends heartbeats, joins rebalances, and fetches new assignments. If you stop calling it for longer than max.poll.interval.ms (5 min), the group assumes you are dead and rebalances your partitions away.",
+            "It is where the consumer completes a rebalance, takes up new partition assignments, and runs your rebalance-listener callbacks. Heartbeats are separate — a background thread sends them (heartbeat.interval.ms). poll()'s own deadline is max.poll.interval.ms (5 min): miss it and the coordinator treats your handler as stuck and revokes your partitions.",
         },
         {
           term: "deserialize per record",
@@ -326,7 +326,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         },
       ],
       watchOut:
-        "The default (enable.auto.commit=true) commits during poll() on a timer — which can commit records your handler has not finished with. A crash then skips them. That is why this loop commits by hand.",
+        "The default (enable.auto.commit=true) commits inside poll(), and it commits the batch the *previous* poll() returned. In this loop that batch is already fully handled, so nothing is skipped — auto-commit would be safe here. It stops being safe once processing outlives one loop turn: hand a record to another thread or another poll() and auto-commit can mark it done before that work finishes, and a crash then skips it. Committing by hand keeps “processed” and “committed” in lockstep and lets you choose the moment.",
     },
     {
       id: "consumer-groups",
@@ -339,7 +339,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "same group id → split the partitions",
           detail:
-            "Run two instances with group `team-a` against a 3-partition topic and Kafka gives one instance two partitions and the other one. Each record is handled once across the group.",
+            "Run two instances with group `team-a` against a 3-partition topic and Kafka gives one instance two partitions and the other one. Each partition has exactly one reader in the group at a time — but delivery is still at-least-once, so a crash or a rebalance can hand a record to whichever instance picks the partition up next.",
         },
         {
           term: "more instances than partitions",

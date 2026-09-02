@@ -534,6 +534,19 @@ Local verification: `npm run typecheck` / `lint` / `test` (322) / `build` green;
 checkboxes persist under their own namespace, sidebar shows 00–08, `local-cluster-lab` now
 links "next → Build a producer and consumer".
 
+**Review findings addressed (round 1)** — all in the lesson prose (`walkthroughs.ts`); no
+snippet changes.
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The auto-commit watch-out described an async-handoff skip that this synchronous loop can't hit — auto-commit runs inside a *later* `poll()`, by which point the previous batch is done | reworded: in this loop auto-commit is safe (it commits the batch the *previous* poll returned, already handled); it only becomes unsafe once processing outlives one loop turn (another thread / another poll). Manual commit keeps "processed" and "committed" in lockstep. Test asserts the new framing |
+| 2 (P2) | `./gradlew` commands fail from the repo root — the walkthrough never says to `cd examples/order-pipeline-java` | `cloneNote` now says to `cd` in and that every `./gradlew` command runs from there; lesson 1's "Try it" is `cd examples/order-pipeline-java && ./gradlew build`; its watch-out repeats it |
+| 3 (P2) | "poll() sends heartbeats" is wrong — heartbeats are on a background thread (`heartbeat.interval.ms`); `poll()` cadence is bounded separately by `max.poll.interval.ms` | rewrote the point: poll() completes rebalances / takes assignments / runs rebalance callbacks; heartbeats are a background thread; poll()'s own deadline is `max.poll.interval.ms`. Test forbids "poll … sends heartbeats" |
+| 4 (P2) | "Each record is handled once across the group" implies exactly-once | now "each partition has exactly one reader in the group at a time — but delivery is still at-least-once, so a crash or rebalance can redeliver". Test forbids the old phrasing |
+| 5 (P2) | "Nothing has reached the broker yet when send() returns" is too absolute — the sender thread may already have transmitted a batch | now "a background sender thread transmits batches on its own schedule — one may already be in flight, or none — so a returning send() tells you nothing about delivery" |
+
+Suite 322 → 325 (+3 assertions locking in findings 1, 3, 4).
+
 ---
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep

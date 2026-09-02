@@ -50,6 +50,27 @@ describe("producer/consumer code walkthrough", () => {
     expect(allText).toMatch(/wakeup\(\)/);
   });
 
+  it("does not claim poll() sends heartbeats", () => {
+    const pollLoop = w.lessons.find((l) => l.id === "the-poll-loop")!;
+    const text = pollLoop.points.map((p) => p.detail).join(" ");
+    expect(text).not.toMatch(/poll[^.]*sends heartbeats/i);
+    expect(text).toMatch(/background thread sends them|heartbeat\.interval\.ms/i);
+    expect(text).toMatch(/max\.poll\.interval\.ms/);
+  });
+
+  it("frames consumer-group delivery as at-least-once, not once-only", () => {
+    const groups = w.lessons.find((l) => l.id === "consumer-groups")!;
+    const text = groups.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    expect(text).not.toMatch(/handled once across the group/i);
+    expect(text).toMatch(/at-least-once|redeliver|pick(s)? the partition up/i);
+  });
+
+  it("notes auto-commit is poll-driven and only unsafe once work outlives the loop", () => {
+    const commit = w.lessons.find((l) => l.id === "offsets-and-commit")!;
+    expect(commit.watchOut).toMatch(/previous poll\(\)|inside poll\(\)/i);
+    expect(commit.watchOut).toMatch(/another thread|outlives one loop turn/i);
+  });
+
   it("only marks a lesson runnable when it has a command", () => {
     for (const l of w.lessons) {
       if (l.run !== undefined) expect(l.run.trim().length, l.id).toBeGreaterThan(0);
