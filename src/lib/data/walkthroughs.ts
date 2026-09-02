@@ -11,7 +11,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
     "Read the smallest Kafka client that is still real: a producer that sends keyed order events to a topic, and a consumer that reads them back in a poll–process–commit loop. The code is in examples/order-pipeline-java/; each lesson points at the lines that matter.",
   repoPath: "examples/order-pipeline-java",
   cloneNote:
-    "Open examples/order-pipeline-java/ in your editor (it ships in this repo) and `cd` into it — every `./gradlew` command below is run from that directory. You can follow every lesson by reading; lessons marked “Try it” also need Lab A running: one broker via `docker run -d --name kafka-lab-a -p 9092:9092 apache/kafka:4.0.2`, with an `orders` topic created (`docker exec kafka-lab-a /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic orders --partitions 3 --replication-factor 1`).",
+    "The example ships in this repo at examples/order-pipeline-java/ — open it in your editor. Each “Try it” command is written to run from the repo root and `cd`s into the example itself, so you can copy any one in isolation (if you're already inside examples/order-pipeline-java/, drop the leading `cd …`). The “Try it” lessons also need Lab A running: one broker via `docker run -d --name kafka-lab-a -p 9092:9092 apache/kafka:4.0.2`, with an `orders` topic created (`docker exec kafka-lab-a /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic orders --partitions 3 --replication-factor 1`).",
   lessons: [
     {
       id: "the-project",
@@ -45,7 +45,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
       ],
       run: "cd examples/order-pipeline-java && ./gradlew build",
       watchOut:
-        "`./gradlew build` compiles everything and runs the unit tests — with no broker. The tests drive MockProducer / MockConsumer in memory. You only need a broker for the `run` tasks. Run this and every later `./gradlew` command from `examples/order-pipeline-java/`.",
+        "`./gradlew build` compiles everything and runs the unit tests — with no broker. The tests drive MockProducer / MockConsumer in memory. You only need a broker for the `run` tasks. There is no `gradlew` at the repo root, which is why the command `cd`s into the example first.",
     },
     {
       id: "the-event",
@@ -189,7 +189,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
             "ProducerApp prints `Sent N/4` and exits non-zero if N < 4 — so a failed send fails the command instead of scrolling past.",
         },
       ],
-      run: "./gradlew run",
+      run: "cd examples/order-pipeline-java && ./gradlew run",
       watchOut:
         "Ignoring the Future is the single most common producer bug: the JVM exits before the background thread flushes, and records you “sent” were never written.",
     },
@@ -296,7 +296,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
             "record.value() is the JSON string; OrderEventJson.fromJson turns it back into an OrderEvent before your handler sees it.",
         },
       ],
-      run: "./gradlew runConsumer",
+      run: "cd examples/order-pipeline-java && ./gradlew runConsumer",
     },
     {
       id: "offsets-and-commit",
@@ -357,7 +357,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
             "Adding or removing an instance makes the group pause and redistribute partitions. Brief, but real — your handler should tolerate seeing a partition again after one.",
         },
       ],
-      run: './gradlew runConsumer --args="localhost:9092 team-a"',
+      run: 'cd examples/order-pipeline-java && ./gradlew runConsumer --args="localhost:9092 team-a"',
     },
     {
       id: "graceful-shutdown",
@@ -383,7 +383,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
             "It sends a leave-group request, so Kafka rebalances the partitions to the other instances immediately — instead of waiting ~45s (session.timeout.ms) for a missing heartbeat.",
         },
       ],
-      run: "./gradlew runConsumer",
+      run: "cd examples/order-pipeline-java && ./gradlew runConsumer",
       watchOut:
         "Without the hook, Ctrl-C kills the JVM mid-poll. The other consumers in the group can't take over that partition until the coordinator times the dead member out.",
     },

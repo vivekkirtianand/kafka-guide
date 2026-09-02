@@ -78,6 +78,14 @@ describe("producer/consumer code walkthrough", () => {
     // the read-only config lessons carry no command
     expect(w.lessons.find((l) => l.id === "producer-config")!.run).toBeUndefined();
   });
+
+  it("makes every ./gradlew command copy-safe from the repo root (there is no root gradlew)", () => {
+    for (const l of w.lessons) {
+      if (l.run?.includes("./gradlew")) {
+        expect(l.run, l.id).toMatch(/^cd examples\/order-pipeline-java && \.\/gradlew /);
+      }
+    }
+  });
 });
 
 describe("Module 3 — build a producer and consumer", () => {

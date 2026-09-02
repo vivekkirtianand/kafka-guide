@@ -547,6 +547,14 @@ snippet changes.
 
 Suite 322 → 325 (+3 assertions locking in findings 1, 3, 4).
 
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | Round 1 only fixed lesson 1 and the setup note — the other "Try it" commands still started with a bare `./gradlew`, which fails from the repo root (there is no root `gradlew`) | every `./gradlew` "Try it" command now begins `cd examples/order-pipeline-java && …`, so each is independently copy-safe; `cloneNote` explains they run from the repo root and to drop the `cd` if already inside the example. Test asserts every `./gradlew` command is `cd`-prefixed |
+
+Suite 325 → 326.
+
 ---
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
