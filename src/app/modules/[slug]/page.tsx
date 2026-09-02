@@ -8,6 +8,7 @@ import TopicExplorer from "@/components/TopicExplorer";
 import ModuleMeta from "@/components/ModuleMeta";
 import ModuleCompletion from "@/components/ModuleCompletion";
 import LabWalkthrough from "@/components/LabWalkthrough";
+import CodeWalkthrough from "@/components/CodeWalkthrough";
 import KnowledgeCheck from "@/components/KnowledgeCheck";
 import DesignExercise from "@/components/DesignExercise";
 import TroubleshootingCatalog from "@/components/TroubleshootingCatalog";
@@ -80,7 +81,13 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
         </div>
       )}
 
-      {mod.slug === "troubleshooting-scenarios" ? (
+      {mod.walkthrough && (
+        <div className="mt-8">
+          <CodeWalkthrough walkthrough={mod.walkthrough} />
+        </div>
+      )}
+
+      {mod.walkthrough ? null : mod.slug === "troubleshooting-scenarios" ? (
         <div className="flex flex-col gap-6">
           <p className="text-sm leading-relaxed text-text-muted">
             Each entry moves from a symptom to the specific evidence that confirms or rules out
