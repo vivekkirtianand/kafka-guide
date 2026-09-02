@@ -53,6 +53,45 @@ export interface Exercise {
   successCriteria: string[];
 }
 
+// One step in a guided code walkthrough — a module built around a real example project
+// (`examples/<repo>/`) rather than around concepts. The learner reads `code` (a verbatim
+// excerpt of `file`), works through the `points`, optionally runs `run`, and ticks the
+// lesson off — the checkbox is persisted per walkthrough in the progress store.
+export interface WalkthroughLesson {
+  // Stable id, unique within the walkthrough. The progress-store key for this lesson's
+  // checkbox — must not change once learners have progress saved.
+  id: string;
+  title: string;
+  // One to three sentences of framing before the code.
+  intro: string;
+  // Path of the excerpted file, relative to the walkthrough's `repoPath`.
+  file: string;
+  // A verbatim slice of `file`. A data test asserts this string still occurs in the source,
+  // so a rename or a config change in the example breaks the build rather than drifting.
+  code: string;
+  // The lines that matter, one point at a time. `term` is the concept or the identifier.
+  points: { term: string; detail: string }[];
+  // An optional command the learner can run at this point (needs the lab broker running).
+  run?: string;
+  // The mistake this step most commonly hides — rendered as a callout.
+  watchOut?: string;
+}
+
+// A guided walk through a real example project, rendered above (in place of) the usual
+// topic content on a module page.
+export interface Walkthrough {
+  // Stable id; also the progress-store namespace for the lesson checkboxes.
+  slug: string;
+  title: string;
+  // One or two sentences: what the project is and what the walkthrough builds toward.
+  summary: string;
+  // The example's directory, relative to the repo root — e.g. "examples/order-pipeline-java".
+  repoPath: string;
+  // How to get the code in front of you before starting.
+  cloneNote: string;
+  lessons: WalkthroughLesson[];
+}
+
 // One command in a lab's setup or teardown: what to run and why it is there.
 export interface LabCommand {
   command: string;
@@ -155,6 +194,9 @@ export interface Module {
   // In-app, step-by-step hands-on labs rendered above the topic content. The first renders
   // expanded; any others render collapsed.
   labs?: Lab[];
+  // A guided walk through a real example project. When set, it replaces the topic content
+  // on the module page (the module is built around code, not concepts).
+  walkthrough?: Walkthrough;
   topics: string[];
   // Full lesson prose for a topic, keyed by the exact string in `topics`. Paragraphs are
   // separated by a blank line. Omitted (or partial) where the topic is still an outline

@@ -47,7 +47,7 @@ unless noted.
 | **1** | **Course framework** | 1a data model + metadata + IA + computed duration; 1b progress tracking (localStorage); 1c glossary | — | M1 |
 | 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
 | 3 | Rework local lab | **3a ✅** Lab A single-broker in-app walkthrough; **3b ✅** Lab B (3-broker) in-app walkthrough + OS matrix + resource floor + `verify-lab.sh` + volume-delete warning | 1a, 1b | M1 |
-| 4 | Java producer/consumer module | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; 4b Module 3 lessons 1–11; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
+| 4 | Java producer/consumer module | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; **4b ✅** Module 3 (new, `index: 3`) — an 11-lesson in-app `CodeWalkthrough` over the scaffold; reference config modules renumbered 3–7 → 4–8; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
 | 5 | Schemas & serialization | 5a Module 5 topic content (bytes, JSON/Avro/Protobuf, Schema Registry, compatibility modes, poison records); 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams | 7a Module 7 Connect content + file/DB↔Kafka lab (lab stack already has `cp-kafka-connect`); 7b Streams content + order-total aggregation lab | 4, 5 | M2 |
@@ -493,6 +493,54 @@ warnings under `-Xlint:all`); `npm run typecheck` / `lint` / `test` (307) / `bui
 
 Suite 307 (unchanged — the Java-side fixes are covered by the Gradle CI job; finding 1's
 behaviour is exercised by `./gradlew run` against a broker, not a unit test).
+
+### PR 4b — Module 3 "Build a producer and consumer"
+
+A new module built around the 4a scaffold, rendered as a **code walkthrough** rather than
+topic content — the first module where reading real source is the point.
+
+- `src/lib/types.ts` — `WalkthroughLesson` (`id`, `title`, `intro`, `file`, `code`,
+  `points[]`, `run?`, `watchOut?`) and `Walkthrough` (`slug`, `title`, `summary`,
+  `repoPath`, `cloneNote`, `lessons[]`); `Module.walkthrough?: Walkthrough`.
+- `src/lib/data/walkthroughs.ts` — `producerConsumerWalkthrough`, 11 lessons: the project &
+  deps → the `OrderEvent` record → producer config → `send()` is async → confirming the
+  write (flush + `Future.get()`) → serialization → consumer config → the poll loop →
+  offsets & commit → consumer groups → graceful shutdown. Every `code` block is a verbatim
+  slice of an `examples/order-pipeline-java/` file.
+- `src/components/CodeWalkthrough.tsx` — client component: summary, "get the code" note, a
+  `role="progressbar"` "N / 11 lessons read" bar, then per-lesson cards (file-labelled
+  copyable snippet, key-line `<dl>`, optional "Try it" command, optional "Watch out",
+  persisted checkbox via `ProgressContext.toggleStep` namespaced by the walkthrough slug).
+- `src/app/modules/[slug]/page.tsx` — renders `<CodeWalkthrough>` when `mod.walkthrough` is
+  set, and suppresses the usual topic-content block for that module.
+- `src/lib/data/modules.ts` — new module `build-a-producer-and-consumer` at **`index: 3`**
+  (beginner-path, prereqs `mental-model` + `local-cluster-lab`, `topics` = the 11 lesson
+  titles, no `topicDetail`). `producer-configuration` … `troubleshooting-scenarios` shift
+  `index` 3–7 → **4–8**; array order updated so `index === arrayPosition` holds. The
+  beginner path is now why-kafka → mental-model → local-cluster-lab →
+  build-a-producer-and-consumer.
+- Tests: `walkthroughs.test.ts` (+10) — 11 lessons, unique ids, **every snippet still occurs
+  in its source file** (whitespace-normalised `toContain`), concept coverage
+  (async / `acks=all` / at-least-once / rebalance / `wakeup()`), the module slots at index 3,
+  the config modules moved to 4–8. `CodeWalkthrough.test.tsx` (+5) — lesson/snippet/points
+  render, "Try it" only where defined, checkbox count + persist across remount, complete at
+  all-checked, clipboard-absent. Suite 307 → 322.
+- Renumber fallout: `README.md` "What's scaffolded" bullets and the demo-tree comments
+  (Modules 3–7 → 4–8, new Module 3 bullet); one stale "as in Module 4" → "Module 5" in
+  `LagSlopeVsAbsolute.tsx`.
+
+Local verification: `npm run typecheck` / `lint` / `test` (322) / `build` green; browser —
+`/modules/build-a-producer-and-consumer` renders the walkthrough (no stray topics list),
+checkboxes persist under their own namespace, sidebar shows 00–08, `local-cluster-lab` now
+links "next → Build a producer and consumer".
+
+---
+
+> **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
+> their original numbers. Since Phase 4b inserted "Build a producer and consumer" at
+> `index: 3`, the current repo numbering for the sections below is: Producer configuration
+> = 4, Consumer configuration = 5, Broker and topic configuration = 6, Observability = 7,
+> Troubleshooting scenarios = 8. The full re-sequence is Phase 6.
 
 ## Module 1 — Kafka mental model
 

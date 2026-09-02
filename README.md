@@ -40,6 +40,7 @@ src/
     Sidebar.tsx, TopBar.tsx         App shell (nav + persistent version/deployment context)
     LogStrip.tsx                    Signature append-only-log motif (used in the top bar)
     LabWalkthrough.tsx             In-app hands-on lab: setup, per-step command/output/observe/recovery, persisted checkboxes; collapsible for secondary labs
+    CodeWalkthrough.tsx           Guided read of a real example project: per-lesson file-labelled snippet, key-line notes, "try it" command, persisted checkbox
     demos/
       TechnologyChoiceDemo.tsx     Module 0 activity: pick Kafka / queue / DB / object store / API call per scenario
       OrderEventFanoutDemo.tsx     Module 0 activity: one order-placed event → billing, email, warehouse, analytics
@@ -48,32 +49,33 @@ src/
       RecordFlowDemo.tsx            Module 1 activity: producer → partition → consumer, predict-before-reveal
       PartitionOrderingDemo.tsx     Module 1 activity: partition count vs. ordering guarantees
       LeaderElectionDemo.tsx        Module 1 activity: broker failure, catch-up, and leader election
-      AcksDurabilityDemo.tsx        Module 3 activity: acks=0/1/all vs. a leader crash mid-produce
-      BatchingThroughputDemo.tsx    Module 3 activity: linger.ms/batch.size vs. request count and latency
-      BufferAndTimeoutDemo.tsx      Module 3 activity: buffer fill, oversized records, delivery.timeout.ms
-      IdempotenceDemo.tsx           Module 3 activity: duplicate sends with and without idempotence
-      PollIntervalDemo.tsx          Module 4 activity: processing time vs. max.poll.interval.ms
-      ConsumerGroupScalingDemo.tsx  Module 4 activity: adding/removing consumers, partition assignment, rebalances
-      CommitStrategyDemo.tsx        Module 4 activity: automatic vs. manual offset commits
-      CommitCrashDemo.tsx           Module 4 activity: crashing before vs. after a commit
-      OffsetResetDemo.tsx           Module 4 activity: offset reset (--to-earliest/--shift-by/…) and replay
-      PoisonMessageDemo.tsx         Module 4 activity: poison messages, retry topics, dead-letter topics
-      ReplicationFloorDemo.tsx      Module 5 activity: shrink the ISR below min.insync.replicas
-      RetentionCompactionDemo.tsx  Module 5 activity: delete vs. compact cleanup on a keyed log
-      RackPlacementDemo.tsx         Module 5 activity: spread replicas across racks, then fail a rack
-      QuotaThrottleDemo.tsx         Module 5 activity: a client past its byte-rate quota slows, not errors
-      BottleneckDiagnosis.tsx       Module 6 activity: read an unlabeled dashboard, name the bottleneck
-      RequestLatencyBreakdown.tsx   Module 6 activity: split a request-latency total into its phases
-      LagSlopeVsAbsolute.tsx        Module 6 activity: runaway lag slope vs. flat-but-breaching backlog
-      IsrChurnDemo.tsx              Module 6 activity: localize ISR churn to one broker vs. a shared cause
+      AcksDurabilityDemo.tsx        Module 4 activity: acks=0/1/all vs. a leader crash mid-produce
+      BatchingThroughputDemo.tsx    Module 4 activity: linger.ms/batch.size vs. request count and latency
+      BufferAndTimeoutDemo.tsx      Module 4 activity: buffer fill, oversized records, delivery.timeout.ms
+      IdempotenceDemo.tsx           Module 4 activity: duplicate sends with and without idempotence
+      PollIntervalDemo.tsx          Module 5 activity: processing time vs. max.poll.interval.ms
+      ConsumerGroupScalingDemo.tsx  Module 5 activity: adding/removing consumers, partition assignment, rebalances
+      CommitStrategyDemo.tsx        Module 5 activity: automatic vs. manual offset commits
+      CommitCrashDemo.tsx           Module 5 activity: crashing before vs. after a commit
+      OffsetResetDemo.tsx           Module 5 activity: offset reset (--to-earliest/--shift-by/…) and replay
+      PoisonMessageDemo.tsx         Module 5 activity: poison messages, retry topics, dead-letter topics
+      ReplicationFloorDemo.tsx      Module 6 activity: shrink the ISR below min.insync.replicas
+      RetentionCompactionDemo.tsx  Module 6 activity: delete vs. compact cleanup on a keyed log
+      RackPlacementDemo.tsx         Module 6 activity: spread replicas across racks, then fail a rack
+      QuotaThrottleDemo.tsx         Module 6 activity: a client past its byte-rate quota slows, not errors
+      BottleneckDiagnosis.tsx       Module 7 activity: read an unlabeled dashboard, name the bottleneck
+      RequestLatencyBreakdown.tsx   Module 7 activity: split a request-latency total into its phases
+      LagSlopeVsAbsolute.tsx        Module 7 activity: runaway lag slope vs. flat-but-breaching backlog
+      IsrChurnDemo.tsx              Module 7 activity: localize ISR churn to one broker vs. a shared cause
       IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
   lib/
     types.ts                        Shared content types (incl. per-module course metadata)
     course.ts                       Computed course length + beginner/reference/advanced splits
     data/                           Seed content for modules, labs, configs, incidents, troubleshooting, runbooks
     data/labs.ts                    In-app hands-on lab walkthroughs (Lab A: single-broker first workflow)
+    data/walkthroughs.ts            Module 3 code walkthrough — 11 lessons, each a verbatim snippet of an order-pipeline-java file
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
-    context/ProgressContext.tsx     Per-module completion + resume state + lab step checkboxes, persisted to localStorage
+    context/ProgressContext.tsx     Per-module completion + resume state + lab/walkthrough step checkboxes, persisted to localStorage
 
 examples/
   order-pipeline-java/              Java producer/consumer for Module 3 — own Gradle build + CI job
@@ -115,19 +117,26 @@ links back to the glossary.
   four interactive activities — producer → partition → consumer flow, partition-count vs.
   ordering, broker failure and leader election, and predict-before-reveal. See
   [PLAN.md](PLAN.md) for the detailed status.
-- **Module 3 (Producer configuration)** is fully built: real lesson prose for all 7
+- **Module 3 (Build a producer and consumer)** is built: an 11-lesson in-app code
+  walkthrough (`CodeWalkthrough`, data in `src/lib/data/walkthroughs.ts`) over the
+  `examples/order-pipeline-java/` scaffold — dependencies, the event record, producer
+  config, async `send()`, confirming the write, serialization, consumer config, the poll
+  loop, offset commits, consumer groups, graceful shutdown. Every snippet is a verbatim
+  slice of a real source file, checked by `walkthroughs.test.ts`; each lesson has a
+  persisted "read it" checkbox and, where relevant, a "try it" command against Lab A.
+- **Module 4 (Producer configuration)** is fully built: real lesson prose for all 7
   topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
   demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout
   failures, idempotence and duplicates).
-- **Module 4 (Consumer configuration)** is fully built: real lesson prose for all 7
+- **Module 5 (Consumer configuration)** is fully built: real lesson prose for all 7
   topics plus one interactive demo per activity (6 demos): processing vs.
   max.poll.interval.ms, consumer-group scaling and rebalances, automatic vs. manual
   commits, crashing before/after a commit, offset reset and replay, and poison-message
   handling with retry and dead-letter topics.
-- **Module 5 (Broker and topic configuration)** is built: scannable Topic explorer content
+- **Module 6 (Broker and topic configuration)** is built: scannable Topic explorer content
   for all 11 topics plus 4 interactive demos (ISR floor vs. min.insync.replicas, delete vs.
   compact cleanup, rack placement and rack failure, client quota throttling).
-- **Module 6 (Observability)** is built: Topic explorer content for all 11 signals plus 4
+- **Module 7 (Observability)** is built: Topic explorer content for all 11 signals plus 4
   interactive demos (unlabeled-dashboard bottleneck diagnosis, request-latency phase
   breakdown, lag slope vs. absolute value, ISR-churn localization).
 - **The incident simulator** has all 10 scenarios built out (reveal clues, pick a
@@ -138,12 +147,12 @@ links back to the glossary.
   look like.
 - **Config explorer** ships with real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
-- **Module 7 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
+- **Module 8 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
   content: all 10 symptom entries, each with an overview, cause → evidence pairs (the
   specific metric/log/command that confirms or rules out each cause), a resolution flow,
   key config chips, and a "watch out" — the durability setting you could lower to make the
   error disappear while making the system worse. Searchable by symptom, cause, evidence, or
-  config key. The Module 7 page embeds the catalog; `/troubleshooting` is the standalone
+  config key. The Module 8 page embeds the catalog; `/troubleshooting` is the standalone
   reference view.
 - **Production runbooks** ships all 14 written to full content — prechecks, execution,
   validation, rollback, and escalation criteria — each on its own `/runbooks/[slug]` page:
@@ -168,10 +177,10 @@ links back to the glossary.
   check, and a README with the service inventory, per-OS setup, and troubleshooting. CI
   (`verify-local-cluster-lab`) validates the compose graphs, the dashboard JSON, and
   `verify-lab.sh` (`bash -n` + `shellcheck`).
-- **Module 3 (Build a producer and consumer)** has its code scaffold at
+- The code Module 3 walks through lives at
   [`examples/order-pipeline-java/`](examples/order-pipeline-java/): a plain-Java Kafka
   producer and consumer (`OrderEvent` → JSON → `orders` topic, keyed by customer id,
   `acks=all` + idempotence on the producer, manual at-least-once commit on the consumer),
   with `MockProducer` / `MockConsumer` unit tests that need no broker. Its own Gradle build
   (wrapper pinned by SHA-256, Java 21 toolchain, Kafka 4.0 clients) runs in a dedicated CI
-  job (`verify-order-pipeline-java`). The Module 3 lessons that walk through it are Phase 4b.
+  job (`verify-order-pipeline-java`).

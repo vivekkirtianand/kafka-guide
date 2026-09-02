@@ -1,5 +1,6 @@
 import { Module } from "@/lib/types";
 import { labA, labB } from "./labs";
+import { producerConsumerWalkthrough } from "./walkthroughs";
 
 export const modules: Module[] = [
   {
@@ -876,8 +877,59 @@ export const modules: Module[] = [
     status: "available",
   },
   {
-    slug: "producer-configuration",
+    slug: "build-a-producer-and-consumer",
     index: 3,
+    title: "Build a producer and consumer",
+    summary:
+      "Read a real Kafka client end to end — a Java producer that sends keyed order events, and a consumer that reads them back in a poll–process–commit loop. The code ships in examples/order-pipeline-java/; this module walks the lines that matter.",
+    difficulty: "beginner",
+    estimatedMinutes: 90,
+    prerequisites: ["mental-model", "local-cluster-lab"],
+    track: "beginner-path",
+    objectives: [
+      "Configure a KafkaProducer — bootstrap servers, serializers, acks, idempotence — and send records keyed by a business id",
+      "Explain why send() is asynchronous and how to confirm a record was actually written",
+      "Configure a KafkaConsumer with a group id and run a poll–process–commit loop",
+      "Explain at-least-once delivery and say where duplicates come from",
+      "Add a shutdown hook so the consumer leaves its group cleanly instead of waiting for a timeout",
+    ],
+    completionCriteria: [
+      "You have run ./gradlew build (no broker needed) and ./gradlew run + runConsumer against Lab A",
+      "You can point at the lines that set the message key, commit offsets, and handle shutdown, and say what each does",
+      "You can predict what happens when a second consumer joins with the same group id, and with a different one",
+    ],
+    furtherReading: [
+      {
+        label: "Apache Kafka 4.0 — KafkaProducer (javadoc)",
+        url: "https://kafka.apache.org/40/javadoc/org/apache/kafka/clients/producer/KafkaProducer.html",
+      },
+      {
+        label: "Apache Kafka 4.0 — KafkaConsumer (javadoc)",
+        url: "https://kafka.apache.org/40/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html",
+      },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-02",
+    walkthrough: producerConsumerWalkthrough,
+    topics: [
+      "The project and its dependencies",
+      "The event you'll send",
+      "Configuring the producer",
+      "Sending a record",
+      "Making sure the sends actually landed",
+      "Serialization: object to bytes and back",
+      "Configuring the consumer",
+      "The poll loop",
+      "Offsets and committing",
+      "Consumer groups: scaling the read side",
+      "Graceful shutdown",
+    ],
+    activities: [],
+    status: "available",
+  },
+  {
+    slug: "producer-configuration",
+    index: 4,
     title: "Producer configuration",
     summary:
       "Configuration organized by goal — durability, batching, backpressure, latency, ordering, and transactions.",
@@ -1116,7 +1168,7 @@ export const modules: Module[] = [
   },
   {
     slug: "consumer-configuration",
-    index: 4,
+    index: 5,
     title: "Consumer configuration",
     summary:
       "Consumer groups, partition assignment, offset commits, rebalances, and poison-message handling.",
@@ -1375,7 +1427,7 @@ export const modules: Module[] = [
   },
   {
     slug: "broker-topic-configuration",
-    index: 5,
+    index: 6,
     title: "Broker and topic configuration",
     summary:
       "Replication, retention, compaction, request limits, quotas, and listener/security configuration.",
@@ -1698,7 +1750,7 @@ export const modules: Module[] = [
   },
   {
     slug: "observability",
-    index: 6,
+    index: 7,
     title: "Observability",
     summary: "Moving from symptom to evidence across lag, ISR, latency, disk, network, and GC signals.",
     difficulty: "advanced",
@@ -1998,7 +2050,7 @@ export const modules: Module[] = [
   },
   {
     slug: "troubleshooting-scenarios",
-    index: 7,
+    index: 8,
     title: "Troubleshooting scenarios",
     summary:
       "A searchable symptom → evidence → cause → resolution catalog covering the most common Kafka incidents.",
