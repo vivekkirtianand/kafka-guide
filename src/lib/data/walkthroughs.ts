@@ -561,7 +561,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "the experiment",
           detail:
-            "Produce a batch — `./gradlew run --args=\"localhost:9092 200\"` — then start the consumer with a slow handler: `SLOW_MS=200 ./gradlew runConsumer`. It prints one order every 200 ms, so you have time to `kill -9` it (or close the terminal) after a handful. Start it again: every record from that poll batch prints a second time.",
+            "Produce a batch — `./gradlew run --args=\"localhost:9092 200\"`. Without a delay the consumer would format and commit all 200 before you could react, so slow the handler: `SLOW_MS=200 ./gradlew runConsumer` prints one order every 200 ms. `kill -9` it (or close the terminal) after a handful. Start it again: every record from that poll batch prints a second time.",
         },
         {
           term: "why",

@@ -621,6 +621,12 @@ Suite 330 → 330 (Java 18 → 19; the Node walkthrough tests were retargeted, n
 
 Java 19 → 22 tests; Node suite still 330.
 
+**Review findings addressed (round 3)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | Round 2's `SLOW_MS` read `System.getenv()` in `ConsumerApp`, but a build script forwarding it via `System.getenv()` is unreliable through the Gradle daemon — the drill still wasn't guaranteed | the `runConsumer` task now forwards it with the config-cache-safe provider API: `project.providers.environmentVariable("SLOW_MS").orNull?.let { environment("SLOW_MS", it) }`. Verified through a warm daemon: the startup line reports `…, 200ms/record`. The at-least-once lesson now says explicitly that without the delay the batch commits before you can react |
+
 **Phase 4 complete** — PRs 4a + 4b + 4c. The Java developer path (Module 3) is done.
 
 ---

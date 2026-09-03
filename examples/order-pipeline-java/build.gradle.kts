@@ -56,6 +56,10 @@ tasks.register<JavaExec>("runConsumer") {
     description = "Consume order events until Ctrl-C. Override with --args=\"host:port groupId [propagate|skip|deadletter]\"."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.example.orderpipeline.consumer.ConsumerApp"
+    // Forward SLOW_MS from the invoking shell. `System.getenv()` in a build script is
+    // unreliable through the Gradle daemon; the provider API reads the real invocation env,
+    // and this line puts it back on the forked JVM's environment.
+    project.providers.environmentVariable("SLOW_MS").orNull?.let { environment("SLOW_MS", it) }
 }
 
 tasks.register<JavaExec>("runProducerPoison") {
