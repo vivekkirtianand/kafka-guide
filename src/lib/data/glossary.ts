@@ -249,23 +249,23 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A separate topic that a consumer or connector routes records to when they can't be processed — a poison message, a deserialization failure — so the main partition keeps flowing.",
     seeAlso: ["poison-message", "consumer"],
-    modules: ["consumer-configuration"],
+    modules: ["build-a-producer-and-consumer", "schemas-and-data-contracts", "consumer-configuration"],
   },
   {
     slug: "poison-message",
     term: "Poison message",
     definition:
-      "A record a consumer cannot process and keeps failing on. With an unbounded retry it stalls the whole partition; the fixes are to skip it, or route it to a dead-letter topic.",
+      "A record a consumer cannot process and keeps failing on — a malformed payload, a deserialization failure, a business rule it always violates. With an unbounded retry it stalls the whole partition; the fixes are to skip it, or route it to a dead-letter topic.",
     seeAlso: ["dead-letter-queue", "lag"],
-    modules: ["consumer-configuration", "troubleshooting-scenarios"],
+    modules: ["build-a-producer-and-consumer", "schemas-and-data-contracts", "consumer-configuration", "troubleshooting-scenarios"],
   },
   {
     slug: "schema-registry",
     term: "Schema Registry",
     definition:
       "A service that stores versioned record schemas (Avro, Protobuf, JSON Schema) and enforces compatibility rules, so producers and consumers can evolve independently. Records carry a schema id, not the schema.",
-    seeAlso: ["serialization", "event"],
-    modules: ["why-kafka"],
+    seeAlso: ["serialization", "subject", "schema-compatibility"],
+    modules: ["why-kafka", "schemas-and-data-contracts"],
   },
   {
     slug: "serialization",
@@ -273,7 +273,23 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "Turning a record's key and value into the bytes Kafka stores. Kafka itself only moves bytes; the serializer (and matching deserializer on the consumer) defines the format.",
     seeAlso: ["schema-registry", "event"],
-    modules: ["why-kafka", "producer-configuration"],
+    modules: ["why-kafka", "schemas-and-data-contracts", "producer-configuration"],
+  },
+  {
+    slug: "subject",
+    term: "Subject",
+    definition:
+      "The name a schema is registered under in the Schema Registry — by default <topic>-value or <topic>-key. A subject holds an ordered list of schema versions and its own compatibility setting.",
+    seeAlso: ["schema-registry", "schema-compatibility"],
+    modules: ["schemas-and-data-contracts"],
+  },
+  {
+    slug: "schema-compatibility",
+    term: "Schema compatibility mode",
+    definition:
+      "The rule the Schema Registry checks a new schema version against: BACKWARD (default — new consumers read old data), FORWARD (old consumers read new data), FULL (both), or NONE (no check). It decides which side you upgrade first. BACKWARD, FORWARD and FULL each also have a transitive variant that checks against every earlier version, not just the last.",
+    seeAlso: ["schema-registry", "subject"],
+    modules: ["schemas-and-data-contracts"],
   },
   {
     slug: "bootstrap-servers",

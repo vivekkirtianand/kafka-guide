@@ -146,12 +146,16 @@ describe("Module 3 — build a producer and consumer", () => {
     expect(m.topics).toHaveLength(producerConsumerWalkthrough.lessons.length);
   });
 
-  it("pushed the reference config modules down by one", () => {
-    expect(getModule("producer-configuration")!.index).toBe(4);
-    expect(getModule("consumer-configuration")!.index).toBe(5);
-    expect(getModule("broker-topic-configuration")!.index).toBe(6);
-    expect(getModule("observability")!.index).toBe(7);
-    expect(getModule("troubleshooting-scenarios")!.index).toBe(8);
+  it("sits directly before the Schemas module, which Phase 5a inserted at index 4", () => {
+    expect(getModule("schemas-and-data-contracts")!.index).toBe(4);
+  });
+
+  it("pushed the reference config modules down (Phase 4b + Phase 5a)", () => {
+    expect(getModule("producer-configuration")!.index).toBe(5);
+    expect(getModule("consumer-configuration")!.index).toBe(6);
+    expect(getModule("broker-topic-configuration")!.index).toBe(7);
+    expect(getModule("observability")!.index).toBe(8);
+    expect(getModule("troubleshooting-scenarios")!.index).toBe(9);
   });
 
   it("keeps indexes 0-based and sequential across the whole list", () => {

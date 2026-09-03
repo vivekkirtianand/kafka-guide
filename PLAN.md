@@ -48,7 +48,7 @@ unless noted.
 | 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
 | 3 | Rework local lab | **3a ✅** Lab A single-broker in-app walkthrough; **3b ✅** Lab B (3-broker) in-app walkthrough + OS matrix + resource floor + `verify-lab.sh` + volume-delete warning | 1a, 1b | M1 |
 | 4 | Java producer/consumer module ✅ | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; **4b ✅** Module 3 (new, `index: 3`) — an in-app `CodeWalkthrough` over the scaffold; reference config modules renumbered 3–7 → 4–8; **4c ✅** rebalance listener + `PoisonPolicy` (propagate/skip/dead-letter) + `PoisonProducerApp` + 5 "Break it on purpose" lessons | 3a | M2 |
-| 5 | Schemas & serialization | 5a Module 5 topic content (bytes, JSON/Avro/Protobuf, Schema Registry, compatibility modes, poison records); 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
+| 5 | Schemas & serialization | **5a ✅** "Schemas and data contracts" module (new, `index: 4`) — Topic-explorer content: bytes/serializers, JSON/Avro/Protobuf, Schema Registry, subjects & naming, compatibility modes, safe evolution, deserialization poison records; reference config modules renumbered 4–8 → 5–9; 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams | 7a Module 7 Connect content + file/DB↔Kafka lab (lab stack already has `cp-kafka-connect`); 7b Streams content + order-total aggregation lab | 4, 5 | M2 |
 | 8 | Version & deployment awareness | 8a add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, mark archived releases, bump lab image; 8b `applicableVersions` on lessons/configs/runbooks + selected version affects content + "Reviewed against Kafka X on DATE"; 8c rename "version + deployment aware" → "configuration context", "Every setting" → "Curated configurations" (do first, cheap) | 1a | M3 |
@@ -642,13 +642,99 @@ Java 19 → 22 tests; Node suite still 330.
 
 **Phase 4 complete** — PRs 4a + 4b + 4c. The Java developer path (Module 3) is done.
 
+## Phase 5 — schemas & serialization
+
+Module 4 ("Schemas and data contracts") is the bridge between the hand-rolled JSON of Module
+3 and a real, machine-checked contract. 5a is the module's content; 5b evolves the
+`order-pipeline-java` `order-event` schema while an old consumer keeps running.
+
+| PR | Scope | Status |
+|---|---|---|
+| 5a | "Schemas and data contracts" module (new, `index: 4`) — Topic-explorer content for all 8 topics; reference config modules renumbered 4–8 → 5–9 | ✅ Done |
+| 5b | Labs — register an Avro/JSON schema, evolve it under BACKWARD while an old consumer runs, watch a bad change get rejected | ⭕ Planned |
+
+### PR 5a — Schemas and data contracts module
+
+The module the two Module 3 walkthrough lessons already point forward to ("Module 4 closes
+that gap"). It slots onto the beginner path right after Build a producer and consumer, and
+renders as Topic-explorer content — no new component.
+
+- `src/lib/data/modules.ts` — new `schemas-and-data-contracts` entry at **`index: 4`**,
+  `track: "beginner-path"`, `difficulty: "intermediate"`, prereq
+  `["build-a-producer-and-consumer"]`, `estimatedMinutes: 75`, `status: "available"`,
+  `activities: []`. Full `topicDetail` for all 8 topics: Kafka moves bytes not objects ·
+  JSON / Avro / Protobuf · what the Schema Registry adds · subjects, versions, naming
+  strategies · compatibility modes · evolving a schema without breaking consumers ·
+  deserialization failures and poison records · when a registry is worth it.
+- **Renumber** (same move as 4b): `producer-configuration` 4→5, `consumer-configuration`
+  5→6, `broker-topic-configuration` 6→7, `observability` 7→8, `troubleshooting-scenarios`
+  8→9. `index === arrayPosition` preserved. `walkthroughs.test.ts` index assertions bumped;
+  `walkthroughs.ts` and `LagSlopeVsAbsolute.tsx` module-number references updated
+  (walkthrough now says "Module 4 (schemas and data contracts)"; the lag demo's poison
+  aside points at the consumer module, now Module 6).
+- `src/lib/data/glossary.ts` — two new terms (`subject`, `schema-compatibility`);
+  `schema-registry` / `serialization` / `poison-message` / `dead-letter-queue` now list
+  `schemas-and-data-contracts` (and `build-a-producer-and-consumer`) in "Appears in". Module
+  body carries `[[…]]` links to serialization / schema-registry / subject /
+  schema-compatibility / poison-message / dead-letter-queue / topic / offset.
+- Tests: `modules.test.ts` — a "Module 4 — schemas and data contracts" block (index/track/
+  difficulty/prereq, renders as topicDetail not a walkthrough, covers every topic, and
+  accuracy assertions: the broker never parses a record, all four base compatibility modes
+  + the deploy order each forces, plain BACKWARD only checks the previous version, the
+  registry is off the per-record hot path, a deserialization failure throws inside `poll()`
+  and is handled like Module 3's poison record — and does **not** claim the broker validates
+  schemas). `walkthroughs.test.ts` — new index assertions. README demo-tree + "What's
+  scaffolded" renumbered; new Module 4 bullet.
+
+**Kafka-accuracy notes banked for review**
+
+- The magic-byte + 4-byte-schema-id wire format is **Confluent Schema Registry's**
+  convention, not core Apache Kafka. Apicurio interoperates with it.
+- Compatibility **direction** is format-neutral; the concrete allowed-changes list is
+  **Avro-specific**. Avro (Confluent's table): BACKWARD = delete field / add
+  field-with-default → consumers first; FORWARD = add field (no default OK) / delete
+  field-with-default → producers first; FULL = add-or-delete field-with-default → any
+  order. A no-default field add is **FORWARD-only** in Avro. Protobuf keys fields by
+  number and treats most add/remove as compatible; JSON Schema turns on `required` +
+  open/closed. Non-transitive modes only check the **immediately previous** version; NONE
+  has no transitive form.
+- Confluent's **Protobuf** wire format inserts a varint message-index header between the
+  4-byte schema id and the payload; Avro / JSON Schema are just magic-byte + id + payload.
+- A **soft-deleted** subject/version keeps its schema id globally resolvable (`/schemas/ids/{id}`),
+  so records already written stay deserializable; only a permanent hard delete removes it.
+- A `SerializationException` is raised out of `poll()` itself, before the handler sees a
+  record, and the position hasn't advanced — identical stall to a business-logic poison
+  record.
+- The registry is hit **zero times per record** in steady state (schema-by-id cache on both
+  serializer and deserializer); it only matters for new-schema registration and cold starts.
+- `auto.register.schemas` defaults **true**; production commonly sets it false +
+  `use.latest.version=true`.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The "Evolving a schema" lesson claimed adding or removing a field needs a default under **every** mode. Not so: a required-field **add** is FORWARD-compatible (old consumer ignores it); a required-field **remove** is BACKWARD-compatible (new consumer ignores the leftover data). The default is what **FULL** (both directions) needs. | The two points rewritten to the per-direction rule — "under FORWARD you can add a field with no default … under BACKWARD you can drop any field … FULL needs the default". `watchOut` reworded away from "defeats the entire scheme" to "compatible in a single direction only". New `modules.test.ts` assertion locks it in. |
+| 2 (P2) | "A registry outage doesn't stop warm clients" was directionally right but loose — decoding fails only on a schema id the client hasn't **cached** (cold start, or a producer that just shipped a new version), not whenever the registry is down. | The "dependency" point now says decoding "runs entirely from that cache" and names the uncached-id cases explicitly; the deserialization-cause bullet reworded to "unreachable when the consumer hit a schema id it hadn't cached yet". New test asserts the scoping. |
+| 3 (P2) | The `schema-compatibility` glossary term said "each has a transitive variant" — implying NONE does. | Reworded: "BACKWARD, FORWARD and FULL each also have a transitive variant … NONE (no check)". |
+
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The compatibility + evolution rules read as format-neutral, but the specific allowed-changes are **Avro's** — Protobuf and JSON Schema evolve differently. | "Compatibility modes" now leads each mode with the format-neutral **direction** and marks the allowed-changes as "In Avro …"; new point "The safe-change list is per format" (Protobuf keys by field number, JSON Schema turns on `required`, the registry runs a separate checker per format). "Evolving a schema" summary + point titles say "(Avro)"; the rename point notes Protobuf renames don't reach the wire. New tests assert both. |
+| 2 (P1) | "A field added without a default is compatible under BACKWARD or FORWARD" — in Avro it is **FORWARD-only**. | Point retitled "Adding a field (Avro): a no-default field is FORWARD-only"; `watchOut` now "FORWARD-compatible only — … fails a BACKWARD or FULL check". Test asserts the watchOut no longer says "fine under BACKWARD or FORWARD". |
+| 3 (P2) | The Confluent wire format described as magic-byte + id + payload for all formats — **Protobuf** inserts a message-index header. | "The wire format" point notes the Protobuf message-index header between id and payload. Test asserts it. |
+| 4 (P2) | "an unregistered or deleted schema id" as a deserialization cause — a normal **soft** delete keeps the id globally resolvable, so old records still decode. | New "Deleting a version" point in the subjects topic ("the schema id stays globally resolvable … records already on the topic keep deserializing"); the deserialization cause now says "hard-deleted … a normal soft delete still resolves by id". Test asserts it. |
+
 ---
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
-> their original numbers. Since Phase 4b inserted "Build a producer and consumer" at
-> `index: 3`, the current repo numbering for the sections below is: Producer configuration
-> = 4, Consumer configuration = 5, Broker and topic configuration = 6, Observability = 7,
-> Troubleshooting scenarios = 8. The full re-sequence is Phase 6.
+> their original numbers. Phase 4b inserted "Build a producer and consumer" at `index: 3`
+> and Phase 5a inserted "Schemas and data contracts" at `index: 4`, so the current repo
+> numbering for the sections below is: Producer configuration = 5, Consumer configuration
+> = 6, Broker and topic configuration = 7, Observability = 8, Troubleshooting scenarios
+> = 9. The full re-sequence is Phase 6.
 
 ## Module 1 — Kafka mental model
 

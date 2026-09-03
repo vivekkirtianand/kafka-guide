@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { troubleshooting, getTroubleshootingEntry } from "./troubleshooting";
 
 describe("troubleshooting catalog data", () => {
-  it("covers the ten Module 7 symptoms", () => {
+  it("covers the ten troubleshooting symptoms", () => {
     expect(troubleshooting).toHaveLength(10);
   });
 
