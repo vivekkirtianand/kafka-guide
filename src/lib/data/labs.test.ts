@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { labs, labA, labB } from "./labs";
+import { labs, labA, labB, labC } from "./labs";
 import { modules } from "./modules";
 
 const verifyLabScript = readFileSync(
@@ -217,6 +217,86 @@ describe("lab data", () => {
     const mod = modules.find((m) => m.slug === "local-cluster-lab")!;
     expect(mod.status).toBe("available");
     expect(mod.labs?.map((l) => l.slug)).toEqual([labA.slug, labB.slug]);
+  });
+
+  describe("Lab C — schema evolution", () => {
+    const step = (id: string) => labC.steps.find((s) => s.id === id)!;
+
+    it("reuses Lab B's Compose stack with the extras profile, registry only", () => {
+      expect(labC.setup.some((c) => /docker compose --profile extras up -d schema-registry/.test(c.command))).toBe(true);
+      expect(labC.setup.some((c) => /docker run|apache\/kafka/.test(c.command))).toBe(false);
+      expect(labC.prerequisites.join(" ")).toMatch(/finished Lab B/i);
+    });
+
+    it("hangs a long-running consumer that is never restarted", () => {
+      const consumer = step("start-old-consumer");
+      expect(consumer.command).toMatch(/kafka-json-schema-console-consumer/);
+      expect(consumer.command).toMatch(/--from-beginning/);
+      expect(consumer.intro).toMatch(/leave it (up|running)|never restarted/i);
+      // Jackson does not preserve field order — the lab must not promise it does
+      expect(consumer.observe).toMatch(/does not preserve field order|not match what you typed/i);
+    });
+
+    it("uses a fresh topic so the JSON-Schema consumer never meets Lab A/B's plain records", () => {
+      const create = step("create-topic");
+      expect(create.command).toMatch(/--topic order-events\b/);
+      expect(create.command).not.toMatch(/--topic orders\b/);
+    });
+
+    it("registers a closed v1 schema and evolves it with an optional field under BACKWARD", () => {
+      const v1 = step("produce-v1");
+      expect(v1.command).toMatch(/"additionalProperties":false/);
+      const evolve = step("evolve-compatible");
+      expect(evolve.command).toMatch(/discountCode/);
+      // discountCode is added to properties but not to `required`
+      expect(evolve.command).not.toMatch(/"required":\[[^\]]*discountCode/);
+      expect(evolve.expected).toMatch(/\[1,2\]/);
+      expect(evolve.observe).toMatch(/never touched|no restart/i);
+    });
+
+    it("rejects a type change outright — no mode accepts it — with a 409 and nothing on the topic", () => {
+      const reject = step("reject-type-change");
+      expect(reject.command).toMatch(/"amountCents":\{"type":"string"\}/);
+      expect(reject.expected).toMatch(/TYPE_CHANGED/);
+      expect(reject.expected).toMatch(/error code: 409/);
+      expect(reject.observe).toMatch(/still `\[1,2\]`|nothing registered/i);
+      expect(reject.observe).toMatch(/both directions|no compatibility mode/i);
+    });
+
+    it("shows the same optional-field add FAILING once the subject is FORWARD", () => {
+      const fwd = step("same-add-under-forward");
+      expect(fwd.command).toMatch(/"compatibility":"FORWARD"/);
+      expect(fwd.command).toMatch(/config\/order-events-value/);
+      expect(fwd.command).toMatch(/giftMessage/);
+      expect(fwd.expected).toMatch(/error code: 409/);
+      expect(fwd.observe).toMatch(/reverse question|opposite outcome/i);
+    });
+
+    it("restores BACKWARD, registers v3, and flags the non-transitive gap", () => {
+      const restore = step("restore-mode");
+      expect(restore.command).toMatch(/"compatibility":"BACKWARD"/);
+      expect(restore.expected).toMatch(/\[1,2,3\]/);
+      expect(restore.observe).toMatch(/BACKWARD_TRANSITIVE|transitive/i);
+    });
+
+    it("never puts a permanent schema delete in a command (it would orphan topic records)", () => {
+      const commands = [
+        ...labC.setup.map((c) => c.command),
+        ...labC.steps.map((s) => s.command),
+        ...labC.steps.flatMap((s) => (s.commonError ? [s.commonError.recovery] : [])),
+        ...(labC.troubleshooting ?? []).map((t) => t.fix),
+        ...labC.teardown.map((c) => c.command),
+      ].join("\n");
+      expect(commands).not.toMatch(/permanent=true/);
+      // the reset advice is down -v, which wipes _schemas and the topic together
+      expect(labC.teardownWarning).toMatch(/_schemas/);
+      expect(labC.teardownWarning).toMatch(/no undo|down -v/i);
+    });
+
+    it("is carried by the schemas-and-data-contracts module", () => {
+      const mod = modules.find((m) => m.slug === "schemas-and-data-contracts")!;
+      expect(mod.labs?.map((l) => l.slug)).toEqual([labC.slug]);
+    });
   });
 
   describe("verify-lab.sh", () => {

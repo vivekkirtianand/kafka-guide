@@ -224,12 +224,12 @@ describe("Module 4 — schemas and data contracts", () => {
     expect(m.track).toBe("beginner-path");
     expect(m.difficulty).toBe("intermediate");
     expect(m.status).toBe("available");
-    expect(m.prerequisites).toEqual(["build-a-producer-and-consumer"]);
+    expect(m.prerequisites).toEqual(["build-a-producer-and-consumer", "local-cluster-lab"]);
   });
 
-  it("renders as Topic-explorer content, not a walkthrough or a lab", () => {
+  it("renders Topic-explorer content for every topic, plus the schema-evolution lab", () => {
     expect(m.walkthrough).toBeUndefined();
-    expect(m.labs).toBeUndefined();
+    expect(m.labs?.map((l) => l.slug)).toEqual(["lab-c-schema-evolution"]);
     expect(Object.keys(m.topicDetail ?? {})).toHaveLength(m.topics.length);
     for (const topic of m.topics) {
       const d = m.topicDetail![topic];

@@ -72,7 +72,7 @@ src/
     types.ts                        Shared content types (incl. per-module course metadata)
     course.ts                       Computed course length + beginner/reference/advanced splits
     data/                           Seed content for modules, labs, configs, incidents, troubleshooting, runbooks
-    data/labs.ts                    In-app hands-on lab walkthroughs (Lab A: single-broker first workflow)
+    data/labs.ts                    In-app hands-on lab walkthroughs (Lab A single-broker, Lab B three-broker, Lab C schema evolution)
     data/walkthroughs.ts            Module 3 code walkthrough — 16 lessons (build it / break it), each a verbatim snippet of an order-pipeline-java file
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
     context/ProgressContext.tsx     Per-module completion + resume state + lab/walkthrough step checkboxes, persisted to localStorage
@@ -133,7 +133,11 @@ links back to the glossary.
   on write / fetch on read), subjects and naming strategies, the compatibility modes
   (BACKWARD / FORWARD / FULL / NONE and their transitive variants) and the deploy order
   each forces, the safe schema changes, deserialization failures as poison records, and
-  when a registry is actually worth running.
+  when a registry is actually worth running. Ships **Lab C** — an in-app walkthrough that
+  registers a closed JSON Schema on the Lab B stack's Schema Registry (`--profile extras`),
+  keeps a consumer running while the schema evolves, and watches the registry accept an
+  added optional field under BACKWARD, reject a type change under every mode, and reject
+  that same kind of add once the subject is switched to FORWARD.
 - **Module 5 (Producer configuration)** is fully built: real lesson prose for all 7
   topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
   demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout
@@ -170,18 +174,24 @@ links back to the glossary.
   reassignment, rolling app and broker restarts, certificate/credential rotation, capacity
   planning, backup & DR, cluster migration, Kafka upgrades, consumer offset recovery,
   handling a full disk, and broker/AZ failures.
-- **Module 2 (Your first local Kafka workflow)** is two in-app hands-on labs
-  (`LabWalkthrough`, data in `src/lib/data/labs.ts`), each step showing the exact command,
-  the expected output, a "what did you observe?" prompt, a common error with recovery, and a
-  checkbox that persists via `ProgressContext`:
-  - **Lab A** — one broker via a single `docker run`, 10 steps: create-topic → produce
-    (keyed and unkeyed) → consume → partition placement → consumer group + lag → reset
-    offsets and replay.
-  - **Lab B** — the three-broker cluster (renders collapsed below Lab A), 9 steps:
+- **In-app hands-on labs** (`LabWalkthrough`, data in `src/lib/data/labs.ts`), each step
+  showing the exact command, the expected output, a "what did you observe?" prompt, a common
+  error with recovery, and a checkbox that persists via `ProgressContext`:
+  - **Lab A** (Module 2) — one broker via a single `docker run`, 10 steps: create-topic →
+    produce (keyed and unkeyed) → consume → partition placement → consumer group + lag →
+    reset offsets and replay.
+  - **Lab B** (Module 2, renders collapsed below Lab A) — the three-broker cluster, 9 steps:
     replication factor 3 → leader election when a broker stops → ISR shrink and recovery →
     `acks=all` admission control below `min.insync.replicas` → the Grafana dashboard →
     dynamic topic config. Carries an OS matrix (macOS / Windows-WSL / Linux), a Docker
     memory floor, and lab-level troubleshooting.
+  - **Lab C** (Module 4) — schema evolution on Lab B's stack with the Schema Registry
+    (`--profile extras`), 9 steps: register a closed JSON Schema → start a consumer and
+    leave it running → add an optional field (BACKWARD accepts it, consumer keeps reading
+    with no restart) → change a field's type (409 `TYPE_CHANGED`, no mode allows it) → flip
+    the subject to FORWARD and watch the same kind of optional-field add get rejected →
+    restore BACKWARD and register it as v3. All `curl` against `localhost:8081` plus the
+    JSON-Schema console producer/consumer; no new code.
 - The **local cluster lab** at [`local-cluster-lab/`](local-cluster-lab/) is the Docker
   Compose project Lab B drives — its own `docker-compose.yml`, a `verify-lab.sh` health
   check, and a README with the service inventory, per-OS setup, and troubleshooting. CI

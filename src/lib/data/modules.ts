@@ -1,5 +1,5 @@
 import { Module } from "@/lib/types";
-import { labA, labB } from "./labs";
+import { labA, labB, labC } from "./labs";
 import { producerConsumerWalkthrough } from "./walkthroughs";
 
 export const modules: Module[] = [
@@ -941,8 +941,8 @@ export const modules: Module[] = [
     summary:
       "Kafka stores bytes and never looks inside them, so every topic carries a data contract between its producers and consumers — written down or not. This module covers serialization formats, the Schema Registry, compatibility modes, and how to change a schema without breaking a running consumer.",
     difficulty: "intermediate",
-    estimatedMinutes: 75,
-    prerequisites: ["build-a-producer-and-consumer"],
+    estimatedMinutes: 110,
+    prerequisites: ["build-a-producer-and-consumer", "local-cluster-lab"],
     track: "beginner-path",
     objectives: [
       "Explain why Kafka needs a serializer and a deserializer, and what the data contract on a topic actually is",
@@ -951,10 +951,12 @@ export const modules: Module[] = [
       "Read a compatibility mode (BACKWARD, FORWARD, FULL, NONE) and say which side it makes you upgrade first",
       "Make a safe schema change — add a field, remove a field — and name the changes that always break a consumer",
       "Handle a deserialization failure without stalling the partition",
+      "Register a schema, evolve it under a running consumer, and watch the registry accept a compatible change and reject an incompatible one (Lab C)",
     ],
     completionCriteria: [
       "Given a schema change, you can say whether it is backward-, forward-, fully-, or not-compatible, and whether to deploy producers or consumers first",
       "You can explain what a consumer sees when it reads bytes it cannot deserialize, and two ways to keep that from blocking the partition",
+      "You have run Lab C: a compatible change flowed through to a consumer that never restarted, and the registry returned a 409 for an incompatible one",
     ],
     furtherReading: [
       {
@@ -972,6 +974,7 @@ export const modules: Module[] = [
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-03",
+    labs: [labC],
     topics: [
       "Kafka moves bytes, not objects",
       "Serialization formats: JSON, Avro, and Protobuf",
