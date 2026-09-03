@@ -287,7 +287,7 @@ export const glossary: GlossaryTerm[] = [
     slug: "schema-compatibility",
     term: "Schema compatibility mode",
     definition:
-      "The rule the Schema Registry checks a new schema version against: BACKWARD (default — new consumers read old data), FORWARD (old consumers read new data), FULL (both), or NONE. It decides which side you upgrade first, and each has a transitive variant checked against every earlier version.",
+      "The rule the Schema Registry checks a new schema version against: BACKWARD (default — new consumers read old data), FORWARD (old consumers read new data), FULL (both), or NONE (no check). It decides which side you upgrade first. BACKWARD, FORWARD and FULL each also have a transitive variant that checks against every earlier version, not just the last.",
     seeAlso: ["schema-registry", "subject"],
     modules: ["schemas-and-data-contracts"],
   },

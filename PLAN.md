@@ -702,6 +702,14 @@ renders as Topic-explorer content — no new component.
 - `auto.register.schemas` defaults **true**; production commonly sets it false +
   `use.latest.version=true`.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The "Evolving a schema" lesson claimed adding or removing a field needs a default under **every** mode. Not so: a required-field **add** is FORWARD-compatible (old consumer ignores it); a required-field **remove** is BACKWARD-compatible (new consumer ignores the leftover data). The default is what **FULL** (both directions) needs. | The two points rewritten to the per-direction rule — "under FORWARD you can add a field with no default … under BACKWARD you can drop any field … FULL needs the default". `watchOut` reworded away from "defeats the entire scheme" to "compatible in a single direction only". New `modules.test.ts` assertion locks it in. |
+| 2 (P2) | "A registry outage doesn't stop warm clients" was directionally right but loose — decoding fails only on a schema id the client hasn't **cached** (cold start, or a producer that just shipped a new version), not whenever the registry is down. | The "dependency" point now says decoding "runs entirely from that cache" and names the uncached-id cases explicitly; the deserialization-cause bullet reworded to "unreachable when the consumer hit a schema id it hadn't cached yet". New test asserts the scoping. |
+| 3 (P2) | The `schema-compatibility` glossary term said "each has a transitive variant" — implying NONE does. | Reworded: "BACKWARD, FORWARD and FULL each also have a transitive variant … NONE (no check)". |
+
 ---
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep

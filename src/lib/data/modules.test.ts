@@ -264,6 +264,24 @@ describe("Module 4 — schemas and data contracts", () => {
     expect(text).toMatch(/outage|dependency/i);
   });
 
+  it("scopes a registry outage to uncached schema ids, not to all decoding", () => {
+    const reg = detail("What the Schema Registry adds");
+    const dep = reg.points.find((p) => p.term.includes("dependency"))!;
+    expect(dep.detail).toMatch(/already cached/i);
+    expect(dep.detail).toMatch(/cold start|never fetched/i);
+  });
+
+  it("does not claim every field add or remove needs a default", () => {
+    const evo = detail("Evolving a schema without breaking consumers");
+    const text = evo.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    // a no-default field can be added under FORWARD; any field can be dropped under BACKWARD
+    expect(text).toMatch(/FORWARD you can add a field with no default/i);
+    expect(text).toMatch(/BACKWARD you can drop any field/i);
+    expect(text).not.toMatch(/breaking change under every mode/i);
+    // the default is what FULL (both directions) needs
+    expect(text).toMatch(/FULL/);
+  });
+
   it("treats a deserialization failure as a poison record that stalls the partition", () => {
     const poison = detail("Deserialization failures and poison records");
     const text = `${poison.summary} ${poison.points.map((p) => p.detail).join(" ")}`;

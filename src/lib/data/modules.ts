@@ -1073,7 +1073,7 @@ export const modules: Module[] = [
           {
             term: "Not on the hot path, but a dependency",
             detail:
-              "A registry outage doesn't stop warm clients — cached schemas keep working. It stops a producer introducing a new schema and a cold consumer starting up. Run it with the same care as a broker.",
+              "A registry outage doesn't touch a client that has already cached the schema ids it uses — decoding runs entirely from that cache. What it blocks is a producer registering a new schema, and a consumer that hits a schema id it has never fetched (a cold start, or a producer that just rolled out a new version). Run it with the same care as a broker.",
           },
           {
             term: "auto.register.schemas",
@@ -1151,14 +1151,14 @@ export const modules: Module[] = [
           "The safe changes are a short list. Everything else needs a new topic or a coordinated stop-the-world.",
         points: [
           {
-            term: "Add a field — give it a default",
+            term: "Adding a field: the default is what buys you both directions",
             detail:
-              "A field with a default reads both ways: a new reader supplies the default for old records, an old reader ignores it in new records. Without a default, adding a field is a breaking change under every mode except NONE.",
+              "Under FORWARD you can add a field with no default — an old consumer just ignores it. Under BACKWARD the new consumer needs a default to stand in for records written before the field existed. FULL needs the default because it has to satisfy both. If you don't know the subject's mode, add the default.",
           },
           {
-            term: "Remove a field — only if it had a default",
+            term: "Removing a field: the mirror image",
             detail:
-              "Dropping a field consumers might still expect is safe only if their schema gives it a default. Remove it from the producer first under FORWARD, or from the consumers first under BACKWARD.",
+              "Under BACKWARD you can drop any field — the new consumer just ignores the data that's still there. Under FORWARD you can only drop a field that had a default, so the old consumer has something to fall back on. FULL, again, needs the default.",
           },
           {
             term: "Never rename in place",
@@ -1177,7 +1177,7 @@ export const modules: Module[] = [
           },
         ],
         watchOut:
-          "A default is not decorative metadata — it is the mechanism that makes evolution work. \"Add the field now, add the default later\" defeats the entire scheme.",
+          "Adding the default is not a step you can defer. A field added without one is compatible in a single direction only — fine under BACKWARD or FORWARD if you deploy in the right order, but it fails a FULL check and it breaks the moment a consumer reads across the change from the other side.",
       },
       "Deserialization failures and poison records": {
         summary:
@@ -1192,7 +1192,7 @@ export const modules: Module[] = [
           {
             term: "Causes",
             detail:
-              "A producer using a different serializer, a record that predates the registry, an unregistered or deleted schema id, a registry that was unreachable when the id was cached, or real disk or network corruption.",
+              "A producer using a different serializer, a record that predates the registry, an unregistered or deleted schema id, a registry that was unreachable when the consumer hit a schema id it hadn't cached yet, or real disk or network corruption.",
           },
           {
             term: "The framework fix",
