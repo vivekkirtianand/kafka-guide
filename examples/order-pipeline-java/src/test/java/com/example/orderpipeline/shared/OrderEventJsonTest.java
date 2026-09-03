@@ -40,6 +40,18 @@ class OrderEventJsonTest {
     }
 
     @Test
+    void rejectsTheJsonLiteralNull() {
+        // "null" is valid JSON and Jackson parses it to a Java null — treat it as poison,
+        // not as a real event that the handler then chokes on.
+        assertThrows(IllegalArgumentException.class, () -> OrderEventJson.fromJson("null"));
+    }
+
+    @Test
+    void rejectsANullValue() {
+        assertThrows(IllegalArgumentException.class, () -> OrderEventJson.fromJson(null));
+    }
+
+    @Test
     void rejectsAnEventThatViolatesTheCompactConstructor() {
         String badQuantity = "{\"orderId\":\"ord-1\",\"customerId\":\"alice\",\"item\":\"mug\","
                 + "\"quantity\":0,\"amountCents\":1800,\"occurredAt\":\"2026-01-02T03:04:05Z\"}";

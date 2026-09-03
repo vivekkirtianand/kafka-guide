@@ -33,9 +33,12 @@ describe("order-pipeline-java scaffold", () => {
       "src/main/java/com/example/orderpipeline/producer/ProducerApp.java",
       "src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java",
       "src/main/java/com/example/orderpipeline/consumer/ConsumerApp.java",
+      "src/main/java/com/example/orderpipeline/consumer/PoisonPolicy.java",
+      "src/main/java/com/example/orderpipeline/producer/PoisonProducerApp.java",
       "src/test/java/com/example/orderpipeline/shared/OrderEventJsonTest.java",
       "src/test/java/com/example/orderpipeline/producer/OrderProducerTest.java",
       "src/test/java/com/example/orderpipeline/consumer/OrderConsumerTest.java",
+      "src/test/java/com/example/orderpipeline/consumer/OrderConsumerPoisonTest.java",
     ]) {
       expect(read(f).length).toBeGreaterThan(0);
     }
@@ -50,6 +53,19 @@ describe("order-pipeline-java scaffold", () => {
     const consumer = read("src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java");
     expect(consumer).toMatch(/ENABLE_AUTO_COMMIT_CONFIG, false/);
     expect(consumer).toMatch(/commitSync\(\)/);
+  });
+
+  it("has a poison-record policy (propagate / skip / dead-letter) and a rebalance listener", () => {
+    const policy = read("src/main/java/com/example/orderpipeline/consumer/PoisonPolicy.java");
+    expect(policy).toMatch(/static PoisonPolicy propagate\(\)/);
+    expect(policy).toMatch(/static PoisonPolicy skip\(\)/);
+    expect(policy).toMatch(/static PoisonPolicy deadLetter\(/);
+
+    const consumer = read("src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java");
+    expect(consumer).toMatch(/poisonPolicy\.onPoison\(/);
+    expect(consumer).toMatch(/ConsumerRebalanceListener/);
+
+    expect(read("build.gradle.kts")).toMatch(/runProducerPoison/);
   });
 
   it("is wired into CI as its own job", () => {

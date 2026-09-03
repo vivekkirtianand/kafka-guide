@@ -82,4 +82,21 @@ class OrderConsumerTest {
 
         assertEquals(List.of("ord-1", "ord-2", "ord-3"), seen);
     }
+
+    @Test
+    void subscribesWithARebalanceListenerWithoutBreakingTheLoop() {
+        MockConsumer<String, String> mock = new MockConsumer<>("earliest");
+        OrderConsumer consumer = new OrderConsumer(mock);
+
+        consumer.subscribe(); // installs the logging ConsumerRebalanceListener
+        mock.rebalance(List.of(P0));
+        mock.updateBeginningOffsets(Map.of(P0, 0L));
+        mock.addRecord(record(0, "alice", "ord-1"));
+
+        List<String> seen = new ArrayList<>();
+        int count = consumer.runOnce(Duration.ofMillis(10), event -> seen.add(event.orderId()));
+
+        assertEquals(1, count);
+        assertEquals(List.of("ord-1"), seen);
+    }
 }

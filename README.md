@@ -73,7 +73,7 @@ src/
     course.ts                       Computed course length + beginner/reference/advanced splits
     data/                           Seed content for modules, labs, configs, incidents, troubleshooting, runbooks
     data/labs.ts                    In-app hands-on lab walkthroughs (Lab A: single-broker first workflow)
-    data/walkthroughs.ts            Module 3 code walkthrough — 11 lessons, each a verbatim snippet of an order-pipeline-java file
+    data/walkthroughs.ts            Module 3 code walkthrough — 16 lessons (build it / break it), each a verbatim snippet of an order-pipeline-java file
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
     context/ProgressContext.tsx     Per-module completion + resume state + lab/walkthrough step checkboxes, persisted to localStorage
 
@@ -117,13 +117,16 @@ links back to the glossary.
   four interactive activities — producer → partition → consumer flow, partition-count vs.
   ordering, broker failure and leader election, and predict-before-reveal. See
   [PLAN.md](PLAN.md) for the detailed status.
-- **Module 3 (Build a producer and consumer)** is built: an 11-lesson in-app code
+- **Module 3 (Build a producer and consumer)** is built: a 16-lesson in-app code
   walkthrough (`CodeWalkthrough`, data in `src/lib/data/walkthroughs.ts`) over the
-  `examples/order-pipeline-java/` scaffold — dependencies, the event record, producer
-  config, async `send()`, confirming the write, serialization, consumer config, the poll
-  loop, offset commits, consumer groups, graceful shutdown. Every snippet is a verbatim
-  slice of a real source file, checked by `walkthroughs.test.ts`; each lesson has a
-  persisted "read it" checkbox and, where relevant, a "try it" command against Lab A.
+  `examples/order-pipeline-java/` scaffold, in two phases. **Build the happy path** —
+  dependencies, the event record, producer config, async `send()`, confirming the write,
+  serialization, consumer config, the poll loop, offset commits, consumer groups, graceful
+  shutdown. **Break it on purpose** — watching a rebalance, a poison record stalling the
+  partition, then `skip` / dead-letter policies, and a hard-kill drill that proves
+  at-least-once redelivery. Every snippet is a verbatim slice of a real source file, checked
+  by `walkthroughs.test.ts`; each lesson has a persisted "read it" checkbox and, where
+  relevant, a "try it" command against Lab A.
 - **Module 4 (Producer configuration)** is fully built: real lesson prose for all 7
   topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
   demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout
@@ -180,7 +183,8 @@ links back to the glossary.
 - The code Module 3 walks through lives at
   [`examples/order-pipeline-java/`](examples/order-pipeline-java/): a plain-Java Kafka
   producer and consumer (`OrderEvent` → JSON → `orders` topic, keyed by customer id,
-  `acks=all` + idempotence on the producer, manual at-least-once commit on the consumer),
-  with `MockProducer` / `MockConsumer` unit tests that need no broker. Its own Gradle build
-  (wrapper pinned by SHA-256, Java 21 toolchain, Kafka 4.0 clients) runs in a dedicated CI
-  job (`verify-order-pipeline-java`).
+  `acks=all` + idempotence on the producer, manual at-least-once commit on the consumer,
+  a rebalance-logging listener, and a `PoisonPolicy` — propagate / skip / dead-letter —
+  for records that won't parse), with `MockProducer` / `MockConsumer` unit tests that need
+  no broker. Its own Gradle build (wrapper pinned by SHA-256, Java 21 toolchain, Kafka 4.0
+  clients) runs in a dedicated CI job (`verify-order-pipeline-java`).

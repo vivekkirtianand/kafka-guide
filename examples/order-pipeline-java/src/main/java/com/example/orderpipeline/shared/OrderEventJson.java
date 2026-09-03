@@ -37,10 +37,19 @@ public final class OrderEventJson {
     }
 
     public static OrderEvent fromJson(String json) {
+        if (json == null) {
+            throw new IllegalArgumentException("order event value was null (a tombstone?)");
+        }
+        OrderEvent event;
         try {
-            return MAPPER.readValue(json, OrderEvent.class);
+            event = MAPPER.readValue(json, OrderEvent.class);
         } catch (Exception e) {
             throw new IllegalArgumentException("could not parse order event: " + json, e);
         }
+        if (event == null) {
+            // The value was the JSON literal `null` — parses fine, but there is no event.
+            throw new IllegalArgumentException("order event JSON was the literal null: " + json);
+        }
+        return event;
     }
 }

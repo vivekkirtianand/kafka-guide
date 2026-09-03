@@ -61,6 +61,9 @@ export interface WalkthroughLesson {
   // Stable id, unique within the walkthrough. The progress-store key for this lesson's
   // checkbox — must not change once learners have progress saved.
   id: string;
+  // Optional group heading rendered before this lesson (and until the next one that sets
+  // it). Used to split a long walkthrough into phases, e.g. "Build it" / "Break it".
+  section?: string;
   title: string;
   // One to three sentences of framing before the code.
   intro: string;

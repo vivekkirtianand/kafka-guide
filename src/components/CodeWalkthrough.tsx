@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Walkthrough } from "@/lib/types";
 import { useProgress } from "@/lib/context/ProgressContext";
 import Badge from "./Badge";
@@ -95,8 +95,16 @@ function WalkthroughBody({ walkthrough }: { walkthrough: Walkthrough }) {
         {walkthrough.lessons.map((lesson, i) => {
           const checked = stepDone(walkthrough.slug, lesson.id);
           return (
-            <li
-              key={lesson.id}
+            <Fragment key={lesson.id}>
+              {lesson.section && (
+                <li
+                  data-testid="walkthrough-section"
+                  className="border-b border-border pb-1.5 font-mono text-[11px] uppercase tracking-wide text-text-faint"
+                >
+                  {lesson.section}
+                </li>
+              )}
+              <li
               data-testid="walkthrough-lesson"
               className="rounded-md border border-border-soft bg-bg-inset p-4"
             >
@@ -146,7 +154,8 @@ function WalkthroughBody({ walkthrough }: { walkthrough: Walkthrough }) {
                 />
                 I read this and looked at the file
               </label>
-            </li>
+              </li>
+            </Fragment>
           );
         })}
       </ol>

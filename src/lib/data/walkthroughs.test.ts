@@ -17,10 +17,19 @@ const norm = (s: string) =>
 describe("producer/consumer code walkthrough", () => {
   const w = producerConsumerWalkthrough;
 
-  it("has 11 lessons with unique, stable ids", () => {
-    expect(w.lessons).toHaveLength(11);
+  it("has 16 lessons with unique, stable ids", () => {
+    expect(w.lessons).toHaveLength(16);
     const ids = w.lessons.map((l) => l.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("splits into a build phase and a break-it phase", () => {
+    const sections = w.lessons.filter((l) => l.section).map((l) => l.section);
+    expect(sections).toEqual(["Build the happy path", "Break it on purpose"]);
+    // the first lesson opens a section so every lesson sits under one
+    expect(w.lessons[0].section).toBe("Build the happy path");
+    const breakIdx = w.lessons.findIndex((l) => l.section === "Break it on purpose");
+    expect(w.lessons[breakIdx].id).toBe("watching-a-rebalance");
   });
 
   it("every lesson has an intro, a snippet, and at least two points", () => {
@@ -48,6 +57,28 @@ describe("producer/consumer code walkthrough", () => {
     expect(allText).toMatch(/at-least-once/i);
     expect(allText).toMatch(/rebalance/i);
     expect(allText).toMatch(/wakeup\(\)/);
+    // the failure phase
+    expect(allText).toMatch(/poison/i);
+    expect(allText).toMatch(/dead-letter/i);
+    expect(allText).toMatch(/at-most-once/i);
+  });
+
+  it("walks all three poison-record policies and names the trade-off of each", () => {
+    const byId = (id: string) => w.lessons.find((l) => l.id === id)!;
+    const stall = `${byId("poison-record-stops-everything").intro} ${byId("poison-record-stops-everything").points.map((p) => p.detail).join(" ")}`;
+    expect(stall).toMatch(/offset never moves|stuck/i);
+
+    const skip = byId("poison-record-skip").points.map((p) => p.detail).join(" ");
+    expect(skip).toMatch(/gone|no way to inspect|log line/i);
+
+    const dlq = byId("poison-record-dead-letter");
+    const dlqText = dlq.points.map((p) => p.detail).join(" ");
+    // the write is awaited so a failure can't silently drop the record
+    expect(dlqText).toMatch(/send\(\.\.\.\)\.get\(\) blocks|awaited/i);
+    expect(dlqText).toMatch(/redelivered, not lost|offset stays put/i);
+    // provenance is carried forward
+    expect(dlqText).toMatch(/dlt\.origin|dlt\.error/i);
+    expect(dlq.watchOut).toMatch(/alert|someone who looks/i);
   });
 
   it("does not claim poll() sends heartbeats", () => {
@@ -82,9 +113,16 @@ describe("producer/consumer code walkthrough", () => {
   it("makes every ./gradlew command copy-safe from the repo root (there is no root gradlew)", () => {
     for (const l of w.lessons) {
       if (l.run?.includes("./gradlew")) {
-        expect(l.run, l.id).toMatch(/^cd examples\/order-pipeline-java && \.\/gradlew /);
+        expect(l.run, l.id).toMatch(/^cd examples\/order-pipeline-java && (?:\w+=\S+ )*\.\/gradlew /);
       }
     }
+  });
+
+  it("the at-least-once drill's copyable command actually slows the consumer", () => {
+    const drill = w.lessons.find((l) => l.id === "prove-at-least-once")!;
+    // the lesson explains a delay is required — the command must carry it, not just the prose
+    expect(drill.points.map((p) => p.detail).join(" ")).toMatch(/SLOW_MS/);
+    expect(drill.run).toMatch(/SLOW_MS=\d+ \.\/gradlew runConsumer/);
   });
 });
 

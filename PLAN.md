@@ -47,7 +47,7 @@ unless noted.
 | **1** | **Course framework** | 1a data model + metadata + IA + computed duration; 1b progress tracking (localStorage); 1c glossary | — | M1 |
 | 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
 | 3 | Rework local lab | **3a ✅** Lab A single-broker in-app walkthrough; **3b ✅** Lab B (3-broker) in-app walkthrough + OS matrix + resource floor + `verify-lab.sh` + volume-delete warning | 1a, 1b | M1 |
-| 4 | Java producer/consumer module | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; **4b ✅** Module 3 (new, `index: 3`) — an 11-lesson in-app `CodeWalkthrough` over the scaffold; reference config modules renumbered 3–7 → 4–8; 4c multi-consumer + tests + intentional-failure exercises | 3a | M2 |
+| 4 | Java producer/consumer module ✅ | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; **4b ✅** Module 3 (new, `index: 3`) — an in-app `CodeWalkthrough` over the scaffold; reference config modules renumbered 3–7 → 4–8; **4c ✅** rebalance listener + `PoisonPolicy` (propagate/skip/dead-letter) + `PoisonProducerApp` + 5 "Break it on purpose" lessons | 3a | M2 |
 | 5 | Schemas & serialization | 5a Module 5 topic content (bytes, JSON/Avro/Protobuf, Schema Registry, compatibility modes, poison records); 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams | 7a Module 7 Connect content + file/DB↔Kafka lab (lab stack already has `cp-kafka-connect`); 7b Streams content + order-total aggregation lab | 4, 5 | M2 |
@@ -554,6 +554,93 @@ Suite 322 → 325 (+3 assertions locking in findings 1, 3, 4).
 | 1 (P2) | Round 1 only fixed lesson 1 and the setup note — the other "Try it" commands still started with a bare `./gradlew`, which fails from the repo root (there is no root `gradlew`) | every `./gradlew` "Try it" command now begins `cd examples/order-pipeline-java && …`, so each is independently copy-safe; `cloneNote` explains they run from the repo root and to drop the `cd` if already inside the example. Test asserts every `./gradlew` command is `cd`-prefixed |
 
 Suite 325 → 326.
+
+### PR 4c — multi-consumer + intentional-failure drills
+
+The walkthrough gains a second phase, **"Break it on purpose"**, over real failure-handling
+code added to the example. (`AskUserQuestion`: extend the walkthrough rather than a separate
+exercise block; stay MockConsumer-only, no Testcontainers.)
+
+- `examples/order-pipeline-java/`:
+  - `consumer/PoisonPolicy.java` (new) — a functional interface for a record that won't
+    parse, with `propagate()` (rethrow → the poll loop stops), `skip()` (log + move on,
+    commit past it), `deadLetter(Producer, topic)` (copy the raw bytes to a DLT, then move
+    on).
+  - `consumer/OrderConsumer.java` — `runOnce` wraps the parse in try/catch and hands a
+    failure to the policy (default `propagate`); a genuine handler exception still
+    propagates. `subscribe()` now installs a `ConsumerRebalanceListener` that logs
+    assignment/revocation. New constructor overloads take a `PoisonPolicy`.
+  - `consumer/ConsumerApp.java` — 3rd arg picks the policy (`propagate` | `skip` |
+    `deadletter`); builds and closes a DLT producer for `deadletter`.
+  - `producer/PoisonProducerApp.java` (new) + a `runProducerPoison` Gradle task — sends two
+    good orders and one malformed record on one key.
+- Tests (MockConsumer/MockProducer, still no broker): `OrderConsumerPoisonTest` — propagate
+  throws and leaves the offset uncommitted; skip drops it and commits past; deadLetter
+  copies the raw record to a MockProducer and commits past; a handler exception is *not*
+  swallowed. `OrderConsumerTest` — subscribing with the rebalance listener doesn't break the
+  loop. 13 → 18 Java tests.
+- `src/lib/types.ts` — `WalkthroughLesson.section?` (a group heading). `CodeWalkthrough.tsx`
+  renders a `<li data-testid="walkthrough-section">` when it changes.
+- `src/lib/data/walkthroughs.ts` — lesson 1 opens "Build the happy path"; 5 new lessons open
+  "Break it on purpose": watching a rebalance, a poison record stops everything, skip it,
+  dead-letter it, prove at-least-once (hard-kill drill). Lessons 8/10/11's snippets updated
+  for the `runOnce` / `ConsumerApp` changes. 11 → 16 lessons.
+- `src/lib/data/modules.ts` — Module 3 `estimatedMinutes` 90 → 120, +1 objective and +1
+  completion criterion on poison handling, +5 `topics`.
+- Tests: `walkthroughs.test.ts` (16-count, section split, per-policy trade-off assertions),
+  `CodeWalkthrough.test.tsx` (section headings render), `order-pipeline-java.test.ts` (new
+  files + `PoisonPolicy` factories + `ConsumerRebalanceListener` + `runProducerPoison`).
+  Suite 326 → 330.
+- `examples/order-pipeline-java/README.md` — "Failure drills" section; root `README.md` —
+  Module 3 bullet rewritten (16 lessons, two phases).
+
+Local verification: `./gradlew build` green on Temurin 21 (18 Java tests, no `-Xlint:all`
+warnings); `npm run typecheck` / `lint` / `test` (330) / `build` green; browser — the module
+renders 16 lessons under two section headings, checkboxes persist.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The source offset could commit before the async dead-letter write succeeded — a failed DLT write would lose the poison record | `deadLetter` now `send(dead).get()`s (blocks on the ack) and rethrows on failure, so `runOnce` never reaches `commitSync()` and the record is redelivered. New test `deadLetterThatCannotWriteDoesNotCommitPastThePoisonRecord` (failing producer stub) |
+| 2 (P2) | The DLT copied deserialized strings, and dropped headers + source metadata | `PoisonPolicy.deadLetter` takes a `Producer<String, byte[]>`; it copies the original headers and adds `dlt.origin.topic` / `partition` / `offset` and `dlt.error`. Value is `record.value().getBytes(UTF_8)` with a comment that a binary pipeline would dead-letter from a `byte[]` deserializer. `ConsumerApp` builds the producer with `ByteArraySerializer` |
+| 3 (P2) | The at-least-once hard-kill drill was unreliable — 4 records commit before a learner can react | `ProducerApp` takes an optional count arg (`./gradlew run --args="localhost:9092 500"`); the lesson now produces a few hundred records first |
+| 4 (P2) | The walkthrough said two good records follow the poison record, but the sequence is good → poison → good | reworded the poison lessons and the example README to "a good order, then an un-parseable record, then another good order" |
+| 5 (P2) | The walkthrough promised exact partition assignments after a rebalance | reworded: one instance ends up with two partitions and the other with one, "which instance gets which set isn't fixed — the assignor decides" |
+| 6 (P2) | An unknown poison-policy arg silently selected `propagate` while the startup line showed the bad name | `ConsumerApp` validates against a `POLICIES` set and `System.exit(2)`s with a clear message on an unknown value; the skip lesson notes it |
+
+Suite 330 → 330 (Java 18 → 19; the Node walkthrough tests were retargeted, not added to).
+
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The JSON literal `null` deserializes to a Java `null` without throwing, so it slipped past `PoisonPolicy` and blew up in the handler | `OrderEventJson.fromJson` now rejects a `null` argument and a `null` parse result with `IllegalArgumentException`. Tests: `rejectsTheJsonLiteralNull`, `rejectsANullValue`, and `aJsonNullValueIsTreatedAsPoisonNotHandedToTheHandler`. The poison lesson notes it |
+| 2 (P2) | The rebalance lesson said both consumers log a revocation, but the joining one has no partitions to revoke | reworded: the incumbent logs the revoke, both log the assign, "the joining consumer had nothing to revoke" |
+| 3 (P2) | 500 records still commit too fast to interrupt | `ConsumerApp` reads a `SLOW_MS` env var and sleeps that many ms per record; the drill is now `SLOW_MS=200 ./gradlew runConsumer`. README + lesson updated |
+
+Java 19 → 22 tests; Node suite still 330.
+
+**Review findings addressed (round 3)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | Round 2's `SLOW_MS` read `System.getenv()` in `ConsumerApp`, but a build script forwarding it via `System.getenv()` is unreliable through the Gradle daemon — the drill still wasn't guaranteed | the `runConsumer` task now forwards it with the config-cache-safe provider API: `project.providers.environmentVariable("SLOW_MS").orNull?.let { environment("SLOW_MS", it) }`. Verified through a warm daemon: the startup line reports `…, 200ms/record`. The at-least-once lesson now says explicitly that without the delay the batch commits before you can react |
+
+**Review findings addressed (round 4)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The at-least-once lesson's prose mentioned `SLOW_MS=200`, but the copyable "Try it" command was still `./gradlew runConsumer` at full speed | the `run` field is now `cd … && ./gradlew run --args="localhost:9092 200" && SLOW_MS=200 ./gradlew runConsumer` — produce + slow consume in one copy. Test asserts the drill command carries `SLOW_MS=`; the copy-safe regex now allows an env-var prefix on a chained `./gradlew` |
+| 2 (P2) | "every record from that poll batch prints a second time" — only the already-processed prefix is a duplicate; the rest are first delivery | split into a new "what you see on restart" point: the orders handled before the kill print again (the at-least-once duplication), the rest print for the first time. Example README reworded to match |
+
+**Review findings addressed (round 5)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The at-least-once lesson's restart step said `./gradlew runConsumer` — a fresh terminal at the repo root has no wrapper | now `cd examples/order-pipeline-java && ./gradlew runConsumer`; "after a handful print" → "after a handful have printed" (README too) |
+
+**Phase 4 complete** — PRs 4a + 4b + 4c. The Java developer path (Module 3) is done.
 
 ---
 

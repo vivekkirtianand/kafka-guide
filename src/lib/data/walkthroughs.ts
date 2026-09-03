@@ -15,6 +15,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
   lessons: [
     {
       id: "the-project",
+      section: "Build the happy path",
       title: "The project and its dependencies",
       intro:
         "The whole client is one Gradle module. It needs surprisingly little: the Kafka client library, something to turn objects into JSON, and a logging binding.",
@@ -274,11 +275,14 @@ export const producerConsumerWalkthrough: Walkthrough = {
       file: "src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java",
       code: `        ConsumerRecords<String, String> records = consumer.poll(timeout);
         for (ConsumerRecord<String, String> record : records) {
-            OrderEvent event = OrderEventJson.fromJson(record.value());
-            handler.accept(event);
-            log.info("processed {} (partition {}, offset {})",
-                    event.orderId(), record.partition(), record.offset());
-        }`,
+            OrderEvent event;
+            try {
+                event = OrderEventJson.fromJson(record.value());
+            } catch (RuntimeException parseFailure) {
+                poisonPolicy.onPoison(record, parseFailure);
+                continue;
+            }
+            handler.accept(event);`,
       points: [
         {
           term: "poll(timeout)",
@@ -293,7 +297,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "deserialize per record",
           detail:
-            "record.value() is the JSON string; OrderEventJson.fromJson turns it back into an OrderEvent before your handler sees it.",
+            "record.value() is the JSON string; OrderEventJson.fromJson turns it back into an OrderEvent before your handler sees it. A value that won't parse goes to the poison policy instead — that's the whole “Break it on purpose” section below; until then, assume every record is well-formed.",
         },
       ],
       run: "cd examples/order-pipeline-java && ./gradlew runConsumer",
@@ -334,7 +338,8 @@ export const producerConsumerWalkthrough: Walkthrough = {
       intro:
         "ConsumerApp takes the group id as an argument so you can run the same program several ways and watch how the group behaves.",
       file: "src/main/java/com/example/orderpipeline/consumer/ConsumerApp.java",
-      code: `        OrderConsumer consumer = new OrderConsumer(bootstrapServers, groupId);`,
+      code: `        String bootstrapServers = args.length > 0 ? args[0] : "localhost:9092";
+        String groupId = args.length > 1 ? args[1] : "order-pipeline-demo";`,
       points: [
         {
           term: "same group id → split the partitions",
@@ -365,7 +370,8 @@ export const producerConsumerWalkthrough: Walkthrough = {
       intro:
         "A consumer that is killed abruptly leaves its group without telling anyone, and the group stalls until a timeout. One shutdown hook avoids that.",
       file: "src/main/java/com/example/orderpipeline/consumer/ConsumerApp.java",
-      code: `        Runtime.getRuntime().addShutdownHook(new Thread(consumer::stop));`,
+      code: `        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            consumer.stop();`,
       points: [
         {
           term: "stop() calls consumer.wakeup()",
@@ -386,6 +392,191 @@ export const producerConsumerWalkthrough: Walkthrough = {
       run: "cd examples/order-pipeline-java && ./gradlew runConsumer",
       watchOut:
         "Without the hook, Ctrl-C kills the JVM mid-poll. The other consumers in the group can't take over that partition until the coordinator times the dead member out.",
+    },
+    {
+      id: "watching-a-rebalance",
+      section: "Break it on purpose",
+      title: "Watching a rebalance",
+      intro:
+        "The consumer group only makes sense once you can see it move. `subscribe()` takes a `ConsumerRebalanceListener`, and this one logs every assignment and revocation.",
+      file: "src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java",
+      code: `    public void subscribe() {
+        consumer.subscribe(List.of(TOPIC), new ConsumerRebalanceListener() {
+            @Override
+            public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+                if (!partitions.isEmpty()) {
+                    log.info("rebalance: {} revoked", partitions);
+                }
+            }
+
+            @Override
+            public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+                log.info("rebalance: {} assigned", partitions);
+            }
+        });
+    }`,
+      points: [
+        {
+          term: "the callbacks fire during poll()",
+          detail:
+            "onPartitionsAssigned runs right after this instance joins or the group rebalances — it now owns those partitions. onPartitionsRevoked runs just before it loses them: your last chance to commit what you've processed.",
+        },
+        {
+          term: "what you'll see",
+          detail:
+            "Start one consumer in group `team-a` and it logs `rebalance: [orders-0, orders-1, orders-2] assigned` — all three. Start a second: the one already running logs a revoke of its partitions, then both log an assignment — one gets two, the other one (the joining consumer had nothing to revoke, so it only logs the assign). Which instance gets which set isn't fixed. Stop one and the survivor picks the freed partitions back up.",
+        },
+        {
+          term: "a real consumer commits here",
+          detail:
+            "This example commits after every batch, so onPartitionsRevoked has nothing to do. A consumer that commits less often uses it to flush progress before handing the partition away.",
+        },
+      ],
+      run: 'cd examples/order-pipeline-java && ./gradlew runConsumer --args="localhost:9092 team-a"',
+    },
+    {
+      id: "poison-record-stops-everything",
+      title: "A poison record stops everything",
+      intro:
+        "`runProducerPoison` sends a good order, then an un-parseable record, then another good order — all on key `alice` so they're on one partition in that order. Run the consumer against it with the default settings.",
+      file: "src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java",
+      code: `            try {
+                event = OrderEventJson.fromJson(record.value());
+            } catch (RuntimeException parseFailure) {
+                poisonPolicy.onPoison(record, parseFailure);
+                continue;
+            }`,
+      points: [
+        {
+          term: "fromJson throws",
+          detail:
+            "The malformed value can't be parsed, so OrderEventJson.fromJson throws and the catch hands the record to the PoisonPolicy. fromJson also rejects a null value and the JSON literal `null` — both parse, but neither is an event, and you don't want a null slipping through to the handler.",
+        },
+        {
+          term: "the default policy rethrows",
+          detail:
+            "PoisonPolicy.propagate() throws the parse failure straight back out. It escapes runOnce before commitSync() runs, so the offset never moves.",
+        },
+        {
+          term: "the partition is now stuck",
+          detail:
+            "Restart the consumer and the very next poll returns the same bad record. The good order behind it — and everything else on that partition — never gets processed. One malformed message has halted the pipeline.",
+        },
+      ],
+      run: "cd examples/order-pipeline-java && ./gradlew runProducerPoison",
+      watchOut:
+        "This is the real-world incident: a single unexpected message, and a consumer group's lag climbs forever. You need a deliberate answer for it — the next two lessons are the usual two.",
+    },
+    {
+      id: "poison-record-skip",
+      title: "Skip the poison record",
+      intro:
+        "The simplest answer: log the bad record and move on. Pass `skip` as the third argument to the consumer (an unrecognised value is rejected at startup, not quietly ignored).",
+      file: "src/main/java/com/example/orderpipeline/consumer/PoisonPolicy.java",
+      code: `    static PoisonPolicy skip() {
+        return (record, cause) -> LOG.warn(
+                "skipping poison record at {}-{} offset {}: {}",
+                record.topic(), record.partition(), record.offset(), cause.getMessage());
+    }`,
+      points: [
+        {
+          term: "it returns normally",
+          detail:
+            "No throw, so runOnce's loop `continue`s to the next record and, at the end, commitSync() commits an offset past the poison. The partition is unstuck.",
+        },
+        {
+          term: "the good records flow",
+          detail:
+            "Run this against the poison batch and you'll see ord-good-1 and ord-good-2 processed, with one WARN line between them.",
+        },
+        {
+          term: "the cost",
+          detail:
+            "The bad record is gone. All you have is a log line — no way to inspect it, reprocess it, or tell a customer what happened to their order.",
+        },
+      ],
+      run: 'cd examples/order-pipeline-java && ./gradlew runConsumer --args="localhost:9092 team-a skip"',
+    },
+    {
+      id: "poison-record-dead-letter",
+      title: "Dead-letter the poison record",
+      intro:
+        "Better: copy the bad record to a separate topic — value, key, headers, plus where it came from — and wait for that write to land before moving on. Nothing is lost. Pass `deadletter`.",
+      file: "src/main/java/com/example/orderpipeline/consumer/PoisonPolicy.java",
+      code: `            for (Header h : record.headers()) {
+                dead.headers().add(h);
+            }
+            dead.headers().add("dlt.origin.topic", bytes(record.topic()));
+            dead.headers().add("dlt.origin.partition", bytes(Integer.toString(record.partition())));
+            dead.headers().add("dlt.origin.offset", bytes(Long.toString(record.offset())));
+            dead.headers().add("dlt.error", bytes(cause.toString()));
+            try {
+                deadLetters.send(dead).get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("interrupted writing to " + deadLetterTopic, e);
+            } catch (Exception e) {
+                throw new RuntimeException("dead-letter write to " + deadLetterTopic + " failed", e);
+            }`,
+      points: [
+        {
+          term: "carry the context forward",
+          detail:
+            "The original headers are copied, plus dlt.origin.topic / partition / offset and dlt.error — so whoever works the dead-letter topic later knows exactly which record this was and why it landed there.",
+        },
+        {
+          term: "the write is awaited",
+          detail:
+            "send(...).get() blocks until the broker acknowledges the dead-letter write. If it fails, deadLetter throws — runOnce never reaches commitSync(), so the source offset stays put and the poison record is redelivered, not lost.",
+        },
+        {
+          term: "value is the string form",
+          detail:
+            "This consumer deserializes values to String, so the dead-lettered value is record.value().getBytes(UTF_8). Lossless for JSON; a pipeline carrying a binary format would dead-letter from a byte[] deserializer instead.",
+        },
+        {
+          term: "it needs its own producer",
+          detail:
+            "The consumer now also holds a Producer<String, byte[]>. ConsumerApp builds it when you pass `deadletter` and closes it on shutdown.",
+        },
+      ],
+      run: 'cd examples/order-pipeline-java && ./gradlew runConsumer --args="localhost:9092 team-a deadletter"',
+      watchOut:
+        "A dead-letter topic is a queue of unsolved problems. It needs an alert on it and someone who looks — otherwise it's `skip` with extra steps.",
+    },
+    {
+      id: "prove-at-least-once",
+      title: "Prove at-least-once",
+      intro:
+        "One last drill: kill the consumer mid-batch and restart it. Because the commit is the last thing runOnce does, an interrupted batch is redelivered.",
+      file: "src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java",
+      code: `    public void run(Duration pollTimeout, Consumer<OrderEvent> handler) {
+        subscribe();
+        try {
+            while (running) {
+                runOnce(pollTimeout, handler);
+            }
+        } catch (WakeupException e) {`,
+      points: [
+        {
+          term: "the experiment",
+          detail:
+            "The Try-it command produces 200 orders, then starts the consumer with SLOW_MS=200 so it handles one every 200 ms — without a delay it would format and commit all 200 before you could react. `kill -9` it (or close the terminal) after a handful have printed. Start it again with `cd examples/order-pipeline-java && ./gradlew runConsumer`.",
+        },
+        {
+          term: "what you see on restart",
+          detail:
+            "The whole poll batch comes back, because the commit never happened. The orders you'd already handled before the kill print a second time — that's the at-least-once duplication — and the rest print for the first time. Nothing was skipped.",
+        },
+        {
+          term: "the other choice",
+          detail:
+            "Move commitSync() above the for-loop and the same crash loses the whole batch instead — at-most-once. There is no third option for a plain consumer; “exactly-once” needs transactions or an idempotent sink.",
+        },
+      ],
+      run: 'cd examples/order-pipeline-java && ./gradlew run --args="localhost:9092 200" && SLOW_MS=200 ./gradlew runConsumer',
+      watchOut:
+        "Your handler must tolerate seeing a record again — write to the database with an upsert keyed on the order id, not a blind insert.",
     },
   ],
 };
