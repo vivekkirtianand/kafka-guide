@@ -21,7 +21,7 @@ or Lab B** — this project adds no infrastructure of its own.
 | `shared/OrderEvent.java` | The event: an immutable `record` with a compact constructor that rejects bad data. |
 | `shared/OrderEventJson.java` | JSON ⇄ `OrderEvent`. One definition of the wire format, used by both sides. |
 | `producer/OrderProducer.java` | Wraps a `KafkaProducer`, keys each event by `customerId`, `acks=all` + idempotence. |
-| `producer/ProducerApp.java` | `main()` — sends four demo orders and exits. |
+| `producer/ProducerApp.java` | `main()` — sends demo orders and exits (4 by default; pass a count as the 2nd arg). |
 | `consumer/OrderConsumer.java` | The poll-process-commit loop. Manual commit, at-least-once. Logs rebalances; routes un-parseable records to a `PoisonPolicy`. |
 | `consumer/PoisonPolicy.java` | What to do with a record that won't parse: `propagate` (stop), `skip`, or `deadLetter`. |
 | `consumer/ConsumerApp.java` | `main()` — prints each order until Ctrl-C. 3rd arg picks the poison policy. |
@@ -88,19 +88,24 @@ them **different** group ids and both get every record.
 ## Failure drills
 
 `OrderConsumer` takes a `PoisonPolicy` for records it can't parse. `PoisonProducerApp` sends
-two good orders with one malformed record between them (all keyed `alice`, so on one
-partition in order) to trigger it:
+a good order, then a malformed record, then another good order (all keyed `alice`, so on one
+partition in that order) to trigger it:
 
 ```bash
-./gradlew runProducerPoison                                    # 2 good + 1 poison
+./gradlew runProducerPoison                                     # good, poison, good
 
-./gradlew runConsumer                                          # propagate (default): stops on the bad record, and stays stuck on restart
-./gradlew runConsumer --args="localhost:9092 team-a skip"      # logs and drops it, commits past it
-./gradlew runConsumer --args="localhost:9092 team-a deadletter" # copies the raw bytes to orders.DLT, commits past it
+./gradlew runConsumer                                           # propagate (default): stops on the bad record, stays stuck on restart
+./gradlew runConsumer --args="localhost:9092 team-a skip"       # logs and drops it, commits past it
+./gradlew runConsumer --args="localhost:9092 team-a deadletter" # copies it to orders.DLT (with dlt.origin.* headers), commits past it
 ```
 
-To see **at-least-once** redelivery: start `./gradlew runConsumer`, hard-kill it while it's
-printing, and start it again — the un-committed batch replays.
+`deadletter` **waits** for the `orders.DLT` write to be acknowledged before it lets the
+source offset advance — if that write fails, the poison record is redelivered, not lost. An
+unknown policy name is rejected rather than silently treated as `propagate`.
+
+To see **at-least-once** redelivery: produce a few hundred records with
+`./gradlew run --args="localhost:9092 500"`, start `./gradlew runConsumer`, hard-kill it
+while it's still printing, and start it again — the un-committed batch replays.
 
 ## Design choices (and where they change later)
 

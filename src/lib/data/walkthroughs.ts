@@ -424,7 +424,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "what you'll see",
           detail:
-            "Start one consumer in group `team-a`: `rebalance: [orders-0, orders-1, orders-2] assigned`. Start a second: the first logs a revoke then `[orders-0, orders-1] assigned`, the second logs `[orders-2] assigned`. Stop one and the survivor picks the freed partitions back up.",
+            "Start one consumer in group `team-a` and it logs `rebalance: [orders-0, orders-1, orders-2] assigned` — all three. Start a second: both log a revoke, then one ends up with two partitions and the other with one. Which instance gets which set isn't fixed — the assignor decides. Stop one and the survivor picks the freed partitions back up.",
         },
         {
           term: "a real consumer commits here",
@@ -438,7 +438,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
       id: "poison-record-stops-everything",
       title: "A poison record stops everything",
       intro:
-        "`runProducerPoison` sends two good orders with one un-parseable record between them, all on key `alice` so they're on one partition in order. Run the consumer against it with the default settings.",
+        "`runProducerPoison` sends a good order, then an un-parseable record, then another good order — all on key `alice` so they're on one partition in that order. Run the consumer against it with the default settings.",
       file: "src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java",
       code: `            try {
                 event = OrderEventJson.fromJson(record.value());
@@ -460,7 +460,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "the partition is now stuck",
           detail:
-            "Restart the consumer and the very next poll returns the same bad record. The two good orders after it never get processed. One malformed message has halted the pipeline.",
+            "Restart the consumer and the very next poll returns the same bad record. The good order behind it — and everything else on that partition — never gets processed. One malformed message has halted the pipeline.",
         },
       ],
       run: "cd examples/order-pipeline-java && ./gradlew runProducerPoison",
@@ -471,7 +471,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
       id: "poison-record-skip",
       title: "Skip the poison record",
       intro:
-        "The simplest answer: log the bad record and move on. Pass `skip` as the third argument to the consumer.",
+        "The simplest answer: log the bad record and move on. Pass `skip` as the third argument to the consumer (an unrecognised value is rejected at startup, not quietly ignored).",
       file: "src/main/java/com/example/orderpipeline/consumer/PoisonPolicy.java",
       code: `    static PoisonPolicy skip() {
         return (record, cause) -> LOG.warn(
@@ -501,35 +501,48 @@ export const producerConsumerWalkthrough: Walkthrough = {
       id: "poison-record-dead-letter",
       title: "Dead-letter the poison record",
       intro:
-        "Better: copy the bad record's raw bytes to a separate topic before moving on, so nothing is lost. Pass `deadletter`.",
+        "Better: copy the bad record to a separate topic — value, key, headers, plus where it came from — and wait for that write to land before moving on. Nothing is lost. Pass `deadletter`.",
       file: "src/main/java/com/example/orderpipeline/consumer/PoisonPolicy.java",
-      code: `    static PoisonPolicy deadLetter(Producer<String, String> deadLetters, String deadLetterTopic) {
-        return (record, cause) -> {
-            deadLetters.send(new ProducerRecord<>(deadLetterTopic, record.key(), record.value()));
-            LOG.warn("dead-lettered poison record from {}-{} offset {} to {}: {}",
-                    record.topic(), record.partition(), record.offset(), deadLetterTopic, cause.getMessage());
-        };
-    }`,
+      code: `            for (Header h : record.headers()) {
+                dead.headers().add(h);
+            }
+            dead.headers().add("dlt.origin.topic", bytes(record.topic()));
+            dead.headers().add("dlt.origin.partition", bytes(Integer.toString(record.partition())));
+            dead.headers().add("dlt.origin.offset", bytes(Long.toString(record.offset())));
+            dead.headers().add("dlt.error", bytes(cause.toString()));
+            try {
+                deadLetters.send(dead).get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("interrupted writing to " + deadLetterTopic, e);
+            } catch (Exception e) {
+                throw new RuntimeException("dead-letter write to " + deadLetterTopic + " failed", e);
+            }`,
       points: [
+        {
+          term: "carry the context forward",
+          detail:
+            "The original headers are copied, plus dlt.origin.topic / partition / offset and dlt.error — so whoever works the dead-letter topic later knows exactly which record this was and why it landed there.",
+        },
+        {
+          term: "the write is awaited",
+          detail:
+            "send(...).get() blocks until the broker acknowledges the dead-letter write. If it fails, deadLetter throws — runOnce never reaches commitSync(), so the source offset stays put and the poison record is redelivered, not lost.",
+        },
+        {
+          term: "value is the string form",
+          detail:
+            "This consumer deserializes values to String, so the dead-lettered value is record.value().getBytes(UTF_8). Lossless for JSON; a pipeline carrying a binary format would dead-letter from a byte[] deserializer instead.",
+        },
         {
           term: "it needs its own producer",
           detail:
-            "Writing to orders.DLT means the consumer also holds a Producer. ConsumerApp builds one when you pass `deadletter` and closes it on shutdown.",
-        },
-        {
-          term: "key and value are copied verbatim",
-          detail:
-            "The original bytes, untouched — you don't try to parse or fix them here. Later, someone reads orders.DLT, works out what went wrong, and replays or discards.",
-        },
-        {
-          term: "the main partition keeps its guarantee",
-          detail:
-            "Same as skip for the `orders` topic: the offset commits past the poison and good records flow. The difference is that the bad record still exists somewhere.",
+            "The consumer now also holds a Producer<String, byte[]>. ConsumerApp builds it when you pass `deadletter` and closes it on shutdown.",
         },
       ],
       run: 'cd examples/order-pipeline-java && ./gradlew runConsumer --args="localhost:9092 team-a deadletter"',
       watchOut:
-        "The dead-letter write can fail too (broker down, topic missing). A production handler decides what to do then — usually: stop, rather than drop silently.",
+        "A dead-letter topic is a queue of unsolved problems. It needs an alert on it and someone who looks — otherwise it's `skip` with extra steps.",
     },
     {
       id: "prove-at-least-once",
@@ -548,7 +561,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "the experiment",
           detail:
-            "Produce with `./gradlew run`, start `./gradlew runConsumer`, and hard-kill it (close the terminal, or `kill -9`) while it's printing. Start it again: the records from the un-committed batch print a second time.",
+            "Produce a few hundred records — `./gradlew run --args=\"localhost:9092 500\"` — so the consumer has enough to still be working when you reach for the keyboard. Start `./gradlew runConsumer`, then hard-kill it (close the terminal, or `kill -9`) while it's still printing. Start it again: records from the un-committed batch print a second time.",
         },
         {
           term: "why",

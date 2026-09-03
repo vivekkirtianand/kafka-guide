@@ -71,8 +71,14 @@ describe("producer/consumer code walkthrough", () => {
     const skip = byId("poison-record-skip").points.map((p) => p.detail).join(" ");
     expect(skip).toMatch(/gone|no way to inspect|log line/i);
 
-    const dlq = byId("poison-record-dead-letter").points.map((p) => p.detail).join(" ");
-    expect(dlq).toMatch(/orders\.DLT|replay|still exists/i);
+    const dlq = byId("poison-record-dead-letter");
+    const dlqText = dlq.points.map((p) => p.detail).join(" ");
+    // the write is awaited so a failure can't silently drop the record
+    expect(dlqText).toMatch(/send\(\.\.\.\)\.get\(\) blocks|awaited/i);
+    expect(dlqText).toMatch(/redelivered, not lost|offset stays put/i);
+    // provenance is carried forward
+    expect(dlqText).toMatch(/dlt\.origin|dlt\.error/i);
+    expect(dlq.watchOut).toMatch(/alert|someone who looks/i);
   });
 
   it("does not claim poll() sends heartbeats", () => {

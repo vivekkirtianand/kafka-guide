@@ -598,6 +598,19 @@ Local verification: `./gradlew build` green on Temurin 21 (18 Java tests, no `-X
 warnings); `npm run typecheck` / `lint` / `test` (330) / `build` green; browser — the module
 renders 16 lessons under two section headings, checkboxes persist.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The source offset could commit before the async dead-letter write succeeded — a failed DLT write would lose the poison record | `deadLetter` now `send(dead).get()`s (blocks on the ack) and rethrows on failure, so `runOnce` never reaches `commitSync()` and the record is redelivered. New test `deadLetterThatCannotWriteDoesNotCommitPastThePoisonRecord` (failing producer stub) |
+| 2 (P2) | The DLT copied deserialized strings, and dropped headers + source metadata | `PoisonPolicy.deadLetter` takes a `Producer<String, byte[]>`; it copies the original headers and adds `dlt.origin.topic` / `partition` / `offset` and `dlt.error`. Value is `record.value().getBytes(UTF_8)` with a comment that a binary pipeline would dead-letter from a `byte[]` deserializer. `ConsumerApp` builds the producer with `ByteArraySerializer` |
+| 3 (P2) | The at-least-once hard-kill drill was unreliable — 4 records commit before a learner can react | `ProducerApp` takes an optional count arg (`./gradlew run --args="localhost:9092 500"`); the lesson now produces a few hundred records first |
+| 4 (P2) | The walkthrough said two good records follow the poison record, but the sequence is good → poison → good | reworded the poison lessons and the example README to "a good order, then an un-parseable record, then another good order" |
+| 5 (P2) | The walkthrough promised exact partition assignments after a rebalance | reworded: one instance ends up with two partitions and the other with one, "which instance gets which set isn't fixed — the assignor decides" |
+| 6 (P2) | An unknown poison-policy arg silently selected `propagate` while the startup line showed the bad name | `ConsumerApp` validates against a `POLICIES` set and `System.exit(2)`s with a clear message on an unknown value; the skip lesson notes it |
+
+Suite 330 → 330 (Java 18 → 19; the Node walkthrough tests were retargeted, not added to).
+
 **Phase 4 complete** — PRs 4a + 4b + 4c. The Java developer path (Module 3) is done.
 
 ---

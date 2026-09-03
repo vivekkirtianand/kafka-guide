@@ -7,17 +7,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.example.orderpipeline.TestClusters;
 import com.example.orderpipeline.shared.OrderEvent;
 import com.example.orderpipeline.shared.OrderEventJson;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.MockConsumer;
 import org.apache.kafka.clients.producer.MockProducer;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 
@@ -47,9 +52,9 @@ class OrderConsumerPoisonTest {
         return mock;
     }
 
-    private static MockProducer<String, String> newDltProducer() {
+    private static MockProducer<String, byte[]> newDltProducer() {
         return new MockProducer<>(
-                TestClusters.withTopic(DLT, 1), true, null, new StringSerializer(), new StringSerializer());
+                TestClusters.withTopic(DLT, 1), true, null, new StringSerializer(), new ByteArraySerializer());
     }
 
     @Test
@@ -78,20 +83,48 @@ class OrderConsumerPoisonTest {
     }
 
     @Test
-    void deadLetterCopiesTheRawRecordAndCommitsPastIt() {
+    void deadLetterCopiesTheRecordWithProvenanceHeadersThenCommitsPastIt() {
         MockConsumer<String, String> mock = mockWith(good(0, "ord-1"), poison(1));
-        MockProducer<String, String> dlt = newDltProducer();
+        MockProducer<String, byte[]> dlt = newDltProducer();
 
         List<String> handled = new ArrayList<>();
         new OrderConsumer(mock, PoisonPolicy.deadLetter(dlt, DLT))
                 .runOnce(Duration.ofMillis(10), e -> handled.add(e.orderId()));
 
         assertEquals(List.of("ord-1"), handled);
-        List<ProducerRecord<String, String>> sent = dlt.history();
+
+        List<ProducerRecord<String, byte[]>> sent = dlt.history();
         assertEquals(1, sent.size());
-        assertEquals(DLT, sent.get(0).topic());
-        assertEquals("{ not valid json", sent.get(0).value());
+        ProducerRecord<String, byte[]> dead = sent.get(0);
+        assertEquals(DLT, dead.topic());
+        assertEquals("alice", dead.key());
+        assertEquals("{ not valid json", new String(dead.value(), StandardCharsets.UTF_8));
+        assertEquals(OrderConsumer.TOPIC, header(dead, "dlt.origin.topic"));
+        assertEquals("1", header(dead, "dlt.origin.offset"));
+
         assertEquals(2L, mock.committed(Set.of(P0)).get(P0).offset());
+    }
+
+    @Test
+    void deadLetterThatCannotWriteDoesNotCommitPastThePoisonRecord() {
+        MockConsumer<String, String> mock = mockWith(good(0, "ord-1"), poison(1));
+        // A dead-letter producer whose sends always fail.
+        Producer<String, byte[]> failing = new MockProducer<>(
+                TestClusters.withTopic(DLT, 1), true, null, new StringSerializer(), new ByteArraySerializer()) {
+            @Override
+            public java.util.concurrent.Future<RecordMetadata> send(ProducerRecord<String, byte[]> record) {
+                CompletableFuture<RecordMetadata> f = new CompletableFuture<>();
+                f.completeExceptionally(new RuntimeException("dead-letter topic is unavailable"));
+                return f;
+            }
+        };
+        OrderConsumer consumer = new OrderConsumer(mock, PoisonPolicy.deadLetter(failing, DLT));
+
+        assertThrows(RuntimeException.class,
+                () -> consumer.runOnce(Duration.ofMillis(10), e -> { }));
+
+        assertTrue(mock.committed(Set.of(P0)).isEmpty() || mock.committed(Set.of(P0)).get(P0) == null,
+                "a failed dead-letter write must not let the source offset advance past the poison record");
     }
 
     @Test
@@ -105,5 +138,9 @@ class OrderConsumerPoisonTest {
                         .runOnce(Duration.ofMillis(10), e -> {
                             throw new IllegalStateException("downstream is down");
                         }));
+    }
+
+    private static String header(ProducerRecord<String, byte[]> record, String key) {
+        return new String(record.headers().lastHeader(key).value(), StandardCharsets.UTF_8);
     }
 }
