@@ -424,7 +424,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "what you'll see",
           detail:
-            "Start one consumer in group `team-a` and it logs `rebalance: [orders-0, orders-1, orders-2] assigned` — all three. Start a second: both log a revoke, then one ends up with two partitions and the other with one. Which instance gets which set isn't fixed — the assignor decides. Stop one and the survivor picks the freed partitions back up.",
+            "Start one consumer in group `team-a` and it logs `rebalance: [orders-0, orders-1, orders-2] assigned` — all three. Start a second: the one already running logs a revoke of its partitions, then both log an assignment — one gets two, the other one (the joining consumer had nothing to revoke, so it only logs the assign). Which instance gets which set isn't fixed. Stop one and the survivor picks the freed partitions back up.",
         },
         {
           term: "a real consumer commits here",
@@ -450,7 +450,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "fromJson throws",
           detail:
-            "The malformed value can't be parsed, so OrderEventJson.fromJson throws. The catch hands the record to the PoisonPolicy.",
+            "The malformed value can't be parsed, so OrderEventJson.fromJson throws and the catch hands the record to the PoisonPolicy. fromJson also rejects a null value and the JSON literal `null` — both parse, but neither is an event, and you don't want a null slipping through to the handler.",
         },
         {
           term: "the default policy rethrows",
@@ -561,12 +561,12 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "the experiment",
           detail:
-            "Produce a few hundred records — `./gradlew run --args=\"localhost:9092 500\"` — so the consumer has enough to still be working when you reach for the keyboard. Start `./gradlew runConsumer`, then hard-kill it (close the terminal, or `kill -9`) while it's still printing. Start it again: records from the un-committed batch print a second time.",
+            "Produce a batch — `./gradlew run --args=\"localhost:9092 200\"` — then start the consumer with a slow handler: `SLOW_MS=200 ./gradlew runConsumer`. It prints one order every 200 ms, so you have time to `kill -9` it (or close the terminal) after a handful. Start it again: every record from that poll batch prints a second time.",
         },
         {
           term: "why",
           detail:
-            "runOnce processes the whole batch, then commits. A crash before the commit leaves the offset where it was, so the group re-reads that batch. Nothing is lost; some records are seen twice.",
+            "runOnce processes the whole poll batch, then commits once. Kill it anywhere in the batch and the commit never happens, so the group re-reads the entire batch. Nothing is lost; the records you'd already handled are seen twice.",
         },
         {
           term: "the other choice",

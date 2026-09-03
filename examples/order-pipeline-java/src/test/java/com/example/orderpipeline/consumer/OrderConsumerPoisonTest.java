@@ -40,6 +40,11 @@ class OrderConsumerPoisonTest {
         return new ConsumerRecord<>(OrderConsumer.TOPIC, 0, offset, "alice", "{ not valid json");
     }
 
+    private static ConsumerRecord<String, String> nullLiteral(long offset) {
+        // Valid JSON, parses to a Java null — must still count as poison, not reach the handler.
+        return new ConsumerRecord<>(OrderConsumer.TOPIC, 0, offset, "alice", "null");
+    }
+
     @SafeVarargs
     private static MockConsumer<String, String> mockWith(ConsumerRecord<String, String>... records) {
         MockConsumer<String, String> mock = new MockConsumer<>("earliest");
@@ -125,6 +130,18 @@ class OrderConsumerPoisonTest {
 
         assertTrue(mock.committed(Set.of(P0)).isEmpty() || mock.committed(Set.of(P0)).get(P0) == null,
                 "a failed dead-letter write must not let the source offset advance past the poison record");
+    }
+
+    @Test
+    void aJsonNullValueIsTreatedAsPoisonNotHandedToTheHandler() {
+        MockConsumer<String, String> mock = mockWith(nullLiteral(0), good(1, "ord-1"));
+
+        List<String> handled = new ArrayList<>();
+        new OrderConsumer(mock, PoisonPolicy.skip())
+                .runOnce(Duration.ofMillis(10), e -> handled.add(e.orderId()));
+
+        assertEquals(List.of("ord-1"), handled); // the null never reached the handler
+        assertEquals(2L, mock.committed(Set.of(P0)).get(P0).offset());
     }
 
     @Test

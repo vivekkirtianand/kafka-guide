@@ -611,6 +611,16 @@ renders 16 lessons under two section headings, checkboxes persist.
 
 Suite 330 → 330 (Java 18 → 19; the Node walkthrough tests were retargeted, not added to).
 
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The JSON literal `null` deserializes to a Java `null` without throwing, so it slipped past `PoisonPolicy` and blew up in the handler | `OrderEventJson.fromJson` now rejects a `null` argument and a `null` parse result with `IllegalArgumentException`. Tests: `rejectsTheJsonLiteralNull`, `rejectsANullValue`, and `aJsonNullValueIsTreatedAsPoisonNotHandedToTheHandler`. The poison lesson notes it |
+| 2 (P2) | The rebalance lesson said both consumers log a revocation, but the joining one has no partitions to revoke | reworded: the incumbent logs the revoke, both log the assign, "the joining consumer had nothing to revoke" |
+| 3 (P2) | 500 records still commit too fast to interrupt | `ConsumerApp` reads a `SLOW_MS` env var and sleeps that many ms per record; the drill is now `SLOW_MS=200 ./gradlew runConsumer`. README + lesson updated |
+
+Java 19 → 22 tests; Node suite still 330.
+
 **Phase 4 complete** — PRs 4a + 4b + 4c. The Java developer path (Module 3) is done.
 
 ---

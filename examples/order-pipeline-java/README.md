@@ -101,11 +101,17 @@ partition in that order) to trigger it:
 
 `deadletter` **waits** for the `orders.DLT` write to be acknowledged before it lets the
 source offset advance — if that write fails, the poison record is redelivered, not lost. An
-unknown policy name is rejected rather than silently treated as `propagate`.
+unknown policy name is rejected rather than silently treated as `propagate`. A `null` value
+and the JSON literal `null` both count as poison (they parse, but there's no event).
 
-To see **at-least-once** redelivery: produce a few hundred records with
-`./gradlew run --args="localhost:9092 500"`, start `./gradlew runConsumer`, hard-kill it
-while it's still printing, and start it again — the un-committed batch replays.
+To see **at-least-once** redelivery, slow the handler so the batch is still in flight when
+you interrupt it:
+
+```bash
+./gradlew run --args="localhost:9092 200"     # a batch to chew through
+SLOW_MS=200 ./gradlew runConsumer             # 200 ms per record
+# kill -9 it (or close the terminal) after a few print, then re-run — the whole poll batch replays
+```
 
 ## Design choices (and where they change later)
 

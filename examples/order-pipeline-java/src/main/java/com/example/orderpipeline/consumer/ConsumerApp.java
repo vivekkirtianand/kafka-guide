@@ -17,11 +17,13 @@ import org.apache.kafka.common.serialization.StringSerializer;
  *   ./gradlew runConsumer --args="localhost:29092 reporting"             # different broker and group
  *   ./gradlew runConsumer --args="localhost:9092 team-a skip"            # skip records that won't parse
  *   ./gradlew runConsumer --args="localhost:9092 team-a deadletter"      # route them to orders.DLT instead
+ *   SLOW_MS=200 ./gradlew runConsumer                                    # sleep 200 ms per record — a slow handler
  * </pre>
  *
  * Run it in two terminals with the same group to watch partitions split between the two
  * instances (each logs its `rebalance: … assigned`); run it with different groups to watch
- * both get every record.
+ * both get every record. {@code SLOW_MS} slows the handler so you can interrupt it mid-batch
+ * (the at-least-once drill) or trip {@code max.poll.interval.ms}.
  */
 public final class ConsumerApp {
 
@@ -57,12 +59,27 @@ public final class ConsumerApp {
             }
         }));
 
-        System.out.printf("Consuming '%s' from %s as group '%s' (poison policy: %s) - Ctrl-C to stop%n",
-                OrderConsumer.TOPIC, bootstrapServers, groupId, policyName);
+        long slowMs = Long.parseLong(System.getenv().getOrDefault("SLOW_MS", "0"));
 
-        consumer.run(Duration.ofSeconds(1), event ->
-                System.out.printf("  %-14s  %-8s  x%-3d  $%.2f%n",
-                        event.orderId(), event.customerId(), event.quantity(), event.amountCents() / 100.0));
+        System.out.printf("Consuming '%s' from %s as group '%s' (poison policy: %s%s) - Ctrl-C to stop%n",
+                OrderConsumer.TOPIC, bootstrapServers, groupId, policyName,
+                slowMs > 0 ? ", " + slowMs + "ms/record" : "");
+
+        consumer.run(Duration.ofSeconds(1), event -> {
+            if (slowMs > 0) {
+                sleep(slowMs);
+            }
+            System.out.printf("  %-14s  %-8s  x%-3d  $%.2f%n",
+                    event.orderId(), event.customerId(), event.quantity(), event.amountCents() / 100.0);
+        });
+    }
+
+    private static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static Properties deadLetterConfig(String bootstrapServers) {
