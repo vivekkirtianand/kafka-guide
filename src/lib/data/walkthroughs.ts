@@ -561,20 +561,20 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "the experiment",
           detail:
-            "Produce a batch — `./gradlew run --args=\"localhost:9092 200\"`. Without a delay the consumer would format and commit all 200 before you could react, so slow the handler: `SLOW_MS=200 ./gradlew runConsumer` prints one order every 200 ms. `kill -9` it (or close the terminal) after a handful. Start it again: every record from that poll batch prints a second time.",
+            "The Try-it command produces 200 orders, then starts the consumer with SLOW_MS=200 so it handles one every 200 ms — without a delay it would format and commit all 200 before you could react. `kill -9` it (or close the terminal) after a handful print. Start it again with `./gradlew runConsumer`.",
         },
         {
-          term: "why",
+          term: "what you see on restart",
           detail:
-            "runOnce processes the whole poll batch, then commits once. Kill it anywhere in the batch and the commit never happens, so the group re-reads the entire batch. Nothing is lost; the records you'd already handled are seen twice.",
+            "The whole poll batch comes back, because the commit never happened. The orders you'd already handled before the kill print a second time — that's the at-least-once duplication — and the rest print for the first time. Nothing was skipped.",
         },
         {
           term: "the other choice",
           detail:
-            "Move commitSync() above the for-loop and the same crash loses the batch instead — at-most-once. There is no third option for a plain consumer; “exactly-once” needs transactions or an idempotent sink.",
+            "Move commitSync() above the for-loop and the same crash loses the whole batch instead — at-most-once. There is no third option for a plain consumer; “exactly-once” needs transactions or an idempotent sink.",
         },
       ],
-      run: "cd examples/order-pipeline-java && ./gradlew runConsumer",
+      run: 'cd examples/order-pipeline-java && ./gradlew run --args="localhost:9092 200" && SLOW_MS=200 ./gradlew runConsumer',
       watchOut:
         "Your handler must tolerate seeing a record again — write to the database with an upsert keyed on the order id, not a blind insert.",
     },

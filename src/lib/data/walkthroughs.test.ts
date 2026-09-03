@@ -113,9 +113,16 @@ describe("producer/consumer code walkthrough", () => {
   it("makes every ./gradlew command copy-safe from the repo root (there is no root gradlew)", () => {
     for (const l of w.lessons) {
       if (l.run?.includes("./gradlew")) {
-        expect(l.run, l.id).toMatch(/^cd examples\/order-pipeline-java && \.\/gradlew /);
+        expect(l.run, l.id).toMatch(/^cd examples\/order-pipeline-java && (?:\w+=\S+ )*\.\/gradlew /);
       }
     }
+  });
+
+  it("the at-least-once drill's copyable command actually slows the consumer", () => {
+    const drill = w.lessons.find((l) => l.id === "prove-at-least-once")!;
+    // the lesson explains a delay is required — the command must carry it, not just the prose
+    expect(drill.points.map((p) => p.detail).join(" ")).toMatch(/SLOW_MS/);
+    expect(drill.run).toMatch(/SLOW_MS=\d+ \.\/gradlew runConsumer/);
   });
 });
 

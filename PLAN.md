@@ -627,6 +627,13 @@ Java 19 → 22 tests; Node suite still 330.
 |---|---|---|
 | 1 (P2) | Round 2's `SLOW_MS` read `System.getenv()` in `ConsumerApp`, but a build script forwarding it via `System.getenv()` is unreliable through the Gradle daemon — the drill still wasn't guaranteed | the `runConsumer` task now forwards it with the config-cache-safe provider API: `project.providers.environmentVariable("SLOW_MS").orNull?.let { environment("SLOW_MS", it) }`. Verified through a warm daemon: the startup line reports `…, 200ms/record`. The at-least-once lesson now says explicitly that without the delay the batch commits before you can react |
 
+**Review findings addressed (round 4)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The at-least-once lesson's prose mentioned `SLOW_MS=200`, but the copyable "Try it" command was still `./gradlew runConsumer` at full speed | the `run` field is now `cd … && ./gradlew run --args="localhost:9092 200" && SLOW_MS=200 ./gradlew runConsumer` — produce + slow consume in one copy. Test asserts the drill command carries `SLOW_MS=`; the copy-safe regex now allows an env-var prefix on a chained `./gradlew` |
+| 2 (P2) | "every record from that poll batch prints a second time" — only the already-processed prefix is a duplicate; the rest are first delivery | split into a new "what you see on restart" point: the orders handled before the kill print again (the at-least-once duplication), the rest print for the first time. Example README reworded to match |
+
 **Phase 4 complete** — PRs 4a + 4b + 4c. The Java developer path (Module 3) is done.
 
 ---
