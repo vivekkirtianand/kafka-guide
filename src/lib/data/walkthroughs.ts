@@ -561,7 +561,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         {
           term: "the experiment",
           detail:
-            "The Try-it command produces 200 orders, then starts the consumer with SLOW_MS=200 so it handles one every 200 ms — without a delay it would format and commit all 200 before you could react. `kill -9` it (or close the terminal) after a handful print. Start it again with `./gradlew runConsumer`.",
+            "The Try-it command produces 200 orders, then starts the consumer with SLOW_MS=200 so it handles one every 200 ms — without a delay it would format and commit all 200 before you could react. `kill -9` it (or close the terminal) after a handful have printed. Start it again with `cd examples/order-pipeline-java && ./gradlew runConsumer`.",
         },
         {
           term: "what you see on restart",

@@ -634,6 +634,12 @@ Java 19 → 22 tests; Node suite still 330.
 | 1 (P2) | The at-least-once lesson's prose mentioned `SLOW_MS=200`, but the copyable "Try it" command was still `./gradlew runConsumer` at full speed | the `run` field is now `cd … && ./gradlew run --args="localhost:9092 200" && SLOW_MS=200 ./gradlew runConsumer` — produce + slow consume in one copy. Test asserts the drill command carries `SLOW_MS=`; the copy-safe regex now allows an env-var prefix on a chained `./gradlew` |
 | 2 (P2) | "every record from that poll batch prints a second time" — only the already-processed prefix is a duplicate; the rest are first delivery | split into a new "what you see on restart" point: the orders handled before the kill print again (the at-least-once duplication), the rest print for the first time. Example README reworded to match |
 
+**Review findings addressed (round 5)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The at-least-once lesson's restart step said `./gradlew runConsumer` — a fresh terminal at the repo root has no wrapper | now `cd examples/order-pipeline-java && ./gradlew runConsumer`; "after a handful print" → "after a handful have printed" (README too) |
+
 **Phase 4 complete** — PRs 4a + 4b + 4c. The Java developer path (Module 3) is done.
 
 ---

@@ -110,8 +110,8 @@ you interrupt it:
 ```bash
 ./gradlew run --args="localhost:9092 200"     # a batch to chew through
 SLOW_MS=200 ./gradlew runConsumer             # 200 ms per record
-# kill -9 it (or close the terminal) after a few print, then re-run — the whole poll batch
-# is redelivered: the orders you'd already handled print again, the rest for the first time
+# kill -9 it (or close the terminal) after a few have printed, then re-run — the whole poll
+# batch is redelivered: the orders you'd already handled print again, the rest for the first time
 ```
 
 ## Design choices (and where they change later)
