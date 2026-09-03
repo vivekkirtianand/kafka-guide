@@ -215,6 +215,64 @@ describe("Module 0 — Why Kafka?", () => {
   });
 });
 
+describe("Module 4 — schemas and data contracts", () => {
+  const m = getModule("schemas-and-data-contracts")!;
+  const detail = (t: string) => m.topicDetail![t];
+
+  it("is inserted at index 4 on the beginner path, after Build a producer and consumer", () => {
+    expect(m.index).toBe(4);
+    expect(m.track).toBe("beginner-path");
+    expect(m.difficulty).toBe("intermediate");
+    expect(m.status).toBe("available");
+    expect(m.prerequisites).toEqual(["build-a-producer-and-consumer"]);
+  });
+
+  it("renders as Topic-explorer content, not a walkthrough or a lab", () => {
+    expect(m.walkthrough).toBeUndefined();
+    expect(m.labs).toBeUndefined();
+    expect(Object.keys(m.topicDetail ?? {})).toHaveLength(m.topics.length);
+    for (const topic of m.topics) {
+      const d = m.topicDetail![topic];
+      expect(d, topic).toBeDefined();
+      expect(d.points.length, topic).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("leads with the bytes boundary — the broker never parses a record", () => {
+    const bytes = detail("Kafka moves bytes, not objects");
+    expect(bytes.points.map((p) => p.detail).join(" ")).toMatch(/broker never parses/i);
+  });
+
+  it("names all four base compatibility modes and the deploy order each forces", () => {
+    const compat = detail("Compatibility modes");
+    const text = compat.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    expect(text).toMatch(/BACKWARD/);
+    expect(text).toMatch(/FORWARD/);
+    expect(text).toMatch(/FULL/);
+    expect(text).toMatch(/NONE/);
+    expect(text).toMatch(/Upgrade consumers first/i);
+    expect(text).toMatch(/Upgrade producers first/i);
+    // plain BACKWARD only checks the previous version — replay needs the transitive mode
+    expect(compat.watchOut).toMatch(/transitive/i);
+  });
+
+  it("frames the registry as a dependency that is off the per-record hot path", () => {
+    const reg = detail("What the Schema Registry adds");
+    const text = reg.points.map((p) => p.detail).join(" ");
+    expect(text).toMatch(/schema id/i);
+    expect(text).toMatch(/zero times per record|cached/i);
+    expect(text).toMatch(/outage|dependency/i);
+  });
+
+  it("treats a deserialization failure as a poison record that stalls the partition", () => {
+    const poison = detail("Deserialization failures and poison records");
+    const text = `${poison.summary} ${poison.points.map((p) => p.detail).join(" ")}`;
+    expect(text).toMatch(/inside poll\(\)|out of poll\(\)/i);
+    expect(text).toMatch(/dead-letter|byte\[\]/i);
+    expect(text).not.toMatch(/broker (validates|rejects|checks) the schema/i);
+  });
+});
+
 describe("knowledge checks (any module)", () => {
   it("every KnowledgeCheck has an in-range answerIndex and enough options", () => {
     for (const m of modules) {

@@ -935,8 +935,319 @@ export const modules: Module[] = [
     status: "available",
   },
   {
-    slug: "producer-configuration",
+    slug: "schemas-and-data-contracts",
     index: 4,
+    title: "Schemas and data contracts",
+    summary:
+      "Kafka stores bytes and never looks inside them, so every topic carries a data contract between its producers and consumers — written down or not. This module covers serialization formats, the Schema Registry, compatibility modes, and how to change a schema without breaking a running consumer.",
+    difficulty: "intermediate",
+    estimatedMinutes: 75,
+    prerequisites: ["build-a-producer-and-consumer"],
+    track: "beginner-path",
+    objectives: [
+      "Explain why Kafka needs a serializer and a deserializer, and what the data contract on a topic actually is",
+      "Compare JSON, Avro, and Protobuf on readability, size, and whether the schema travels with the record",
+      "Describe what the Schema Registry stores, how a record references a schema by id, and when the registry is on the request path",
+      "Read a compatibility mode (BACKWARD, FORWARD, FULL, NONE) and say which side it makes you upgrade first",
+      "Make a safe schema change — add a field, remove a field — and name the changes that always break a consumer",
+      "Handle a deserialization failure without stalling the partition",
+    ],
+    completionCriteria: [
+      "Given a schema change, you can say whether it is backward-, forward-, fully-, or not-compatible, and whether to deploy producers or consumers first",
+      "You can explain what a consumer sees when it reads bytes it cannot deserialize, and two ways to keep that from blocking the partition",
+    ],
+    furtherReading: [
+      {
+        label: "Confluent — Schema Evolution and Compatibility",
+        url: "https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html",
+      },
+      {
+        label: "Apache Avro 1.11.1 — Schema Resolution",
+        url: "https://avro.apache.org/docs/1.11.1/specification/#schema-resolution",
+      },
+      {
+        label: "Apache Kafka 4.0 — Serializer (javadoc)",
+        url: "https://kafka.apache.org/40/javadoc/org/apache/kafka/common/serialization/Serializer.html",
+      },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-03",
+    topics: [
+      "Kafka moves bytes, not objects",
+      "Serialization formats: JSON, Avro, and Protobuf",
+      "What the Schema Registry adds",
+      "Subjects, versions, and naming strategies",
+      "Compatibility modes",
+      "Evolving a schema without breaking consumers",
+      "Deserialization failures and poison records",
+      "When a schema registry is worth it",
+    ],
+    topicDetail: {
+      "Kafka moves bytes, not objects": {
+        summary:
+          "A producer [[serialization|serializes]] the key and value to byte arrays before they leave the client; the broker stores and returns those bytes untouched; the consumer deserializes them back. The two ends have to agree on the format — that agreement is the contract.",
+        configs: ["key.serializer", "value.serializer", "key.deserializer", "value.deserializer"],
+        points: [
+          {
+            term: "The serializer boundary",
+            detail:
+              "value.serializer on the producer turns your object into bytes; value.deserializer on the consumer turns bytes back into an object. Kafka ships StringSerializer, ByteArraySerializer, and the primitives; anything structured — JSON, Avro, Protobuf — is a serializer you add.",
+          },
+          {
+            term: "The broker is oblivious",
+            detail:
+              "A broker never parses a record's key or value. It cannot reject a record for being the wrong shape, cannot filter on a field, and cannot warn you that a producer started sending garbage. Validation is entirely a client concern.",
+          },
+          {
+            term: "The contract exists either way",
+            detail:
+              "Even with plain StringSerializer and hand-written JSON, every consumer of a [[topic|topic]] depends on the fields the producers put there. That dependency is the data contract; the only question is whether it is written down and checked, or implicit and discovered in production.",
+          },
+          {
+            term: "Key and value are independent",
+            detail:
+              "They are serialized separately and can use different formats — a String key with an Avro value is common. A [[schema-registry|registry]] tracks the two under separate [[subject|subjects]].",
+          },
+          {
+            term: "Module 3 did this by hand",
+            detail:
+              "The order-pipeline consumer parses each value with a hand-rolled OrderEventJson.fromJson and throws on anything malformed. That is fine when one team owns both ends; it does not scale to many independent producers.",
+          },
+        ],
+        watchOut:
+          "A mismatched deserializer is not a loud failure at startup — it fails on the first record that doesn't fit, mid-stream, often long after the deploy that caused it.",
+      },
+      "Serialization formats: JSON, Avro, and Protobuf": {
+        summary:
+          "The three formats most teams choose between. They differ on whether a human can read the bytes, how big a record is on disk, and whether the schema travels with each record or is referenced by id.",
+        points: [
+          {
+            term: "JSON",
+            detail:
+              "Human-readable, needs no schema, supported everywhere. Costs: the field names repeat in every record; every value is a string, number, boolean, or null (no dates, no exact decimals); and there is no built-in schema — you add JSON Schema separately if you want validation.",
+          },
+          {
+            term: "Avro",
+            detail:
+              "Compact binary; the schema is a separate document, not embedded in each record. Rich types, precise evolution rules, first-class support across the Kafka ecosystem. It needs the writer's schema available at read time to decode — which is exactly what a registry supplies.",
+          },
+          {
+            term: "Protobuf",
+            detail:
+              "Compact binary defined by a .proto file and generated classes. Strong cross-language tooling; evolution rules built into the format, keyed on field numbers rather than names. Slightly less native to Kafka tooling than Avro, but well supported.",
+          },
+          {
+            term: "Schema in the record vs by reference",
+            detail:
+              "Plain JSON carries no schema. Avro and Protobuf could embed one, but that would dwarf a small record — so with a registry each record carries a few-byte schema id instead, and the schema itself is fetched once and cached.",
+          },
+          {
+            term: "Choosing",
+            detail:
+              "JSON for low volume, easy debugging, or an external boundary you don't control. Avro or Protobuf once volume, storage, or a strict contract matters. Switching later means running a consumer that understands both formats through the migration.",
+          },
+        ],
+        watchOut:
+          "\"JSON is simpler\" is true on day one. What that simplicity costs is a machine-checked contract — every schema mistake a registry would have rejected instead ships and breaks a consumer.",
+      },
+      "What the Schema Registry adds": {
+        summary:
+          "A separate service that stores schemas and gives each one an id. Producers register the schema they write and put its id in the record; consumers fetch the schema by id to decode. It also checks every new version against a compatibility rule.",
+        configs: ["schema.registry.url", "auto.register.schemas", "use.latest.version"],
+        points: [
+          {
+            term: "The wire format",
+            detail:
+              "With Confluent's serializers a record's value is one magic byte, then a 4-byte schema id, then the payload. The id — not the schema text — is what travels with every record. Apicurio and other registries interoperate with this layout.",
+          },
+          {
+            term: "Register on write, fetch on read",
+            detail:
+              "The producer's serializer registers the schema the first time it sees it (or looks its id up), caches the id, and prepends it. The consumer's deserializer reads the id, fetches that exact schema once, caches it, and decodes. In steady state the registry is hit zero times per record.",
+          },
+          {
+            term: "Compatibility enforcement",
+            detail:
+              "When a producer tries to register a new schema version for a [[subject|subject]], the registry checks it against that subject's [[schema-compatibility|compatibility]] rule and rejects the registration if it would break readers. This is the check plain JSON never gets.",
+          },
+          {
+            term: "Not on the hot path, but a dependency",
+            detail:
+              "A registry outage doesn't stop warm clients — cached schemas keep working. It stops a producer introducing a new schema and a cold consumer starting up. Run it with the same care as a broker.",
+          },
+          {
+            term: "auto.register.schemas",
+            detail:
+              "Default true: producers register whatever they send. Handy in dev, risky in prod — a bad schema self-registers. Many teams set it false and register schemas through a reviewed pipeline, with use.latest.version=true on the producer.",
+          },
+        ],
+        watchOut:
+          "The registry stores schemas, not data, and runs as its own process — its own storage (a Kafka topic, _schemas), its own backups, its own availability. Losing it while every client cache is cold is an outage.",
+      },
+      "Subjects, versions, and naming strategies": {
+        summary:
+          "A [[subject|subject]] is the name a schema is registered under. Each subject holds an ordered list of versions and its own compatibility setting.",
+        configs: ["value.subject.name.strategy", "key.subject.name.strategy"],
+        points: [
+          {
+            term: "Default: TopicNameStrategy",
+            detail:
+              "The subject is <topic>-value (or <topic>-key). One schema lineage per topic per side — simple, and the right default for a topic that carries a single kind of event.",
+          },
+          {
+            term: "Versions",
+            detail:
+              "Every accepted schema for a subject gets an incrementing version number. Re-registering an identical schema returns the existing version; a compatible change adds one; an incompatible change is rejected outright.",
+          },
+          {
+            term: "RecordNameStrategy / TopicRecordNameStrategy",
+            detail:
+              "Key the subject on the record's own type name instead of — or as well as — the topic. Needed when one topic legitimately carries several event types, so each type evolves on its own lineage.",
+          },
+          {
+            term: "Compatibility is per subject",
+            detail:
+              "The registry has a global default, but each subject can override it — a strict FULL_TRANSITIVE on a widely-shared topic, a looser BACKWARD on a private one.",
+          },
+        ],
+        watchOut:
+          "Putting several unrelated event types on one topic under the default TopicNameStrategy forces their schemas to share one lineage — every type's fields have to coexist in a single schema. Split the topics, or change the naming strategy deliberately.",
+      },
+      "Compatibility modes": {
+        summary:
+          "The rule the registry checks a new schema version against. It encodes which direction of mismatch you are willing to tolerate during a deploy — and therefore which side you upgrade first.",
+        points: [
+          {
+            term: "BACKWARD (the default)",
+            detail:
+              "A consumer on the new schema can read data written with the previous schema. Allowed: delete a field, or add a field that has a default. Upgrade consumers first, then producers.",
+          },
+          {
+            term: "FORWARD",
+            detail:
+              "A consumer on the previous schema can read data written with the new schema. Allowed: add a field, or delete a field that has a default. Upgrade producers first, then consumers.",
+          },
+          {
+            term: "FULL",
+            detail:
+              "Both directions, checked against the previous version. Only add or remove fields that carry a default. Deploy order no longer matters — which is the whole point of paying for the stricter rule.",
+          },
+          {
+            term: "NONE",
+            detail:
+              "No checks; every registration is accepted. Only safe when one team controls both ends and coordinates every change out of band.",
+          },
+          {
+            term: "Transitive variants",
+            detail:
+              "BACKWARD_TRANSITIVE / FORWARD_TRANSITIVE / FULL_TRANSITIVE check against every earlier version, not just the last one. Use them when a consumer may replay a topic from the start rather than only reading the tail.",
+          },
+        ],
+        watchOut:
+          "Plain BACKWARD only compares the new schema with the one immediately before it. A chain of individually-backward changes can leave version 5 unable to read version 1's records — which bites the moment a consumer resets to earliest. If you replay history, use the transitive mode.",
+      },
+      "Evolving a schema without breaking consumers": {
+        summary:
+          "The safe changes are a short list. Everything else needs a new topic or a coordinated stop-the-world.",
+        points: [
+          {
+            term: "Add a field — give it a default",
+            detail:
+              "A field with a default reads both ways: a new reader supplies the default for old records, an old reader ignores it in new records. Without a default, adding a field is a breaking change under every mode except NONE.",
+          },
+          {
+            term: "Remove a field — only if it had a default",
+            detail:
+              "Dropping a field consumers might still expect is safe only if their schema gives it a default. Remove it from the producer first under FORWARD, or from the consumers first under BACKWARD.",
+          },
+          {
+            term: "Never rename in place",
+            detail:
+              "A rename is a delete plus an add. Use an alias (Avro) so the old name still resolves, or add the new field and migrate every consumer before removing the old one.",
+          },
+          {
+            term: "Type changes are mostly breaking",
+            detail:
+              "Widening int to long can be safe; string to int, or editing an enum's symbols, generally is not. Check the change against the registry rather than reasoning it through.",
+          },
+          {
+            term: "The deploy order is the mode's whole point",
+            detail:
+              "BACKWARD: consumers first. FORWARD: producers first. FULL: either. Getting this backwards is how a change the registry called compatible still causes an incident.",
+          },
+        ],
+        watchOut:
+          "A default is not decorative metadata — it is the mechanism that makes evolution work. \"Add the field now, add the default later\" defeats the entire scheme.",
+      },
+      "Deserialization failures and poison records": {
+        summary:
+          "Bytes the deserializer can't turn into an object — wrong format, an unknown schema id, a genuinely corrupt record. To the consumer it looks exactly like Module 3's [[poison-message|poison record]], and it stalls the partition the same way.",
+        configs: ["value.deserializer"],
+        points: [
+          {
+            term: "Where it throws",
+            detail:
+              "The deserializer runs inside poll(). A SerializationException comes out of poll() itself, before your handler sees a record, and the consumer's [[offset|position]] hasn't moved past the bad record — so a naive retry loop polls the same bytes forever.",
+          },
+          {
+            term: "Causes",
+            detail:
+              "A producer using a different serializer, a record that predates the registry, an unregistered or deleted schema id, a registry that was unreachable when the id was cached, or real disk or network corruption.",
+          },
+          {
+            term: "The framework fix",
+            detail:
+              "Spring Kafka's ErrorHandlingDeserializer wraps the real deserializer, catches the exception, and passes a null value plus the failure in a header — so the error handler can route the record to a [[dead-letter-queue|dead-letter topic]] instead of throwing inside poll().",
+          },
+          {
+            term: "The plain-client fix",
+            detail:
+              "Deserialize to byte[] and parse in your own code inside the loop. A failure is then an ordinary exception you catch, and you apply the same skip / dead-letter policy Module 3 built.",
+          },
+          {
+            term: "With a registry, fewer of these are schema bugs",
+            detail:
+              "A schema mismatch is usually caught at registration, not at read time. The deserialization failures that remain tend to be a wrong-format producer or corruption — worth an alert, because they mean something upstream is misconfigured.",
+          },
+        ],
+        watchOut:
+          "Routing bad records to a dead-letter topic is the right move, but the DLT is an inbox, not a fix. With nothing reading and alerting on it, a poison record becomes silent data loss with extra steps.",
+      },
+      "When a schema registry is worth it": {
+        summary:
+          "A registry is real infrastructure with real operating cost. It pays for itself when producers and consumers evolve independently; it is overhead when they don't.",
+        points: [
+          {
+            term: "Worth it",
+            detail:
+              "Several teams produce to or consume from one topic; the topic is a long-lived integration boundary; you need to replay historical data across schema changes; or you have a compliance reason to document data shapes.",
+          },
+          {
+            term: "Probably not yet",
+            detail:
+              "One team owns both ends, one consumer, a low change rate. A shared library holding the schema and a versioned model class gives you a checked contract with no extra service to run.",
+          },
+          {
+            term: "The middle path",
+            detail:
+              "JSON Schema in a registry keeps records human-readable while still machine-checking evolution. Or start with a shared schema library and add a registry when the second independent consumer shows up.",
+          },
+          {
+            term: "Cost of the registry",
+            detail:
+              "Another service to deploy, monitor, back up, and secure; its own failure modes; a client dependency on cold start. The local lab runs one under docker compose --profile extras precisely because it isn't always needed.",
+          },
+        ],
+        watchOut:
+          "Adopting a registry doesn't remove the need to think about compatibility — it moves the check from a production incident to a rejected registration. The discipline is identical either way; the registry only enforces it.",
+      },
+    },
+    activities: [],
+    status: "available",
+  },
+  {
+    slug: "producer-configuration",
+    index: 5,
     title: "Producer configuration",
     summary:
       "Configuration organized by goal — durability, batching, backpressure, latency, ordering, and transactions.",
@@ -1175,7 +1486,7 @@ export const modules: Module[] = [
   },
   {
     slug: "consumer-configuration",
-    index: 5,
+    index: 6,
     title: "Consumer configuration",
     summary:
       "Consumer groups, partition assignment, offset commits, rebalances, and poison-message handling.",
@@ -1434,7 +1745,7 @@ export const modules: Module[] = [
   },
   {
     slug: "broker-topic-configuration",
-    index: 6,
+    index: 7,
     title: "Broker and topic configuration",
     summary:
       "Replication, retention, compaction, request limits, quotas, and listener/security configuration.",
@@ -1757,7 +2068,7 @@ export const modules: Module[] = [
   },
   {
     slug: "observability",
-    index: 7,
+    index: 8,
     title: "Observability",
     summary: "Moving from symptom to evidence across lag, ISR, latency, disk, network, and GC signals.",
     difficulty: "advanced",
@@ -2057,7 +2368,7 @@ export const modules: Module[] = [
   },
   {
     slug: "troubleshooting-scenarios",
-    index: 8,
+    index: 9,
     title: "Troubleshooting scenarios",
     summary:
       "A searchable symptom → evidence → cause → resolution catalog covering the most common Kafka incidents.",

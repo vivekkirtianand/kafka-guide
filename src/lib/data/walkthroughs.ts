@@ -84,7 +84,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         },
       ],
       watchOut:
-        "This is a hand-written check, not a schema. Nothing stops a different producer writing a differently-shaped JSON object to `orders`. Module 5 (schemas) closes that gap.",
+        "This is a hand-written check, not a schema. Nothing stops a different producer writing a differently-shaped JSON object to `orders`. Module 4 (schemas and data contracts) closes that gap.",
     },
     {
       id: "producer-config",
@@ -227,7 +227,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
       ],
       run: "docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic orders --from-beginning --max-messages 4",
       watchOut:
-        "Plain JSON has no enforced contract — a typo in a field name is a runtime surprise for the consumer. Module 5 puts a registered schema in front of this.",
+        "Plain JSON has no enforced contract — a typo in a field name is a runtime surprise for the consumer. Module 4 puts a registered schema in front of this.",
     },
     {
       id: "consumer-config",

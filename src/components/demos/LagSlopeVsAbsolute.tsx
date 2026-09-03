@@ -115,7 +115,7 @@ export default function LagSlopeVsAbsolute() {
         Simplified for teaching — three partitions, one consumer each clearing up to {CONSUME_CAP} records/s, a clock
         you step by hand, and time lag shown as a constant-rate estimate (lag ÷ produce rate) so the rate locks once
         the clock starts. &ldquo;Stuck&rdquo; models a consumer whose error handler seeks back and retries the same bad
-        record forever (or crash-loops on it) — a raw exception would instead skip it and move on, as in Module 5.
+        record forever (or crash-loops on it) — a raw exception would instead skip it and move on, as in Module 6.
         What carries over: a rising slope pages you regardless of the starting value; a flat line still has to clear
         the latency SLA and stay inside retention; and a healthy-looking group total can hide one partition running
         away, so the per-partition breakdown is the one that matters.
