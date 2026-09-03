@@ -1058,7 +1058,7 @@ export const modules: Module[] = [
           {
             term: "The wire format",
             detail:
-              "With Confluent's serializers a record's value is one magic byte, then a 4-byte schema id, then the payload. The id — not the schema text — is what travels with every record. Apicurio and other registries interoperate with this layout.",
+              "With Confluent's serializers a record's value is one magic byte, then a 4-byte schema id, then the payload (Protobuf inserts a short message-index header between the id and the payload to say which message in the schema file it is). The id — not the schema text — is what travels with every record. Apicurio and other registries interoperate with this layout.",
           },
           {
             term: "Register on write, fetch on read",
@@ -1100,6 +1100,11 @@ export const modules: Module[] = [
               "Every accepted schema for a subject gets an incrementing version number. Re-registering an identical schema returns the existing version; a compatible change adds one; an incompatible change is rejected outright.",
           },
           {
+            term: "Deleting a version",
+            detail:
+              "Removing a version — or a whole subject — takes it out of the subject's history and out of compatibility checks. The schema id itself stays globally resolvable (unless you also do a permanent hard delete), so records already on the topic keep deserializing.",
+          },
+          {
             term: "RecordNameStrategy / TopicRecordNameStrategy",
             detail:
               "Key the subject on the record's own type name instead of — or as well as — the topic. Needed when one topic legitimately carries several event types, so each type evolves on its own lineage.",
@@ -1115,22 +1120,22 @@ export const modules: Module[] = [
       },
       "Compatibility modes": {
         summary:
-          "The rule the registry checks a new schema version against. It encodes which direction of mismatch you are willing to tolerate during a deploy — and therefore which side you upgrade first.",
+          "The rule the registry checks a new schema version against. It encodes which direction of mismatch you are willing to tolerate during a deploy — and therefore which side you upgrade first. The direction is format-neutral; the concrete list of safe changes is not.",
         points: [
           {
             term: "BACKWARD (the default)",
             detail:
-              "A consumer on the new schema can read data written with the previous schema. Allowed: delete a field, or add a field that has a default. Upgrade consumers first, then producers.",
+              "A consumer on the new schema can read data written with the previous schema — so you upgrade consumers first, then producers. In Avro that permits deleting a field and adding a field that has a default.",
           },
           {
             term: "FORWARD",
             detail:
-              "A consumer on the previous schema can read data written with the new schema. Allowed: add a field, or delete a field that has a default. Upgrade producers first, then consumers.",
+              "A consumer on the previous schema can read data written with the new schema — upgrade producers first, then consumers. In Avro that permits adding a field and deleting a field that has a default.",
           },
           {
             term: "FULL",
             detail:
-              "Both directions, checked against the previous version. Only add or remove fields that carry a default. Deploy order no longer matters — which is the whole point of paying for the stricter rule.",
+              "Both directions, checked against the previous version, so deploy order stops mattering — the point of paying for the stricter rule. In Avro that narrows you to adding or removing fields that carry a default.",
           },
           {
             term: "NONE",
@@ -1140,7 +1145,12 @@ export const modules: Module[] = [
           {
             term: "Transitive variants",
             detail:
-              "BACKWARD_TRANSITIVE / FORWARD_TRANSITIVE / FULL_TRANSITIVE check against every earlier version, not just the last one. Use them when a consumer may replay a topic from the start rather than only reading the tail.",
+              "BACKWARD_TRANSITIVE / FORWARD_TRANSITIVE / FULL_TRANSITIVE check against every earlier version, not just the last one. Use them when a consumer may replay a topic from the start rather than only reading the tail. NONE has no transitive form — it isn't checking anything.",
+          },
+          {
+            term: "The safe-change list is per format",
+            detail:
+              "The direction each mode enforces holds for Avro, Protobuf, and JSON Schema alike. The specific changes are not portable: Protobuf identifies fields by number, not name, and treats most field add/remove as compatible; JSON Schema turns on `required` and whether the schema is open or closed. The registry runs a separate compatibility checker for each format.",
           },
         ],
         watchOut:
@@ -1148,27 +1158,27 @@ export const modules: Module[] = [
       },
       "Evolving a schema without breaking consumers": {
         summary:
-          "The safe changes are a short list. Everything else needs a new topic or a coordinated stop-the-world.",
+          "The safe changes are a short list — and the list below is Avro's. Protobuf and JSON Schema reach the same goal by their own rules. Anything off the list needs a new topic or a coordinated stop-the-world.",
         points: [
           {
-            term: "Adding a field: the default is what buys you both directions",
+            term: "Adding a field (Avro): a no-default field is FORWARD-only",
             detail:
-              "Under FORWARD you can add a field with no default — an old consumer just ignores it. Under BACKWARD the new consumer needs a default to stand in for records written before the field existed. FULL needs the default because it has to satisfy both. If you don't know the subject's mode, add the default.",
+              "A field with no default can be added under FORWARD — an old consumer ignores it. BACKWARD needs the default, so the new consumer has something to stand in for records written before the field existed; FULL needs it for both directions. If you don't know the subject's mode, add the default.",
           },
           {
-            term: "Removing a field: the mirror image",
+            term: "Removing a field (Avro): the mirror image",
             detail:
-              "Under BACKWARD you can drop any field — the new consumer just ignores the data that's still there. Under FORWARD you can only drop a field that had a default, so the old consumer has something to fall back on. FULL, again, needs the default.",
+              "BACKWARD lets you drop any field — the new consumer ignores the data still sitting on old records. FORWARD lets you drop only a field that had a default, so the old consumer can fall back on it. FULL needs the default.",
           },
           {
             term: "Never rename in place",
             detail:
-              "A rename is a delete plus an add. Use an alias (Avro) so the old name still resolves, or add the new field and migrate every consumer before removing the old one.",
+              "In Avro a rename is a delete plus an add — use an alias so the old name still resolves, or add the new field and migrate every consumer before removing the old one. Protobuf is the exception: it keys fields by number, so a rename never reaches the wire.",
           },
           {
             term: "Type changes are mostly breaking",
             detail:
-              "Widening int to long can be safe; string to int, or editing an enum's symbols, generally is not. Check the change against the registry rather than reasoning it through.",
+              "Avro permits a few widening promotions — int to long, for instance — but string to int, or editing an enum's symbols, is not one. Every format has its own promotion list; check the change against the registry rather than reasoning it through.",
           },
           {
             term: "The deploy order is the mode's whole point",
@@ -1177,11 +1187,11 @@ export const modules: Module[] = [
           },
         ],
         watchOut:
-          "Adding the default is not a step you can defer. A field added without one is compatible in a single direction only — fine under BACKWARD or FORWARD if you deploy in the right order, but it fails a FULL check and it breaks the moment a consumer reads across the change from the other side.",
+          "Adding the default is not a step you can defer. In Avro a field added without one is FORWARD-compatible only — safe if the subject is FORWARD and you ship producers first, but it fails a BACKWARD or FULL check and breaks a consumer that reads old data on the new schema.",
       },
       "Deserialization failures and poison records": {
         summary:
-          "Bytes the deserializer can't turn into an object — wrong format, an unknown schema id, a genuinely corrupt record. To the consumer it looks exactly like Module 3's [[poison-message|poison record]], and it stalls the partition the same way.",
+          "Bytes the deserializer can't turn into an object — the wrong format, a schema id the registry can't resolve, a genuinely corrupt record. To the consumer it looks exactly like Module 3's [[poison-message|poison record]], and it stalls the partition the same way.",
         configs: ["value.deserializer"],
         points: [
           {
@@ -1192,7 +1202,7 @@ export const modules: Module[] = [
           {
             term: "Causes",
             detail:
-              "A producer using a different serializer, a record that predates the registry, an unregistered or deleted schema id, a registry that was unreachable when the consumer hit a schema id it hadn't cached yet, or real disk or network corruption.",
+              "A producer using a different serializer, a record that predates the registry, a registry unreachable when the consumer hit a schema id it hadn't cached yet, a schema id that was hard-deleted from the registry (a normal soft delete still resolves by id, so old records keep decoding), or real disk or network corruption.",
           },
           {
             term: "The framework fix",

@@ -271,15 +271,36 @@ describe("Module 4 — schemas and data contracts", () => {
     expect(dep.detail).toMatch(/cold start|never fetched/i);
   });
 
-  it("does not claim every field add or remove needs a default", () => {
+  it("gets the Avro evolution rules right: no-default add is FORWARD-only, any field drops under BACKWARD", () => {
     const evo = detail("Evolving a schema without breaking consumers");
     const text = evo.points.map((p) => `${p.term} ${p.detail}`).join(" ");
-    // a no-default field can be added under FORWARD; any field can be dropped under BACKWARD
-    expect(text).toMatch(/FORWARD you can add a field with no default/i);
-    expect(text).toMatch(/BACKWARD you can drop any field/i);
+    expect(text).toMatch(/no default can be added under FORWARD/i);
+    expect(text).toMatch(/BACKWARD lets you drop any field/i);
     expect(text).not.toMatch(/breaking change under every mode/i);
-    // the default is what FULL (both directions) needs
-    expect(text).toMatch(/FULL/);
+    // the no-default add must not be described as safe under BACKWARD
+    expect(evo.watchOut).toMatch(/FORWARD-compatible only|FORWARD only/i);
+    expect(evo.watchOut).not.toMatch(/fine under BACKWARD or FORWARD/i);
+  });
+
+  it("marks the concrete safe-change list as Avro's, not format-neutral", () => {
+    const evo = detail("Evolving a schema without breaking consumers");
+    const compat = detail("Compatibility modes");
+    expect(evo.summary).toMatch(/Avro/);
+    expect(`${evo.summary} ${evo.points.map((p) => p.detail).join(" ")}`).toMatch(/Protobuf|JSON Schema/);
+    // the compat topic keeps the direction claim but flags the specifics as per-format
+    const compatText = compat.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    expect(compatText).toMatch(/per format|separate compatibility checker|by number, not name/i);
+  });
+
+  it("notes the Protobuf message-index header in the Confluent wire format", () => {
+    const wire = detail("What the Schema Registry adds").points.find((p) => p.term === "The wire format")!;
+    expect(wire.detail).toMatch(/message-index/i);
+  });
+
+  it("says a soft-deleted schema still resolves by id so old records keep decoding", () => {
+    const subj = detail("Subjects, versions, and naming strategies");
+    const text = subj.points.map((p) => p.detail).join(" ");
+    expect(text).toMatch(/soft delete still resolves by id|globally resolvable/i);
   });
 
   it("treats a deserialization failure as a poison record that stalls the partition", () => {

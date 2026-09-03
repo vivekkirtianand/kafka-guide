@@ -690,10 +690,18 @@ renders as Topic-explorer content — no new component.
 
 - The magic-byte + 4-byte-schema-id wire format is **Confluent Schema Registry's**
   convention, not core Apache Kafka. Apicurio interoperates with it.
-- Compatibility → allowed change → upgrade-first (Confluent's table): BACKWARD = delete
-  field / add field-with-default → consumers first; FORWARD = add field / delete
-  field-with-default → producers first; FULL = add-or-delete field-with-default → any order.
-  Non-transitive modes only check against the **immediately previous** version.
+- Compatibility **direction** is format-neutral; the concrete allowed-changes list is
+  **Avro-specific**. Avro (Confluent's table): BACKWARD = delete field / add
+  field-with-default → consumers first; FORWARD = add field (no default OK) / delete
+  field-with-default → producers first; FULL = add-or-delete field-with-default → any
+  order. A no-default field add is **FORWARD-only** in Avro. Protobuf keys fields by
+  number and treats most add/remove as compatible; JSON Schema turns on `required` +
+  open/closed. Non-transitive modes only check the **immediately previous** version; NONE
+  has no transitive form.
+- Confluent's **Protobuf** wire format inserts a varint message-index header between the
+  4-byte schema id and the payload; Avro / JSON Schema are just magic-byte + id + payload.
+- A **soft-deleted** subject/version keeps its schema id globally resolvable (`/schemas/ids/{id}`),
+  so records already written stay deserializable; only a permanent hard delete removes it.
 - A `SerializationException` is raised out of `poll()` itself, before the handler sees a
   record, and the position hasn't advanced — identical stall to a business-logic poison
   record.
@@ -709,6 +717,15 @@ renders as Topic-explorer content — no new component.
 | 1 (P1) | The "Evolving a schema" lesson claimed adding or removing a field needs a default under **every** mode. Not so: a required-field **add** is FORWARD-compatible (old consumer ignores it); a required-field **remove** is BACKWARD-compatible (new consumer ignores the leftover data). The default is what **FULL** (both directions) needs. | The two points rewritten to the per-direction rule — "under FORWARD you can add a field with no default … under BACKWARD you can drop any field … FULL needs the default". `watchOut` reworded away from "defeats the entire scheme" to "compatible in a single direction only". New `modules.test.ts` assertion locks it in. |
 | 2 (P2) | "A registry outage doesn't stop warm clients" was directionally right but loose — decoding fails only on a schema id the client hasn't **cached** (cold start, or a producer that just shipped a new version), not whenever the registry is down. | The "dependency" point now says decoding "runs entirely from that cache" and names the uncached-id cases explicitly; the deserialization-cause bullet reworded to "unreachable when the consumer hit a schema id it hadn't cached yet". New test asserts the scoping. |
 | 3 (P2) | The `schema-compatibility` glossary term said "each has a transitive variant" — implying NONE does. | Reworded: "BACKWARD, FORWARD and FULL each also have a transitive variant … NONE (no check)". |
+
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The compatibility + evolution rules read as format-neutral, but the specific allowed-changes are **Avro's** — Protobuf and JSON Schema evolve differently. | "Compatibility modes" now leads each mode with the format-neutral **direction** and marks the allowed-changes as "In Avro …"; new point "The safe-change list is per format" (Protobuf keys by field number, JSON Schema turns on `required`, the registry runs a separate checker per format). "Evolving a schema" summary + point titles say "(Avro)"; the rename point notes Protobuf renames don't reach the wire. New tests assert both. |
+| 2 (P1) | "A field added without a default is compatible under BACKWARD or FORWARD" — in Avro it is **FORWARD-only**. | Point retitled "Adding a field (Avro): a no-default field is FORWARD-only"; `watchOut` now "FORWARD-compatible only — … fails a BACKWARD or FULL check". Test asserts the watchOut no longer says "fine under BACKWARD or FORWARD". |
+| 3 (P2) | The Confluent wire format described as magic-byte + id + payload for all formats — **Protobuf** inserts a message-index header. | "The wire format" point notes the Protobuf message-index header between id and payload. Test asserts it. |
+| 4 (P2) | "an unregistered or deleted schema id" as a deserialization cause — a normal **soft** delete keeps the id globally resolvable, so old records still decode. | New "Deleting a version" point in the subjects topic ("the schema id stays globally resolvable … records already on the topic keep deserializing"); the deserialization cause now says "hard-deleted … a normal soft delete still resolves by id". Test asserts it. |
 
 ---
 
