@@ -111,6 +111,10 @@ describe("module data", () => {
       expect(text).toMatch(/murmur2/);
       expect(text).toMatch(/not a primary key|does not identify|not.*unique id/i);
       expect(keys.watchOut).toMatch(/partition count/i);
+      // a custom partitioner can still route on the key — don't claim it always makes the key "just data"
+      const override = keys.points.find((p) => /overrid/i.test(p.term))!;
+      expect(override.detail).toMatch(/still route on the key|often still routes on the key/i);
+      expect(override.detail).not.toMatch(/either way the key becomes just data/i);
     });
 
     it("keeps min.insync.replicas as a separate admission floor from acks=all", () => {

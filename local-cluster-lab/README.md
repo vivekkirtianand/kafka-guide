@@ -234,7 +234,7 @@ docker compose --profile extras up -d schema-registry   # just the registry
 
 ### Lab C — evolving a schema under a running consumer
 
-Module 4 ("Schemas and data contracts") drives an in-app walkthrough against the Schema
+Module 5 ("Schemas and data contracts") drives an in-app walkthrough against the Schema
 Registry above. Run every command from the lab directory — `cd "$(git rev-parse
 --show-toplevel)/local-cluster-lab"` works from anywhere in the checkout. It registers a
 **closed** JSON Schema (`additionalProperties: false`) for an `order-events` topic, starts a

@@ -914,7 +914,7 @@ export const modules: Module[] = [
           {
             term: "Overriding the choice",
             detail:
-              "Set an explicit partition number on the ProducerRecord and the key is ignored for routing. Or supply a partitioner.class to compute the partition yourself. Either way the key becomes just data the consumer can read.",
+              "Set an explicit partition number on the ProducerRecord and routing ignores the key entirely — it rides along as data only. A partitioner.class replaces the default hashing but often still routes on the key: a different hash, or pinning a few hot keys to their own partitions. Same-key ordering only holds as long as whatever partitioner you run maps a key to one partition consistently.",
           },
           {
             term: "A key is not a primary key",

@@ -195,7 +195,7 @@ reference module at a glance.
     `acks=all` admission control below `min.insync.replicas` → the Grafana dashboard →
     dynamic topic config. Carries an OS matrix (macOS / Windows-WSL / Linux), a Docker
     memory floor, and lab-level troubleshooting.
-  - **Lab C** (Module 4) — schema evolution on Lab B's stack with the Schema Registry
+  - **Lab C** (Module 5) — schema evolution on Lab B's stack with the Schema Registry
     (`--profile extras`), 9 steps: register a closed JSON Schema → start a consumer and
     leave it running → add an optional field (BACKWARD accepts it, the running consumer
     reads it with no restart) → change a field's type (409 `TYPE_CHANGED` — every checking

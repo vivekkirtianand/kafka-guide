@@ -217,7 +217,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "The role that owns cluster metadata — partition leadership, ISR changes, topic creation. In KRaft a quorum of controllers replicates this metadata as its own log, one active and the rest hot standbys. A server runs as a controller, as a broker, or (in small clusters) as both — set by process.roles.",
     seeAlso: ["kraft", "broker", "leader"],
-    modules: ["mental-model", "observability"],
+    modules: ["keys-ordering-and-delivery", "broker-topic-configuration", "observability"],
   },
   {
     slug: "kraft",
@@ -225,7 +225,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "Kafka Raft — the built-in consensus protocol that stores cluster metadata in a replicated log managed by a controller quorum. Replaces ZooKeeper; the only metadata mode in Kafka 4.x.",
     seeAlso: ["controller", "zookeeper", "cluster"],
-    modules: ["mental-model", "local-cluster-lab"],
+    modules: ["keys-ordering-and-delivery", "broker-topic-configuration", "local-cluster-lab"],
   },
   {
     slug: "zookeeper",
@@ -233,7 +233,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "The external coordination service Kafka used for metadata before KRaft. Removed in Kafka 4.0 (KIP-833); relevant only when running older clusters.",
     seeAlso: ["kraft", "controller"],
-    modules: ["mental-model"],
+    modules: ["keys-ordering-and-delivery"],
   },
   {
     slug: "lag",

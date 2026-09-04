@@ -48,6 +48,18 @@ describe("producer/consumer code walkthrough", () => {
     }
   });
 
+  it("names the schemas module by its current number when it points forward to it", () => {
+    const schemasIndex = getModule("schemas-and-data-contracts")!.index;
+    const refs = w.lessons
+      .flatMap((l) => [l.intro, l.watchOut ?? "", ...l.points.map((p) => p.detail)])
+      .filter((t) => /schema/i.test(t) && /Module \d/.test(t));
+    expect(refs.length).toBeGreaterThan(0);
+    for (const t of refs) {
+      const m = t.match(/Module (\d+)/)!;
+      expect(Number(m[1]), t).toBe(schemasIndex);
+    }
+  });
+
   it("covers the concepts the module promises", () => {
     const allText = w.lessons
       .flatMap((l) => [l.intro, ...l.points.flatMap((p) => [p.term, p.detail]), l.watchOut ?? ""])

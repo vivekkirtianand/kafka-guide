@@ -901,6 +901,16 @@ the reference for ordering, replication durability, and delivery semantics. Spli
   Suite 357 → 359. Browser-verified: sidebar 00–10, both split modules render with correct
   level badges, prev/next nav intact, home "Beginner path" now 6 modules.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The new keys topic said a custom partitioner makes "the key just data" — a custom `partitioner.class` routinely still routes on the key. | "Overriding the choice" reworded: only an explicit partition number ignores the key; a `partitioner.class` "often still routes on the key (a different hash, or pinning hot keys)", and same-key ordering holds only while the partitioner maps a key consistently. Test asserts it. |
+| 2 (P2) | `walkthroughs.ts`, Lab C, and both READMEs still called the schemas module "Module 4" — it is Module 5 after 6b. | All updated to "Module 5". New `walkthroughs.test.ts` guard: any "Module N" reference near the word "schema" must equal `getModule("schemas-and-data-contracts").index`. |
+| 3 (P2) | `LagSlopeVsAbsolute` pointed poison handling at "Module 6" — consumer configuration is Module 7 now. | → "Module 7". |
+| 4 (P2) | The `controller` glossary entry still linked `mental-model`; the leaders/ISR/controllers topic moved to Module 4. | `controller` / `kraft` / `zookeeper` repointed `mental-model` → `keys-ordering-and-delivery`; `controller` and `kraft` also gained `broker-topic-configuration` (its "Controller and KRaft settings" topic). |
+| 5 (P3) | An `AcksDurabilityDemo` comment located the leader-election demo in "Module 1". | → "Module 4, Keys/ordering/delivery". |
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b the current repo numbering is: Events,
 > topics, partitions, brokers (the old "mental model") = 1; Keys, ordering, and delivery
