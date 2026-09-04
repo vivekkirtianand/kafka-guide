@@ -825,7 +825,13 @@ corrected once (see the accuracy notes).
 | # | Finding | Fix |
 |---|---|---|
 | 1 (P1) | Round 1 still reversed BACKWARD's direction: it protects a *v2 consumer reading v1 data*, not a running *v1* consumer against v2 records. | `start-old-consumer` observe now: "a consumer moved onto the NEW schema can still read the OLD records … it does not promise the reverse". `evolve-compatible` observe: "a consumer ON the v2 schema can still read a v1 record — BACKWARD's guarantee … what BACKWARD does NOT promise: that a consumer still pinned to v1 can read this v2 record … FORWARD's job". `same-add-under-forward` and both READMEs matched. 3 new test assertions on the direction. |
-| 2 (P2) | `--if-not-exists` silently reuses a stale `order-events` topic — a rerun folds old records and schema versions in, breaking the `[1,2]` / `[1,2,3]` checks. | `create-topic` drops `--if-not-exists` and gains a `TopicExistsException` `commonError` pointing at `down -v`. `verify` is now a real clean-state check — `curl /subjects` **and** `kafka-topics --list \| grep order-events` must both be empty, with the note telling the learner to `down -v` if not. Verified against a live stack: the check prints `[]` + `(no order-events topic)` clean, and a second `--create` errors `TopicExistsException`. Tests assert both. |
+| 2 (P2) | `--if-not-exists` silently reuses a stale `order-events` topic — a rerun folds old records and schema versions in, breaking the `[1,2]` / `[1,2,3]` checks. | `create-topic` drops `--if-not-exists` and gains a `TopicExistsException` `commonError` pointing at `down -v`. `verify` became a clean-state check (refined further in round 3). Verified against a live stack: a second `--create` errors `TopicExistsException`. |
+
+**Review findings addressed (round 3)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The round-2 clean-state check was imprecise: `curl /subjects` flagged *unrelated* subjects as stale, `grep order-events` also matched `order-events-archive`, and `\| grep … \|\| echo "(no topic)"` turned a broken `docker exec` into a false "clean". | `verify` now runs `curl …/subjects/order-events-value/versions` (that one subject only) `&&` `kafka-topics.sh --describe --topic order-events` (exact name, no `grep`, no `\|\| echo`). Clean = `40401 Subject … not found` + `Topic 'Optional[order-events]' does not exist`; a version array or a real topic = stale; a connection error / `No such container` reads distinctly and the note says that is "not the same as clean". Verified live: `grep order-events` matched both `order-events` and `order-events-archive`; `--describe --topic order-events` and `/subjects/order-events-value/versions` are exact. |
 
 **Phase 5 complete** — PRs 5a + 5b. Module 4 and its lab are done.
 

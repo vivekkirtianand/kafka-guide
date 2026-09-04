@@ -436,8 +436,8 @@ export const labC: Lab = {
   ],
   verify: {
     command:
-      "curl -s http://localhost:8081/subjects; echo; docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --list | grep order-events || echo '(no order-events topic)'",
-    note: "A clean slate for this lab means BOTH lines are empty: `[]` from the registry and `(no order-events topic)` from the broker. If you see `[\"order-events-value\"]` or the topic listed, a previous run left state behind — from the lab directory run `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`, wait ~30s, and check again. The version counts in steps 5–9 assume you start clean. `curl: (7) Failed to connect` means the registry isn't up yet.",
+      "curl -sS http://localhost:8081/subjects/order-events-value/versions && echo && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic order-events",
+    note: "Two targeted checks — the `order-events-value` subject and the `order-events` topic by exact name, not a scan of the whole registry. CLEAN SLATE: the first line is `{\"error_code\":40401,\"message\":\"Subject 'order-events-value' not found.\"}` and the describe command errors with `Topic 'Optional[order-events]' does not exist`. LEFTOVER STATE: the first line is a version array like `[1]` or `[1,2,3]`, or the describe prints a real topic — the counts in steps 5–9 assume you start clean, so from the lab directory run `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`, wait ~30s, and re-check. ANYTHING ELSE — `curl: (7) Failed to connect` (the `&&` then stops before the topic check), `No such container`, a timeout — means the stack is not ready, which is not the same as clean; go back to setup.",
   },
   steps: [
     {

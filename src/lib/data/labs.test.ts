@@ -260,11 +260,22 @@ describe("lab data", () => {
       expect(create.commonError?.recovery).toMatch(/down -v/);
     });
 
-    it("verify is an actual clean-state check — empty subject list AND no topic", () => {
-      expect(labC.verify?.command).toMatch(/\/subjects/);
-      expect(labC.verify?.command).toMatch(/kafka-topics\.sh .*--list/);
-      expect(labC.verify?.note).toMatch(/clean slate|start clean/i);
+    it("verify checks only order-events-value and order-events, exactly, without masking failures", () => {
+      const cmd = labC.verify!.command;
+      // scoped to the one subject, not a whole-registry /subjects scan
+      expect(cmd).toMatch(/\/subjects\/order-events-value\/versions/);
+      expect(cmd).not.toMatch(/localhost:8081\/subjects(\s|$|;|&)/);
+      // exact topic by name (--describe --topic), not a substring grep that also matches order-events-archive
+      expect(cmd).toMatch(/--describe --topic order-events\b/);
+      expect(cmd).not.toMatch(/--list\b/);
+      expect(cmd).not.toMatch(/grep .*order-events/);
+      // no `|| echo "clean"` that would turn a broken command into a false all-clear
+      expect(cmd).not.toMatch(/\|\|\s*echo/);
+      expect(labC.verify?.note).toMatch(/clean slate/i);
+      expect(labC.verify?.note).toMatch(/40401/);
       expect(labC.verify?.note).toMatch(/down -v/);
+      // distinguishes "stack not ready" from "clean"
+      expect(labC.verify?.note).toMatch(/not the same as clean|not.*clean/i);
     });
 
     it("registers a closed v1 schema and evolves it with an optional field under BACKWARD", () => {
