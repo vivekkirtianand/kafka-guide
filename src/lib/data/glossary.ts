@@ -41,7 +41,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "An optional field on a record. Its hash picks the partition, so all records with the same key land on the same partition and stay ordered. A null key spreads records across partitions.",
     seeAlso: ["partition", "event", "log-compaction"],
-    modules: ["why-kafka", "mental-model", "producer-configuration"],
+    modules: ["why-kafka", "mental-model", "keys-ordering-and-delivery", "producer-configuration"],
   },
   {
     slug: "broker",
@@ -113,7 +113,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "The one replica of a partition that handles all of its client reads and writes at a given time. The controller elects a new leader from the ISR if the current one fails.",
     seeAlso: ["follower", "isr", "controller", "replica"],
-    modules: ["mental-model"],
+    modules: ["keys-ordering-and-delivery"],
   },
   {
     slug: "follower",
@@ -121,7 +121,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A non-leader replica that continuously fetches from the leader to stay caught up. Followers don't serve clients (barring rack-aware follower fetching); a caught-up follower is eligible to become leader.",
     seeAlso: ["leader", "isr", "replica"],
-    modules: ["mental-model"],
+    modules: ["keys-ordering-and-delivery"],
   },
   {
     slug: "isr",
@@ -129,7 +129,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "The set of replicas currently caught up with the leader. A follower that falls behind for longer than replica.lag.time.max.ms is dropped from the ISR and rejoins once it catches up.",
     seeAlso: ["leader", "follower", "min-insync-replicas", "replication-factor"],
-    modules: ["mental-model", "broker-topic-configuration", "observability"],
+    modules: ["keys-ordering-and-delivery", "broker-topic-configuration", "observability"],
   },
   {
     slug: "min-insync-replicas",
@@ -137,7 +137,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A topic/broker setting: the minimum ISR size for a write with acks=all to be accepted. If the ISR drops below it, those writes fail with NOT_ENOUGH_REPLICAS rather than risking data loss.",
     seeAlso: ["isr", "acks", "replication-factor"],
-    modules: ["broker-topic-configuration", "troubleshooting-scenarios"],
+    modules: ["keys-ordering-and-delivery", "broker-topic-configuration", "troubleshooting-scenarios"],
   },
   {
     slug: "acks",
@@ -145,7 +145,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A producer setting for how many acknowledgements to wait for: 0 (fire and forget), 1 (leader only), or all (every in-sync replica). Only acks=all with min.insync.replicas ≥ 2 protects an acknowledged write from a single broker loss.",
     seeAlso: ["min-insync-replicas", "idempotence", "producer"],
-    modules: ["producer-configuration"],
+    modules: ["keys-ordering-and-delivery", "producer-configuration"],
   },
   {
     slug: "idempotence",
@@ -153,7 +153,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A producer mode where each batch carries a producer id and per-partition sequence number, so the broker rejects duplicates and out-of-order batches from retries. It does not by itself give end-to-end exactly-once.",
     seeAlso: ["acks", "exactly-once", "transaction"],
-    modules: ["producer-configuration"],
+    modules: ["keys-ordering-and-delivery", "producer-configuration"],
   },
   {
     slug: "transaction",
@@ -169,7 +169,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A delivery guarantee where every record is processed, but a crash between processing and committing the offset can reprocess some. The common default; pairs with idempotent downstream writes.",
     seeAlso: ["at-most-once", "exactly-once", "offset"],
-    modules: ["mental-model", "consumer-configuration"],
+    modules: ["keys-ordering-and-delivery", "consumer-configuration"],
   },
   {
     slug: "at-most-once",
@@ -177,7 +177,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "A delivery guarantee where the offset is committed before processing, so a crash skips records rather than repeating them. Records can be lost.",
     seeAlso: ["at-least-once", "exactly-once"],
-    modules: ["mental-model"],
+    modules: ["keys-ordering-and-delivery"],
   },
   {
     slug: "exactly-once",
@@ -185,7 +185,7 @@ export const glossary: GlossaryTerm[] = [
     definition:
       "The observable result of each record being processed once. In Kafka it is scoped to Kafka-to-Kafka pipelines, built from transactions plus read_committed consumers; external side effects still need their own idempotency.",
     seeAlso: ["transaction", "idempotence", "at-least-once"],
-    modules: ["mental-model", "producer-configuration"],
+    modules: ["keys-ordering-and-delivery", "producer-configuration"],
   },
   {
     slug: "retention",

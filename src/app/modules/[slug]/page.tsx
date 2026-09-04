@@ -153,6 +153,11 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ s
       {mod.slug === "mental-model" && (
         <div className="mt-10 flex flex-col gap-8">
           <RecordFlowDemo />
+        </div>
+      )}
+
+      {mod.slug === "keys-ordering-and-delivery" && (
+        <div className="mt-10 flex flex-col gap-8">
           <PartitionOrderingDemo />
           <LeaderElectionDemo />
         </div>

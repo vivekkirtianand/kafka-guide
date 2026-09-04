@@ -849,7 +849,7 @@ fills it); `consumer-configuration` → **beginner-path** when it becomes Module
 | PR | Scope | Status |
 |---|---|---|
 | 6a | Topic-level `level` (beginner/intermediate/advanced) on `TopicDetail`, a badge in `TopicExplorer`, backfilled on all 65 existing topics | ✅ Done |
-| 6b | Split `mental-model` → Module 1 "Events, topics, partitions, brokers" + new Module 4 "Keys, ordering, delivery guarantees" (move the partition-ordering demo) | ⭕ Planned |
+| 6b | Split `mental-model` → Module 1 "Events, topics, partitions, brokers" + new Module 4 "Keys, ordering, and delivery guarantees" (moved the two demos) | ✅ Done |
 | 6c | Retitle/rescope `consumer-configuration` → Module 6 "Consumer groups and resilient processing" (beginner-path); insert the Connect/Streams `planned` stub; renumber to the target 0–10; fix nav / tests / glossary / README | ⭕ Planned |
 | 6d | A plain-language preface before each advanced mechanical topic in the broker/topic module (roadmap's "6b") | ⭕ Planned |
 
@@ -869,14 +869,52 @@ fills it); `consumer-configuration` → **beginner-path** when it becomes Module
   all `beginner`. `TopicExplorer.test.tsx` — the badge shows only when `level` is set.
   Suite 354 → 357.
 
+### PR 6b — split the mental model
+
+The old 6-topic `mental-model` module tried to be both the beginner's picture of Kafka and
+the reference for ordering, replication durability, and delivery semantics. Split in two.
+
+- **Module 1** keeps the slug `mental-model`, retitled **"Events, topics, partitions,
+  brokers"**, cut to its three foundational topics: the append-only log + offsets;
+  topics / partitions / replicas / brokers; producers / consumers / offsets / consumer
+  groups. `estimatedMinutes` 60 → 45. Keeps only the `RecordFlowDemo`. Objectives and
+  completion criteria rewritten around "draw the path of a record".
+- **New Module 4** — slug `keys-ordering-and-delivery`, **"Keys, ordering, and delivery
+  guarantees"**, `track: "beginner-path"`, `difficulty: "intermediate"`, prereqs
+  `["mental-model", "build-a-producer-and-consumer"]`, inserted at `index: 4`. Topics: a new
+  **"Keys and the partitioner"** (murmur2, null-key sticky spread, explicit-partition /
+  custom-partitioner override, "a key is not a primary key", what raising the partition
+  count does); then "Ordering guarantees", "Leaders, followers, ISR, and controllers", and
+  "At-most-once, at-least-once, and exactly-once processing" moved verbatim from the mental
+  model. Gets the `PartitionOrderingDemo` and `LeaderElectionDemo`.
+- **Renumber**: `keys-ordering-and-delivery` at 4 shifts schemas 4→5, producer-config 5→6,
+  consumer-config 6→7, broker-topic 7→8, observability 8→9, troubleshooting 9→10.
+- `src/app/modules/[slug]/page.tsx` — the `mental-model` demo block drops to just
+  `RecordFlowDemo`; a new `keys-ordering-and-delivery` block renders the two moved demos.
+- `src/lib/data/glossary.ts` — `leader` / `follower` / `isr` / `at-least-once` /
+  `at-most-once` / `exactly-once` repointed from `mental-model` to `keys-ordering-and-delivery`;
+  `key` / `acks` / `min-insync-replicas` / `idempotence` now also list it.
+- Tests: `modules.test.ts` — the "Module 1 accuracy" block split into a trimmed Module 1
+  block and a new "Module 4 — keys, ordering, delivery" block (all the ISR / ordering /
+  delivery / new-keys-topic assertions). `walkthroughs.test.ts` — index assertions bumped
+  +1. README demo-tree + "What's scaffolded" bullets renumbered; new Module 4 bullet.
+  Suite 357 → 359. Browser-verified: sidebar 00–10, both split modules render with correct
+  level badges, prev/next nav intact, home "Beginner path" now 6 modules.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
-> their original numbers. Phase 4b inserted "Build a producer and consumer" at `index: 3`
-> and Phase 5a inserted "Schemas and data contracts" at `index: 4`, so the current repo
-> numbering for the sections below is: Producer configuration = 5, Consumer configuration
-> = 6, Broker and topic configuration = 7, Observability = 8, Troubleshooting scenarios
-> = 9. The full re-sequence is Phase 6.
+> their original numbers. After Phases 4b / 5a / 6b the current repo numbering is: Events,
+> topics, partitions, brokers (the old "mental model") = 1; Keys, ordering, and delivery
+> guarantees (new) = 4; Schemas and data contracts = 5; Producer configuration = 6;
+> Consumer configuration = 7; Broker and topic configuration = 8; Observability = 9;
+> Troubleshooting scenarios = 10. Phase 6c does the last of the re-sequence (Connect/Streams
+> stub, consumer-groups onto the path).
 
 ## Module 1 — Kafka mental model
+
+> **Split in Phase 6b (PR #31).** This module is now **"Events, topics, partitions,
+> brokers"** with three topics; keys, ordering, replication durability (leaders/ISR), and
+> the delivery semantics moved to the new Module 4 "Keys, ordering, and delivery
+> guarantees". The record below is the v1 build.
 
 All four planned **activities** are built out, and all 6 topics have real Topic explorer
 content (`topicDetail` — summary, mechanics points, config chips, watch-out), the same
