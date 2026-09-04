@@ -135,9 +135,11 @@ links back to the glossary.
   each forces, the safe schema changes, deserialization failures as poison records, and
   when a registry is actually worth running. Ships **Lab C** — an in-app walkthrough that
   registers a closed JSON Schema on the Lab B stack's Schema Registry (`--profile extras`),
-  keeps a consumer running while the schema evolves, and watches the registry accept an
-  added optional field under BACKWARD, reject a type change under every checking mode, and
-  reject that same kind of add once the subject is switched to FORWARD.
+  keeps a generic consumer running while the schema evolves (dynamic schema lookup, no
+  redeploy), and watches the registry accept an added optional field under BACKWARD, reject
+  a type change under every checking mode, and reject that same kind of add once the subject
+  is switched to FORWARD — with the lab spelling out that BACKWARD protects a consumer
+  moving to the new schema, not one still on the old one.
 - **Module 5 (Producer configuration)** is fully built: real lesson prose for all 7
   topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
   demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout
@@ -192,8 +194,9 @@ links back to the glossary.
     mode rejects it; NONE would not) → flip the subject to FORWARD and watch the same kind
     of optional-field add get rejected → restore BACKWARD and register it as v3. All `curl`
     against `localhost:8081` plus the JSON-Schema console producer/consumer; no new code.
-    The console consumer is generic (no pinned reader schema) — the registry gate is what
-    protects a real typed consumer.
+    The console consumer is generic (dynamic lookup, not a compatibility demo), and the lab
+    is careful about direction: BACKWARD protects a consumer *moving to* the new schema, not
+    one still pinned to the old one.
 - The **local cluster lab** at [`local-cluster-lab/`](local-cluster-lab/) is the Docker
   Compose project Lab B drives — its own `docker-compose.yml`, a `verify-lab.sh` health
   check, and a README with the service inventory, per-OS setup, and troubleshooting. CI

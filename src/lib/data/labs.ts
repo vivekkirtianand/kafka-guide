@@ -410,7 +410,7 @@ export const labC: Lab = {
   slug: "lab-c-schema-evolution",
   title: "Lab C — evolving a schema under a running consumer",
   summary:
-    "Register a JSON Schema for an order event, then evolve it: watch the registry accept an added field under BACKWARD, refuse a type change under every mode that checks, and refuse that same kind of add once the subject is FORWARD. A consumer runs throughout and picks up each new-schema record without a redeploy — the registry gate is what keeps the breaking change from ever reaching it.",
+    "Register a JSON Schema for an order event, then evolve it: watch the registry accept an added field under BACKWARD, refuse a type change under every mode that checks, and refuse that same kind of add once the subject is FORWARD. A consumer runs throughout — to show that a client picks up new-schema records by dynamic lookup with no redeploy, and to make concrete what BACKWARD does and does not promise about a consumer that stays on the old schema.",
   resourceFloor:
     "Lab B's stack (three broker JVMs, kafka-ui, Prometheus, Grafana) plus the Schema Registry container — budget the Lab B 4 GB and about 500 MB on top. `--profile extras up -d schema-registry` starts only the registry, not Kafka Connect.",
   prerequisites: [
@@ -435,8 +435,9 @@ export const labC: Lab = {
     },
   ],
   verify: {
-    command: "curl -s http://localhost:8081/subjects",
-    note: "Lists the registered subjects — `[]` on a clean registry, or a JSON array. `curl: (7) Failed to connect to localhost port 8081` means the registry isn't up yet: re-run the setup command (with `--profile extras`) and wait ~30 seconds.",
+    command:
+      "curl -s http://localhost:8081/subjects; echo; docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --list | grep order-events || echo '(no order-events topic)'",
+    note: "A clean slate for this lab means BOTH lines are empty: `[]` from the registry and `(no order-events topic)` from the broker. If you see `[\"order-events-value\"]` or the topic listed, a previous run left state behind — from the lab directory run `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`, wait ~30s, and check again. The version counts in steps 5–9 assume you start clean. `curl: (7) Failed to connect` means the registry isn't up yet.",
   },
   steps: [
     {
@@ -460,12 +461,19 @@ export const labC: Lab = {
       id: "create-topic",
       title: "Create a dedicated topic",
       intro:
-        "Use a fresh topic so it starts empty. A JSON-Schema consumer chokes on the plain-text records Lab A/B wrote to `orders` — those have no schema id in front of them.",
+        "Use a fresh topic so it starts empty. A JSON-Schema consumer chokes on the plain-text records Lab A/B wrote to `orders`, and the version counts later assume nothing is on `order-events` yet — so this deliberately does NOT pass `--if-not-exists`.",
       command:
-        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --create --topic order-events --partitions 3 --replication-factor 3 --if-not-exists",
-      expected: "Created topic order-events.\n(nothing printed if the topic already exists and you passed --if-not-exists)",
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --create --topic order-events --partitions 3 --replication-factor 3",
+      expected: "Created topic order-events.",
       observe:
         "The schema is not attached to this topic. It will live in the registry under the subject `order-events-value` — the topic name plus `-value`, the default naming strategy.",
+      commonError: {
+        symptom: "`TopicExistsException: Topic 'order-events' already exists.`",
+        cause:
+          "A previous run of this lab left the topic behind — and almost certainly its `order-events-value` schema versions too. Reusing it would fold old records and versions into the sequence and break the `[1,2]` / `[1,2,3]` checks below.",
+        recovery:
+          "From the lab directory: `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`, wait for the registry, then start again from this step. `down -v` clears the `_schemas` and `order-events` topics together.",
+      },
     },
     {
       id: "start-old-consumer",
@@ -477,7 +485,7 @@ export const labC: Lab = {
       expected:
         "A page of `INFO`-level client config, then the command sits waiting with no records. It prints one JSON object per record as you produce below.",
       observe:
-        "This console consumer is generic: it fetches whatever schema each record was written with, by id, and prints the object — it has no fixed \"reader\" schema of its own, so it would print an incompatible record just as happily. What actually protects a real consumer built against version 1 is the registry gate in steps 7 and 8, which never lets a breaking schema register. (Jackson does not preserve field order, so the printed key order won't match what you typed.)",
+        "This console consumer is generic: it deserializes each record with whatever schema the record's id points at, and has no fixed \"reader\" schema of its own — so it prints a v2 or v3 record just as readily, and would print a genuinely incompatible one too. Watching it here shows dynamic schema lookup, not compatibility. Note the direction the default BACKWARD mode actually protects: a consumer moved onto the NEW schema can still read the OLD records — which is why a BACKWARD rollout upgrades consumers first. It does not promise the reverse. (Jackson does not preserve field order, so the printed key order won't match what you typed.)",
       commonError: {
         symptom: "`OCI runtime exec failed ... kafka-json-schema-console-consumer: executable file not found`.",
         cause:
@@ -527,7 +535,7 @@ export const labC: Lab = {
       expected:
         "Producer exits cleanly. `curl -s http://localhost:8081/subjects/order-events-value/versions` now returns `[1,2]`. The consumer terminal prints the o-2 order, including `\"discountCode\":\"SPRING\"`.",
       observe:
-        "Two things happened. The registry accepted version 2 because `discountCode` is optional, so a reader on the v2 schema can still read a v1 record that lacks it — the question BACKWARD asks. And the consumer from step 3, still running, printed the v2 record without a restart: it just looked the v2 schema up by the id in the bytes.",
+        "Two things happened, and only one is BACKWARD. The registry accepted version 2 because `discountCode` is optional, so a consumer ON the v2 schema can still read a v1 record that lacks it — BACKWARD's guarantee, and the reason you roll v2 consumers out first. Separately, the generic consumer from step 3 printed the v2 record with no restart, purely by looking the schema up by id. What BACKWARD does NOT promise: that a consumer still pinned to v1 can read this v2 record — a strict v1 reader that rejects unknown fields would break on it. Keeping old readers safe against new data is FORWARD's job (step 8).",
     },
     {
       id: "reject-type-change",
@@ -551,7 +559,7 @@ export const labC: Lab = {
       expected:
         "`{\"compatibility\":\"FORWARD\"}`, then the producer fails:\nCaused by: ... RestClientException: Schema being registered is incompatible with an earlier schema ... details: [{errorType:\"PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL\", description:\"The old has a closed content model and is missing a property or item present at path '#/properties/giftMessage' in the new schema'}, ...] ... compatibility: 'FORWARD'}]; error code: 409",
       observe:
-        "Same kind of change as version 2, opposite outcome. FORWARD asks the reverse question — \"can a consumer on the OLD schema read data written with the NEW one?\" — and a closed v2 schema rejects the unknown `giftMessage` field. BACKWARD never asked that, which is why version 2 went through.",
+        "Same kind of change as version 2, opposite outcome. FORWARD asks the reverse question — \"can a consumer on the OLD schema read data written with the NEW one?\" — and a closed v2 schema rejects the unknown `giftMessage` field. BACKWARD never asked that, which is why version 2 went through under the default — and why, under BACKWARD, a consumer still on v1 had no guarantee against the v2 record in step 6. FORWARD (or FULL) is what you set when old readers must keep running against new data.",
     },
     {
       id: "restore-mode",

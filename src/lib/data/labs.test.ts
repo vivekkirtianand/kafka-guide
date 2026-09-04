@@ -235,7 +235,7 @@ describe("lab data", () => {
       expect(paths).not.toMatch(/cd kafka-guide\/local-cluster-lab/);
     });
 
-    it("keeps a consumer running and is honest that the console consumer is generic", () => {
+    it("keeps a consumer running, calls it generic, and gets BACKWARD's direction right", () => {
       const consumer = step("start-old-consumer");
       expect(consumer.command).toMatch(/kafka-json-schema-console-consumer/);
       expect(consumer.command).toMatch(/--from-beginning/);
@@ -243,14 +243,28 @@ describe("lab data", () => {
       // Jackson does not preserve field order — the lab must not promise it does
       expect(consumer.observe).toMatch(/does not preserve field order|not match what you typed/i);
       // it must not be framed as an old *typed* consumer surviving — it has no reader schema
-      expect(consumer.observe).toMatch(/generic|no fixed .*reader schema|reader.* schema of its own/i);
-      expect(consumer.observe).toMatch(/registry gate|never lets a breaking schema register/i);
+      expect(consumer.observe).toMatch(/generic|reader.* schema of its own/i);
+      expect(consumer.observe).toMatch(/dynamic schema lookup, not compatibility/i);
+      // BACKWARD protects a consumer moved to the NEW schema reading OLD data — not the reverse
+      expect(consumer.observe).toMatch(/onto the NEW schema can still read the OLD records|upgrades? consumers first/i);
+      expect(consumer.observe).toMatch(/does not promise the reverse/i);
     });
 
-    it("uses a fresh topic so the JSON-Schema consumer never meets Lab A/B's plain records", () => {
+    it("uses a fresh topic and does not silently reuse a stale one", () => {
       const create = step("create-topic");
       expect(create.command).toMatch(/--topic order-events\b/);
       expect(create.command).not.toMatch(/--topic orders\b/);
+      // --if-not-exists would fold a previous run's records + versions into the sequence
+      expect(create.command).not.toMatch(/--if-not-exists/);
+      expect(create.commonError?.symptom).toMatch(/TopicExistsException/);
+      expect(create.commonError?.recovery).toMatch(/down -v/);
+    });
+
+    it("verify is an actual clean-state check — empty subject list AND no topic", () => {
+      expect(labC.verify?.command).toMatch(/\/subjects/);
+      expect(labC.verify?.command).toMatch(/kafka-topics\.sh .*--list/);
+      expect(labC.verify?.note).toMatch(/clean slate|start clean/i);
+      expect(labC.verify?.note).toMatch(/down -v/);
     });
 
     it("registers a closed v1 schema and evolves it with an optional field under BACKWARD", () => {
@@ -261,7 +275,11 @@ describe("lab data", () => {
       // discountCode is added to properties but not to `required`
       expect(evolve.command).not.toMatch(/"required":\[[^\]]*discountCode/);
       expect(evolve.expected).toMatch(/\[1,2\]/);
-      expect(evolve.observe).toMatch(/without a restart|still running/i);
+      expect(evolve.observe).toMatch(/without a restart|no restart/i);
+      // BACKWARD = a consumer ON the v2 schema reads a v1 record; it does NOT protect a v1-pinned reader
+      expect(evolve.observe).toMatch(/consumer ON the v2 schema can still read a v1 record/i);
+      expect(evolve.observe).toMatch(/does NOT promise.*pinned to v1|still pinned to v1 can read this v2 record/i);
+      expect(evolve.observe).toMatch(/FORWARD'?s job|FORWARD \(step 8\)/i);
     });
 
     it("rejects a type change under every checking mode — but is precise that NONE would accept it", () => {
