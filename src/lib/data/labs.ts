@@ -399,4 +399,228 @@ export const labB: Lab = {
     "`docker compose down` on its own is safe — it keeps the volumes, so your topics and records come back on the next `up`. `docker compose down -v` deletes those volumes permanently: every topic, every record, and all Grafana/Prometheus history are gone, and the next start is a brand-new cluster. There is no undo. Only reach for `-v` when a fresh cluster is exactly what you want.",
 };
 
-export const labs: Lab[] = [labA, labB];
+// Lab C — schema evolution. Reuses Lab B's three-broker Compose stack plus its optional
+// Schema Registry (`--profile extras`). No new code: everything runs through the JSON-Schema
+// console producer/consumer that ships in the Confluent schema-registry image, plus `curl`
+// against the registry's REST API. The point the lab makes is that a *running* consumer
+// survives a compatible schema change with no redeploy, and that the registry refuses an
+// incompatible one before it can reach the topic — and that "compatible" depends on the
+// subject's mode: the same optional-field add passes under BACKWARD and fails under FORWARD.
+export const labC: Lab = {
+  slug: "lab-c-schema-evolution",
+  title: "Lab C — evolving a schema under a running consumer",
+  summary:
+    "Register a JSON Schema for an order event, then evolve it: watch the registry accept an added field under BACKWARD, refuse a type change under every mode that checks, and refuse that same kind of add once the subject is FORWARD. A consumer runs throughout — to show that a client picks up new-schema records by dynamic lookup with no redeploy, and to make concrete what BACKWARD does and does not promise about a consumer that stays on the old schema.",
+  resourceFloor:
+    "Lab B's stack (three broker JVMs, kafka-ui, Prometheus, Grafana) plus the Schema Registry container — budget the Lab B 4 GB and about 500 MB on top. `--profile extras up -d schema-registry` starts only the registry, not Kafka Connect.",
+  prerequisites: [
+    "You have finished Lab B — this lab uses the same three-broker Compose stack under local-cluster-lab/",
+    "Docker and Docker Compose v2, with Docker's memory raised to at least 4 GB as in Lab B",
+    "Two terminals: one holds a long-running consumer, the other runs everything else",
+    "`curl` on the host — bundled with macOS and every Linux; on Windows run it from the WSL shell",
+    "You have read Module 4's \"Compatibility modes\" and \"Evolving a schema\" topics",
+  ],
+  setup: [
+    {
+      command: 'cd "$(git rev-parse --show-toplevel)/local-cluster-lab"',
+      note: "Every command below runs from the lab directory of your checkout. `git rev-parse --show-toplevel` finds the repo root from anywhere inside it, so this works from the repo root or from wherever Lab B left you. If you are already in `local-cluster-lab/`, skip it.",
+    },
+    {
+      command: "docker compose --profile extras up -d schema-registry",
+      note: "Starts the Schema Registry on localhost:8081 (and the three brokers, if they were not already up — the registry waits for them to be healthy first). Naming `schema-registry` keeps Kafka Connect, the other `extras` service, stopped. The first run pulls the confluentinc/cp-schema-registry image.",
+    },
+    {
+      command: "docker compose --profile extras ps schema-registry",
+      note: "One row, STATUS `Up`. The registry needs all three brokers `healthy` before it starts, so on a cold stack give it 30–60 seconds.",
+    },
+  ],
+  verify: {
+    command:
+      "curl -sS http://localhost:8081/subjects/order-events-value/versions && echo && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic order-events",
+    note: "Two targeted checks — the `order-events-value` subject and the `order-events` topic by exact name, not a scan of the whole registry. CLEAN SLATE: the first line is `{\"error_code\":40401,\"message\":\"Subject 'order-events-value' not found.\"}` and the describe command errors with `Topic 'Optional[order-events]' does not exist`. LEFTOVER STATE: the first line is a version array like `[1]` or `[1,2,3]`, or the describe prints a real topic — the counts in steps 5–9 assume you start clean, so from the lab directory run `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`, wait ~30s, and re-check. ANYTHING ELSE — `curl: (7) Failed to connect` (the `&&` then stops before the topic check), `No such container`, a timeout — means the stack is not ready, which is not the same as clean; go back to setup.",
+  },
+  steps: [
+    {
+      id: "registry-up",
+      title: "Check the registry and its default compatibility mode",
+      intro:
+        "Before registering anything, see what rule the registry will hold new schema versions to. This is the global default; a subject can override it, which you do in step 8.",
+      command: "curl -s http://localhost:8081/config",
+      expected: '{"compatibilityLevel":"BACKWARD"}',
+      observe:
+        "The default is BACKWARD: every new version must let a consumer on the new schema still read data written with the previous one. That is the rule steps 6 and 7 are checked against.",
+      commonError: {
+        symptom: "`curl: (7) Failed to connect to localhost port 8081` or an empty reply.",
+        cause:
+          "The Schema Registry container isn't running yet — either `--profile extras` was left off the `up` command, or it is still waiting for the brokers to report healthy.",
+        recovery:
+          "From the lab directory (`cd \"$(git rev-parse --show-toplevel)/local-cluster-lab\"`), run `docker compose --profile extras up -d schema-registry`, wait ~30 seconds, then `curl -s http://localhost:8081/subjects` until it answers.",
+      },
+    },
+    {
+      id: "create-topic",
+      title: "Create a dedicated topic",
+      intro:
+        "Use a fresh topic so it starts empty. A JSON-Schema consumer chokes on the plain-text records Lab A/B wrote to `orders`, and the version counts later assume nothing is on `order-events` yet — so this deliberately does NOT pass `--if-not-exists`.",
+      command:
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --create --topic order-events --partitions 3 --replication-factor 3",
+      expected: "Created topic order-events.",
+      observe:
+        "The schema is not attached to this topic. It will live in the registry under the subject `order-events-value` — the topic name plus `-value`, the default naming strategy.",
+      commonError: {
+        symptom: "`TopicExistsException: Topic 'order-events' already exists.`",
+        cause:
+          "A previous run of this lab left the topic behind — and almost certainly its `order-events-value` schema versions too. Reusing it would fold old records and versions into the sequence and break the `[1,2]` / `[1,2,3]` checks below.",
+        recovery:
+          "From the lab directory: `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`, wait for the registry, then start again from this step. `down -v` clears the `_schemas` and `order-events` topics together.",
+      },
+    },
+    {
+      id: "start-old-consumer",
+      title: "Start a consumer and leave it running",
+      intro:
+        "In a SECOND terminal, start a JSON-Schema console consumer and leave it up for the whole lab. It starts now, before versions 2 and 3 exist, and is never restarted — so you can see it pick up new-schema records with no redeploy.",
+      command:
+        "docker exec -it kafka-lab-schema-registry kafka-json-schema-console-consumer --bootstrap-server kafka-1:19092 --topic order-events --from-beginning --property schema.registry.url=http://schema-registry:8081",
+      expected:
+        "A page of `INFO`-level client config, then the command sits waiting with no records. It prints one JSON object per record as you produce below.",
+      observe:
+        "This console consumer is generic: it deserializes each record with whatever schema the record's id points at, and has no fixed \"reader\" schema of its own — so it prints a v2 or v3 record just as readily, and would print a genuinely incompatible one too. Watching it here shows dynamic schema lookup, not compatibility. Note the direction the default BACKWARD mode actually protects: a consumer moved onto the NEW schema can still read the OLD records — which is why a BACKWARD rollout upgrades consumers first. It does not promise the reverse. (Jackson does not preserve field order, so the printed key order won't match what you typed.)",
+      commonError: {
+        symptom: "`OCI runtime exec failed ... kafka-json-schema-console-consumer: executable file not found`.",
+        cause:
+          "You ran `docker exec` against a broker container. The JSON-Schema console tools ship only in the Confluent registry image, `kafka-lab-schema-registry`.",
+        recovery:
+          "Run the command exactly as written — the container name is `kafka-lab-schema-registry`, not `kafka-lab-kafka-1`.",
+      },
+    },
+    {
+      id: "produce-v1",
+      title: "Produce a v1 order — the schema registers itself",
+      intro:
+        "Back in the FIRST terminal, produce one order. `--property value.schema=` gives the producer the schema inline; it registers it as `order-events-value` version 1 and stamps that version's id into the record. `additionalProperties: false` makes the schema closed — the contract is exactly these five fields.",
+      command:
+        "echo '{\"orderId\":\"o-1\",\"customerId\":\"alice\",\"item\":\"widget\",\"quantity\":2,\"amountCents\":1798}' | docker exec -i kafka-lab-schema-registry kafka-json-schema-console-producer --bootstrap-server kafka-1:19092 --topic order-events --property schema.registry.url=http://schema-registry:8081 --property value.schema='{\"type\":\"object\",\"properties\":{\"orderId\":{\"type\":\"string\"},\"customerId\":{\"type\":\"string\"},\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"},\"amountCents\":{\"type\":\"integer\"}},\"required\":[\"orderId\",\"customerId\",\"item\",\"quantity\",\"amountCents\"],\"additionalProperties\":false}'",
+      expected:
+        "The producer logs its config, then the prompt returns with no error. In the consumer terminal:\n{\"item\":\"widget\",\"amountCents\":1798,\"quantity\":2,\"orderId\":\"o-1\",\"customerId\":\"alice\"}",
+      observe:
+        "Both console tools dump their whole client config to stderr on startup — scroll past it. The line that matters is the JSON record in the consumer terminal. The producer prints nothing on success.",
+      commonError: {
+        symptom:
+          "The consumer prints nothing while the producer succeeds, or it later dies with `Error retrieving JSON schema for id N`.",
+        cause:
+          "The consumer was started against `orders` instead of `order-events`, or a previous run permanently deleted a schema whose id is still on the topic.",
+        recovery:
+          "Ctrl-C the consumer and restart it against `--topic order-events --from-beginning`. If ids are missing, do the full reset from the lab directory: `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`.",
+      },
+    },
+    {
+      id: "inspect-subject",
+      title: "Look at what got registered",
+      intro: "The registry now has one subject with one version. Read it back through the REST API.",
+      command:
+        "curl -s http://localhost:8081/subjects && echo && curl -s http://localhost:8081/subjects/order-events-value/versions && echo && curl -s http://localhost:8081/subjects/order-events-value/versions/1",
+      expected:
+        '["order-events-value"]\n[1]\n{"subject":"order-events-value","version":1,"id":1,"schemaType":"JSON","schema":"{\\"type\\":\\"object\\",...\\"additionalProperties\\":false}"}',
+      observe:
+        "`version` is 1 and scoped to this subject; `id` is global across the whole registry (also 1 on a clean registry, higher if other schemas were registered first). The record on the topic carries the id, not the schema text.",
+    },
+    {
+      id: "evolve-compatible",
+      title: "Add an optional field — BACKWARD accepts it",
+      intro:
+        "Produce a second order with a new `discountCode` field and a v2 schema that adds it to `properties` but NOT to `required`. The producer registers it as version 2.",
+      command:
+        "echo '{\"orderId\":\"o-2\",\"customerId\":\"alice\",\"item\":\"gadget\",\"quantity\":1,\"amountCents\":4999,\"discountCode\":\"SPRING\"}' | docker exec -i kafka-lab-schema-registry kafka-json-schema-console-producer --bootstrap-server kafka-1:19092 --topic order-events --property schema.registry.url=http://schema-registry:8081 --property value.schema='{\"type\":\"object\",\"properties\":{\"orderId\":{\"type\":\"string\"},\"customerId\":{\"type\":\"string\"},\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"},\"amountCents\":{\"type\":\"integer\"},\"discountCode\":{\"type\":\"string\"}},\"required\":[\"orderId\",\"customerId\",\"item\",\"quantity\",\"amountCents\"],\"additionalProperties\":false}'",
+      expected:
+        "Producer exits cleanly. `curl -s http://localhost:8081/subjects/order-events-value/versions` now returns `[1,2]`. The consumer terminal prints the o-2 order, including `\"discountCode\":\"SPRING\"`.",
+      observe:
+        "Two things happened, and only one is BACKWARD. The registry accepted version 2 because `discountCode` is optional, so a consumer ON the v2 schema can still read a v1 record that lacks it — BACKWARD's guarantee, and the reason you roll v2 consumers out first. Separately, the generic consumer from step 3 printed the v2 record with no restart, purely by looking the schema up by id. What BACKWARD does NOT promise: that a consumer still pinned to v1 can read this v2 record — a strict v1 reader that rejects unknown fields would break on it. Keeping old readers safe against new data is FORWARD's job (step 8).",
+    },
+    {
+      id: "reject-type-change",
+      title: "Change a field's type — every checking mode rejects it",
+      intro:
+        "Try a v3 schema that changes `amountCents` from an integer to a string. Produce an order whose `amountCents` is a string so it matches. The producer must register the schema first.",
+      command:
+        "echo '{\"orderId\":\"o-3\",\"customerId\":\"bob\",\"item\":\"gizmo\",\"quantity\":3,\"amountCents\":\"900\",\"discountCode\":\"X\"}' | docker exec -i kafka-lab-schema-registry kafka-json-schema-console-producer --bootstrap-server kafka-1:19092 --topic order-events --property schema.registry.url=http://schema-registry:8081 --property value.schema='{\"type\":\"object\",\"properties\":{\"orderId\":{\"type\":\"string\"},\"customerId\":{\"type\":\"string\"},\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"},\"amountCents\":{\"type\":\"string\"},\"discountCode\":{\"type\":\"string\"}},\"required\":[\"orderId\",\"customerId\",\"item\",\"quantity\",\"amountCents\"],\"additionalProperties\":false}'",
+      expected:
+        "The producer fails and exits non-zero, ending with:\nCaused by: io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException: Schema being registered is incompatible with an earlier schema for subject \"order-events-value\", details: [{errorType:\"TYPE_CHANGED\", description:\"A type at path '#/properties/amountCents' is different between the new schema and the old schema'}, ...]; error code: 409",
+      observe:
+        "`curl -s http://localhost:8081/subjects/order-events-value/versions` is still `[1,2]` — nothing registered, no record on the topic, the running consumer undisturbed. A type change breaks readers in both directions, so BACKWARD, FORWARD, and FULL all reject it. Only NONE would accept it — because NONE turns the check off entirely. The safe way to change a type is a new field with a new name.",
+    },
+    {
+      id: "same-add-under-forward",
+      title: "Flip the subject to FORWARD — the optional add now fails",
+      intro:
+        "Override the compatibility mode on just this subject, then try to add a different optional field, `giftMessage` — the same shape of change the registry accepted as version 2 under BACKWARD.",
+      command:
+        "curl -s -X PUT -H \"Content-Type: application/vnd.schemaregistry.v1+json\" --data '{\"compatibility\":\"FORWARD\"}' http://localhost:8081/config/order-events-value && echo && echo '{\"orderId\":\"o-4\",\"customerId\":\"amy\",\"item\":\"mug\",\"quantity\":1,\"amountCents\":1200,\"giftMessage\":\"hi\"}' | docker exec -i kafka-lab-schema-registry kafka-json-schema-console-producer --bootstrap-server kafka-1:19092 --topic order-events --property schema.registry.url=http://schema-registry:8081 --property value.schema='{\"type\":\"object\",\"properties\":{\"orderId\":{\"type\":\"string\"},\"customerId\":{\"type\":\"string\"},\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"},\"amountCents\":{\"type\":\"integer\"},\"discountCode\":{\"type\":\"string\"},\"giftMessage\":{\"type\":\"string\"}},\"required\":[\"orderId\",\"customerId\",\"item\",\"quantity\",\"amountCents\"],\"additionalProperties\":false}'",
+      expected:
+        "`{\"compatibility\":\"FORWARD\"}`, then the producer fails:\nCaused by: ... RestClientException: Schema being registered is incompatible with an earlier schema ... details: [{errorType:\"PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL\", description:\"The old has a closed content model and is missing a property or item present at path '#/properties/giftMessage' in the new schema'}, ...] ... compatibility: 'FORWARD'}]; error code: 409",
+      observe:
+        "Same kind of change as version 2, opposite outcome. FORWARD asks the reverse question — \"can a consumer on the OLD schema read data written with the NEW one?\" — and a closed v2 schema rejects the unknown `giftMessage` field. BACKWARD never asked that, which is why version 2 went through under the default — and why, under BACKWARD, a consumer still on v1 had no guarantee against the v2 record in step 6. FORWARD (or FULL) is what you set when old readers must keep running against new data.",
+    },
+    {
+      id: "restore-mode",
+      title: "Put the mode back and register the add properly",
+      intro:
+        "Set the subject to BACKWARD again, then re-run the `giftMessage` add. It should now register as version 3.",
+      command:
+        "curl -s -X PUT -H \"Content-Type: application/vnd.schemaregistry.v1+json\" --data '{\"compatibility\":\"BACKWARD\"}' http://localhost:8081/config/order-events-value && echo && echo '{\"orderId\":\"o-4\",\"customerId\":\"amy\",\"item\":\"mug\",\"quantity\":1,\"amountCents\":1200,\"giftMessage\":\"hi\"}' | docker exec -i kafka-lab-schema-registry kafka-json-schema-console-producer --bootstrap-server kafka-1:19092 --topic order-events --property schema.registry.url=http://schema-registry:8081 --property value.schema='{\"type\":\"object\",\"properties\":{\"orderId\":{\"type\":\"string\"},\"customerId\":{\"type\":\"string\"},\"item\":{\"type\":\"string\"},\"quantity\":{\"type\":\"integer\"},\"amountCents\":{\"type\":\"integer\"},\"discountCode\":{\"type\":\"string\"},\"giftMessage\":{\"type\":\"string\"}},\"required\":[\"orderId\",\"customerId\",\"item\",\"quantity\",\"amountCents\"],\"additionalProperties\":false}'",
+      expected:
+        "`{\"compatibility\":\"BACKWARD\"}`, then the producer exits cleanly. `curl -s http://localhost:8081/subjects/order-events-value/versions` is now `[1,2,3]`, and the consumer prints the o-4 order.",
+      observe:
+        "Version 3 is now in the subject's history, and it was only checked against version 2. Plain BACKWARD never compares v3 with v1 — so v3 could be a schema that reads v2's data fine but chokes on a v1 record, and the registry would not have caught it. That bites a consumer on the v3 schema that resets to the earliest offset and replays from v1. BACKWARD_TRANSITIVE checks a new version against every earlier one, and is the mode to use when replay from the start is on the table.",
+      commonError: {
+        symptom: "A later run of the lab already has version 3 and the step 7 type change no longer clearly fails first.",
+        cause: "Leftover versions from the previous run of this lab.",
+        recovery:
+          "Full reset from the lab directory: `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`, then recreate the topic and start again at step 3. A soft `DELETE /subjects/order-events-value` alone is not enough — the topic still holds records keyed to the old ids.",
+      },
+    },
+  ],
+  troubleshooting: [
+    {
+      symptom: "`curl` to `localhost:8081` hangs or refuses the connection.",
+      cause:
+        "The Schema Registry container is down or still starting. It only comes up with the `extras` profile, and it blocks until all three brokers are healthy.",
+      fix: "From the lab directory (`cd \"$(git rev-parse --show-toplevel)/local-cluster-lab\"`): `docker compose --profile extras up -d schema-registry`, then poll `curl -s http://localhost:8081/subjects` for ~30 seconds.",
+    },
+    {
+      symptom: "`kafka-json-schema-console-producer: executable file not found`.",
+      cause:
+        "The command was run with `docker exec` into a broker. The Apache Kafka broker image has the plain console tools; the JSON-Schema variants ship only in the Confluent `kafka-lab-schema-registry` image.",
+      fix: "Use `docker exec -i kafka-lab-schema-registry kafka-json-schema-console-producer ...` exactly as written.",
+    },
+    {
+      symptom: "A produce that should fail with a 409 succeeds instead, or the subject already has three or more versions.",
+      cause: "A previous run of this lab left `order-events-value` with leftover versions or a changed compatibility mode.",
+      fix: "From the lab directory, `docker compose --profile extras down -v` then `up -d schema-registry` is the clean reset — it wipes the `_schemas` topic and the `order-events` topic together, so ids and records stay consistent.",
+    },
+    {
+      symptom: "The consumer dies with `Error retrieving JSON schema for id N` / `Schema N not found; error code: 40403`.",
+      cause:
+        "A schema whose id is still stamped on records in the topic was permanently deleted from the registry (`DELETE ...?permanent=true`). Permanent deletes make existing records undecodable — this is why the lab never uses them.",
+      fix: "From the lab directory: `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry`, recreate the topic, and start over.",
+    },
+  ],
+  teardown: [
+    {
+      command: "# in the consumer terminal: Ctrl-C",
+      note: "Stops the consumer from step 3.",
+    },
+    {
+      command: 'cd "$(git rev-parse --show-toplevel)/local-cluster-lab" && docker compose --profile extras down',
+      note: "From anywhere in the checkout. Stops and removes every container (base stack plus the registry) but keeps the named volumes, so the subject and its versions survive the next `up`.",
+    },
+    {
+      command: "docker compose --profile extras down -v",
+      note: "The destructive one, run from the same directory. `-v` also deletes the volumes — including the `_schemas` topic that IS the registry's storage. Every subject, version, and compatibility override is gone.",
+    },
+  ],
+  teardownWarning:
+    "The Schema Registry keeps its entire state — every subject, version, and compatibility setting — in a Kafka topic called `_schemas`. `docker compose --profile extras down -v` deletes the volume that topic lives on, so it wipes the registry completely, with no undo. Plain `docker compose --profile extras down` keeps it. Because this lab writes schema ids into a real topic, a `down -v` is also the only fully clean way to re-run it from scratch — a soft `DELETE` of the subject alone leaves records on the topic pointing at ids the reset would orphan.",
+};
+
+export const labs: Lab[] = [labA, labB, labC];

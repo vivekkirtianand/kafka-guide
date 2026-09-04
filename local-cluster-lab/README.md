@@ -225,11 +225,49 @@ docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-configs.sh \
 Off by default to keep the base lab light. Bring them up with the `extras` profile:
 
 ```bash
-docker compose --profile extras up -d
+docker compose --profile extras up -d              # both extras services
+docker compose --profile extras up -d schema-registry   # just the registry
 ```
 
 - Schema Registry: http://localhost:8081
 - Kafka Connect REST API: http://localhost:8083
+
+### Lab C — evolving a schema under a running consumer
+
+Module 4 ("Schemas and data contracts") drives an in-app walkthrough against the Schema
+Registry above. Run every command from the lab directory — `cd "$(git rev-parse
+--show-toplevel)/local-cluster-lab"` works from anywhere in the checkout. It registers a
+**closed** JSON Schema (`additionalProperties: false`) for an `order-events` topic, starts a
+`kafka-json-schema-console-consumer` and leaves it running, then evolves the schema:
+
+1. **Compatible** — add an optional `discountCode` (in `properties`, not `required`). The
+   registry accepts version 2 under the default `BACKWARD` mode: a consumer *on the v2
+   schema* can still read a v1 record, so you roll v2 consumers out first. (The generic
+   console consumer reads the v2 record too, but that is dynamic schema lookup, not a
+   BACKWARD guarantee — BACKWARD does not promise a v1-pinned reader can read a v2 record.)
+2. **Always broken** — change `amountCents` from an integer to a string. The producer fails
+   to register it: `RestClientException ... errorType:"TYPE_CHANGED" ... error code: 409`. A
+   type change breaks readers both ways, so `BACKWARD`, `FORWARD`, and `FULL` all reject it —
+   only `NONE` would let it through, because `NONE` disables the check.
+3. **Direction matters** — `curl -X PUT .../config/order-events-value` to `FORWARD`, then try
+   to add another optional field, `giftMessage`. Now it is *rejected*
+   (`PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL`) — FORWARD asks whether an old, closed
+   schema can read the new data, and it can't. Set the mode back to `BACKWARD` and the same
+   add registers as version 3.
+
+The console consumer is **generic** — it deserializes each record with whatever schema its
+id points at, and has no pinned "reader" schema. It would happily print an incompatible
+record too, so it demonstrates dynamic lookup, not compatibility. Be precise about the
+direction the default `BACKWARD` mode protects: a consumer *moved onto the new schema* can
+still read the old data (hence "upgrade consumers first"). Keeping a consumer still on the
+old schema safe against new-schema records is `FORWARD`'s guarantee, not `BACKWARD`'s. The JSON-Schema console producer/consumer ship in
+the `kafka-lab-schema-registry` image, not the broker image — run them with `docker exec
+... kafka-lab-schema-registry`. Everything schema-side is plain `curl` against
+`http://localhost:8081`. To re-run the lab from scratch, use `docker compose --profile
+extras down -v` — it wipes the `_schemas` topic and the `order-events` topic together,
+keeping schema ids and records consistent. A soft `DELETE /subjects/order-events-value`
+alone is not enough, and a *permanent* delete (`?permanent=true`) makes the records already
+on the topic undecodable.
 
 ## Metrics and dashboards
 
@@ -249,6 +287,10 @@ dashboard is provisioned under Dashboards → "Kafka lab overview". Prometheus's
 | On Windows: `docker compose up` fails on a bind mount, or brokers never pass health checks | The repo is checked out under `/mnt/c/...` and Compose bind mounts onto the Windows filesystem are too slow | Clone into the WSL 2 home directory (`~`) and run the lab from there |
 | `InvalidReplicationFactorException` creating a topic | Fewer than three brokers are actually up | Wait for `docker compose ps` to show all three `(healthy)`, then retry |
 | Brokers healthy but `kafka-topics.sh` from your host can't connect | You used the in-container listener (`kafka-1:19092`) from the host, or vice versa | From inside a container use `kafka-1:19092`; from your host use `localhost:29092` |
+| Lab C: `curl http://localhost:8081/...` refuses the connection | The Schema Registry isn't up — `--profile extras` was omitted, or it is still waiting for the brokers to be healthy | `docker compose --profile extras up -d schema-registry`, then poll `curl -s http://localhost:8081/subjects` for ~30 s |
+| Lab C: `kafka-json-schema-console-producer: executable file not found` | Ran against a broker container; the JSON-Schema tools live only in `kafka-lab-schema-registry` | `docker exec -i kafka-lab-schema-registry kafka-json-schema-console-producer ...` |
+| Lab C: a produce that should fail with a 409 succeeds, or the subject has extra versions | A previous run left `order-events-value` with leftover versions or a changed compatibility mode | `docker compose --profile extras down -v && docker compose --profile extras up -d schema-registry` — the clean reset, wiping `_schemas` and `order-events` together |
+| Lab C: consumer dies with `Schema N not found; error code: 40403` | A schema still referenced by records on the topic was hard-deleted (`?permanent=true`) | `docker compose --profile extras down -v`, then bring the registry back and recreate the topic. Never use `?permanent=true` on a subject whose records are still live |
 
 ## Cleaning up
 

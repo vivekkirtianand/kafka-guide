@@ -48,7 +48,7 @@ unless noted.
 | 2 | Module 0 — Why Kafka? | 2a topic content; 2b 4 interactive activities; 2c 10-Q knowledge check + "should this use Kafka?" exercise | 1a, 1c | M1 |
 | 3 | Rework local lab | **3a ✅** Lab A single-broker in-app walkthrough; **3b ✅** Lab B (3-broker) in-app walkthrough + OS matrix + resource floor + `verify-lab.sh` + volume-delete warning | 1a, 1b | M1 |
 | 4 | Java producer/consumer module ✅ | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; **4b ✅** Module 3 (new, `index: 3`) — an in-app `CodeWalkthrough` over the scaffold; reference config modules renumbered 3–7 → 4–8; **4c ✅** rebalance listener + `PoisonPolicy` (propagate/skip/dead-letter) + `PoisonProducerApp` + 5 "Break it on purpose" lessons | 3a | M2 |
-| 5 | Schemas & serialization | **5a ✅** "Schemas and data contracts" module (new, `index: 4`) — Topic-explorer content: bytes/serializers, JSON/Avro/Protobuf, Schema Registry, subjects & naming, compatibility modes, safe evolution, deserialization poison records; reference config modules renumbered 4–8 → 5–9; 5b labs — evolve `order-event` schema while an old consumer runs | 4 | M2 |
+| 5 | Schemas & serialization ✅ | **5a ✅** "Schemas and data contracts" module (new, `index: 4`) — Topic-explorer content: bytes/serializers, JSON/Avro/Protobuf, Schema Registry, subjects & naming, compatibility modes, safe evolution, deserialization poison records; reference config modules renumbered 4–8 → 5–9; **5b ✅** Lab C — evolve a JSON Schema on the Lab B stack's Schema Registry while a consumer runs; compatible change flows through, incompatible one gets a 409, same change registers once the subject is FORWARD | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams | 7a Module 7 Connect content + file/DB↔Kafka lab (lab stack already has `cp-kafka-connect`); 7b Streams content + order-total aggregation lab | 4, 5 | M2 |
 | 8 | Version & deployment awareness | 8a add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, mark archived releases, bump lab image; 8b `applicableVersions` on lessons/configs/runbooks + selected version affects content + "Reviewed against Kafka X on DATE"; 8c rename "version + deployment aware" → "configuration context", "Every setting" → "Curated configurations" (do first, cheap) | 1a | M3 |
@@ -645,13 +645,14 @@ Java 19 → 22 tests; Node suite still 330.
 ## Phase 5 — schemas & serialization
 
 Module 4 ("Schemas and data contracts") is the bridge between the hand-rolled JSON of Module
-3 and a real, machine-checked contract. 5a is the module's content; 5b evolves the
-`order-pipeline-java` `order-event` schema while an old consumer keeps running.
+3 and a real, machine-checked contract. 5a is the module's content; 5b is the hands-on lab
+that registers a schema, evolves it under a running consumer, and watches the registry
+accept the safe change and reject the breaking one.
 
 | PR | Scope | Status |
 |---|---|---|
 | 5a | "Schemas and data contracts" module (new, `index: 4`) — Topic-explorer content for all 8 topics; reference config modules renumbered 4–8 → 5–9 | ✅ Done |
-| 5b | Labs — register an Avro/JSON schema, evolve it under BACKWARD while an old consumer runs, watch a bad change get rejected | ⭕ Planned |
+| 5b | Lab C — JSON-Schema evolution walkthrough on the Lab B stack's Schema Registry (`--profile extras`), CLI + `curl` only, no new code | ✅ Done |
 
 ### PR 5a — Schemas and data contracts module
 
@@ -726,6 +727,113 @@ renders as Topic-explorer content — no new component.
 | 2 (P1) | "A field added without a default is compatible under BACKWARD or FORWARD" — in Avro it is **FORWARD-only**. | Point retitled "Adding a field (Avro): a no-default field is FORWARD-only"; `watchOut` now "FORWARD-compatible only — … fails a BACKWARD or FULL check". Test asserts the watchOut no longer says "fine under BACKWARD or FORWARD". |
 | 3 (P2) | The Confluent wire format described as magic-byte + id + payload for all formats — **Protobuf** inserts a message-index header. | "The wire format" point notes the Protobuf message-index header between id and payload. Test asserts it. |
 | 4 (P2) | "an unregistered or deleted schema id" as a deserialization cause — a normal **soft** delete keeps the id globally resolvable, so old records still decode. | New "Deleting a version" point in the subjects topic ("the schema id stays globally resolvable … records already on the topic keep deserializing"); the deserialization cause now says "hard-deleted … a normal soft delete still resolves by id". Test asserts it. |
+
+### PR 5b — Lab C: schema evolution under a running consumer
+
+**AskUserQuestion decisions:** format = **JSON Schema** (keeps the payload readable, closest
+to Module 3's hand-written JSON); depth = **CLI-only lab, Java project untouched** (drives
+`kafka-json-schema-console-producer/consumer` + `curl` against the registry REST API — no
+Confluent Gradle deps, no CI change).
+
+**Verified end to end against a real `apache/kafka:4.0.2` + `confluentinc/cp-schema-registry:7.7.1`
+stack** — every command, output, and error message in the lab was run, and the design was
+corrected once (see the accuracy notes).
+
+- `src/lib/data/labs.ts` — new `labC` (`slug: "lab-c-schema-evolution"`), added to the
+  `labs` array. 9 steps on the Lab B Compose stack with
+  `docker compose --profile extras up -d schema-registry` (registry only, not Connect):
+  check the default `BACKWARD` mode → create a fresh `order-events` topic (so the
+  JSON-Schema consumer never meets Lab A/B's plain-text records) → start
+  `kafka-json-schema-console-consumer` in a second terminal and leave it running → produce a
+  v1 order with a **closed** schema (`additionalProperties: false`; auto-registers
+  `order-events-value` v1) → inspect the subject via `curl` → add an optional `discountCode`
+  (v2 registers under BACKWARD, the still-running consumer reads it with no restart) →
+  change `amountCents` int→string (producer fails: `errorType:"TYPE_CHANGED" … error code:
+  409`, nothing registered — every *checking* mode rejects it; `NONE` would not) →
+  `PUT .../config/order-events-value {"compatibility":"FORWARD"}` then try to add another
+  optional field `giftMessage` (now **rejected**: `PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL`,
+  `compatibility: 'FORWARD'` — the same shape of add BACKWARD waved through) → restore
+  `BACKWARD`, the add registers as v3, note the non-transitive gap. 4 lab-level
+  `troubleshooting` entries + step `commonError`s.
+- Verified the tool paths: `kafka-json-schema-console-producer` / `-consumer` exist at
+  `/usr/bin/` in `confluentinc/cp-schema-registry:7.7.1`.
+- `src/lib/data/modules.ts` — `schemas-and-data-contracts` gains `labs: [labC]`,
+  `prerequisites: [..., "local-cluster-lab"]`, `estimatedMinutes` 75 → 110, a 7th objective
+  and a 3rd completion criterion for the lab. The `[slug]` page already renders `mod.labs`,
+  so no page change.
+- Tests: `labs.test.ts` — a "Lab C — schema evolution" block (extras-profile setup, fresh
+  topic, closed v1 + optional-add under BACKWARD, `TYPE_CHANGED` 409, the FORWARD flip
+  *failing*, BACKWARD restore + transitive note, no `?permanent=true` anywhere, field-order
+  caveat, module wiring). The generic `labs` field checks cover it automatically.
+  `modules.test.ts` — the Module 4 "renders as … not a lab" assertion relaxed to expect
+  `labs: ["lab-c-schema-evolution"]`.
+- `local-cluster-lab/README.md` — a "Lab C" subsection under the extras profile + 2
+  troubleshooting-table rows. Root `README.md` — Module 4 bullet + labs section + tree
+  comment updated.
+
+**Kafka-accuracy notes banked for review** (from running it — the first design was wrong)
+
+- Confluent's **JSON Schema** compatibility is *not* Avro's, and is counter-intuitive:
+  - With an **open** schema (`additionalProperties: true`), adding a property is
+    **BACKWARD-incompatible** (`PROPERTY_ADDED_TO_OPEN_CONTENT_MODEL`) — the opposite of the
+    intuition. So the lab uses a **closed** schema, where adding an optional property *is*
+    BACKWARD-compatible.
+  - With a **closed** schema: adding a property (optional, and even required-with-default)
+    passes BACKWARD; **removing** a property fails BACKWARD
+    (`PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL`); a **type change** fails every *checking*
+    mode — BACKWARD, FORWARD, FULL (`TYPE_CHANGED`). `NONE` accepts anything, including a
+    type change, because it disables the check.
+  - An optional-field add that passes BACKWARD **fails FORWARD** on a closed schema
+    (`PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL` in the reverse direction) — this is the
+    lab's "direction of the check" payoff.
+- Non-transitive BACKWARD checks a new version **only against the immediately previous one**.
+  The gap it leaves: v3 reads v2's data fine (so the check passes) but was **never checked
+  against v1** — a consumer on the v3 schema replaying from the earliest offset can choke on
+  a v1 record. `BACKWARD_TRANSITIVE` checks every earlier version.
+- The console consumer (`kafka-json-schema-console-consumer`) is **generic** — no pinned
+  reader schema, decodes by writer-schema id. It proves dynamic lookup + that a running
+  client needs no redeploy; it does **not** prove an old *typed* consumer survives (it would
+  print an incompatible record too).
+- **BACKWARD's direction**: it guarantees a consumer *on the NEW schema* can read data
+  written with the OLD one — hence "upgrade consumers first". It does **not** protect a
+  consumer still pinned to the OLD schema from a NEW-schema record; that is FORWARD's
+  guarantee. Under the default BACKWARD, adding `discountCode` is allowed, and a strict v1
+  reader that rejects unknown fields would break on the resulting v2 record.
+- Schema **ids are never reused**: re-registering after a delete gets a *new* id. A
+  **permanent** delete (`DELETE …?permanent=true`) makes records still on the topic
+  undecodable (`Schema N not found; 40403`) — the lab never uses it, and the reset is
+  `down -v` (wipes `_schemas` and the data topic together).
+- The JSON-Schema console producer/consumer are in the **schema-registry image**, not the
+  broker image. Both tools dump their full client config to stderr on startup. Jackson does
+  **not** preserve field order in the consumer's printed output.
+- `--profile extras up -d schema-registry` starts just the registry (Connect stays down).
+- The lab's `cd` paths use `cd "$(git rev-parse --show-toplevel)/local-cluster-lab"` so they
+  work from the repo root or from wherever Lab B left the learner, not a fixed
+  `cd kafka-guide/local-cluster-lab` that assumes running from the repo's parent.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The console consumer is generic, not pinned to v1 — it proves dynamic schema lookup, not that an old *typed* consumer survives evolution. | `start-old-consumer` observe now says the console consumer has no reader schema of its own and would print an incompatible record too; the summary and `evolve-compatible` observe reframe the payoff as "the registry gate keeps the breaking change from ever reaching a real typed consumer". New test asserts the honesty. |
+| 2 (P1) | "no mode lets a type change through" — **NONE** does, by disabling checks. | `reject-type-change` title → "every checking mode rejects it"; observe now "BACKWARD, FORWARD, and FULL all reject it. Only NONE would accept it — because NONE turns the check off." PLAN + READMEs matched. Test asserts NONE is called out. |
+| 3 (P1) | The non-transitive example had the versions backwards. | `restore-mode` observe rewritten: v3 passes because it reads v2's data, but was **never checked against v1** — the gap bites a v3 consumer replaying from the earliest offset. Test asserts the direction. |
+| 4 (P2) | `cd kafka-guide/local-cluster-lab` in setup/teardown assumes you run from the repo's parent — fails from the repo root or from inside `local-cluster-lab/` (where Lab B ends). | Setup and teardown use `cd "$(git rev-parse --show-toplevel)/local-cluster-lab"`; a dedicated setup step explains it. Every `commonError`/`troubleshooting` reset now says "from the lab directory". Test asserts no bare `cd kafka-guide/local-cluster-lab`. |
+
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | Round 1 still reversed BACKWARD's direction: it protects a *v2 consumer reading v1 data*, not a running *v1* consumer against v2 records. | `start-old-consumer` observe now: "a consumer moved onto the NEW schema can still read the OLD records … it does not promise the reverse". `evolve-compatible` observe: "a consumer ON the v2 schema can still read a v1 record — BACKWARD's guarantee … what BACKWARD does NOT promise: that a consumer still pinned to v1 can read this v2 record … FORWARD's job". `same-add-under-forward` and both READMEs matched. 3 new test assertions on the direction. |
+| 2 (P2) | `--if-not-exists` silently reuses a stale `order-events` topic — a rerun folds old records and schema versions in, breaking the `[1,2]` / `[1,2,3]` checks. | `create-topic` drops `--if-not-exists` and gains a `TopicExistsException` `commonError` pointing at `down -v`. `verify` became a clean-state check (refined further in round 3). Verified against a live stack: a second `--create` errors `TopicExistsException`. |
+
+**Review findings addressed (round 3)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The round-2 clean-state check was imprecise: `curl /subjects` flagged *unrelated* subjects as stale, `grep order-events` also matched `order-events-archive`, and `\| grep … \|\| echo "(no topic)"` turned a broken `docker exec` into a false "clean". | `verify` now runs `curl …/subjects/order-events-value/versions` (that one subject only) `&&` `kafka-topics.sh --describe --topic order-events` (exact name, no `grep`, no `\|\| echo`). Clean = `40401 Subject … not found` + `Topic 'Optional[order-events]' does not exist`; a version array or a real topic = stale; a connection error / `No such container` reads distinctly and the note says that is "not the same as clean". Verified live: `grep order-events` matched both `order-events` and `order-events-archive`; `--describe --topic order-events` and `/subjects/order-events-value/versions` are exact. |
+
+**Phase 5 complete** — PRs 5a + 5b. Module 4 and its lab are done.
 
 ---
 

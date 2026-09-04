@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { labs, labA, labB } from "./labs";
+import { labs, labA, labB, labC } from "./labs";
 import { modules } from "./modules";
 
 const verifyLabScript = readFileSync(
@@ -217,6 +217,131 @@ describe("lab data", () => {
     const mod = modules.find((m) => m.slug === "local-cluster-lab")!;
     expect(mod.status).toBe("available");
     expect(mod.labs?.map((l) => l.slug)).toEqual([labA.slug, labB.slug]);
+  });
+
+  describe("Lab C — schema evolution", () => {
+    const step = (id: string) => labC.steps.find((s) => s.id === id)!;
+
+    it("reuses Lab B's Compose stack with the extras profile, registry only", () => {
+      expect(labC.setup.some((c) => /docker compose --profile extras up -d schema-registry/.test(c.command))).toBe(true);
+      expect(labC.setup.some((c) => /docker run|apache\/kafka/.test(c.command))).toBe(false);
+      expect(labC.prerequisites.join(" ")).toMatch(/finished Lab B/i);
+    });
+
+    it("finds the lab directory from anywhere in the checkout, not a fixed cd from the repo root", () => {
+      const paths = [...labC.setup.map((c) => c.command), ...labC.teardown.map((c) => c.command)].join("\n");
+      expect(paths).toMatch(/git rev-parse --show-toplevel/);
+      // a bare `cd kafka-guide/local-cluster-lab` breaks from the repo root or from within local-cluster-lab
+      expect(paths).not.toMatch(/cd kafka-guide\/local-cluster-lab/);
+    });
+
+    it("keeps a consumer running, calls it generic, and gets BACKWARD's direction right", () => {
+      const consumer = step("start-old-consumer");
+      expect(consumer.command).toMatch(/kafka-json-schema-console-consumer/);
+      expect(consumer.command).toMatch(/--from-beginning/);
+      expect(consumer.intro).toMatch(/leave it (up|running)|never restarted/i);
+      // Jackson does not preserve field order — the lab must not promise it does
+      expect(consumer.observe).toMatch(/does not preserve field order|not match what you typed/i);
+      // it must not be framed as an old *typed* consumer surviving — it has no reader schema
+      expect(consumer.observe).toMatch(/generic|reader.* schema of its own/i);
+      expect(consumer.observe).toMatch(/dynamic schema lookup, not compatibility/i);
+      // BACKWARD protects a consumer moved to the NEW schema reading OLD data — not the reverse
+      expect(consumer.observe).toMatch(/onto the NEW schema can still read the OLD records|upgrades? consumers first/i);
+      expect(consumer.observe).toMatch(/does not promise the reverse/i);
+    });
+
+    it("uses a fresh topic and does not silently reuse a stale one", () => {
+      const create = step("create-topic");
+      expect(create.command).toMatch(/--topic order-events\b/);
+      expect(create.command).not.toMatch(/--topic orders\b/);
+      // --if-not-exists would fold a previous run's records + versions into the sequence
+      expect(create.command).not.toMatch(/--if-not-exists/);
+      expect(create.commonError?.symptom).toMatch(/TopicExistsException/);
+      expect(create.commonError?.recovery).toMatch(/down -v/);
+    });
+
+    it("verify checks only order-events-value and order-events, exactly, without masking failures", () => {
+      const cmd = labC.verify!.command;
+      // scoped to the one subject, not a whole-registry /subjects scan
+      expect(cmd).toMatch(/\/subjects\/order-events-value\/versions/);
+      expect(cmd).not.toMatch(/localhost:8081\/subjects(\s|$|;|&)/);
+      // exact topic by name (--describe --topic), not a substring grep that also matches order-events-archive
+      expect(cmd).toMatch(/--describe --topic order-events\b/);
+      expect(cmd).not.toMatch(/--list\b/);
+      expect(cmd).not.toMatch(/grep .*order-events/);
+      // no `|| echo "clean"` that would turn a broken command into a false all-clear
+      expect(cmd).not.toMatch(/\|\|\s*echo/);
+      expect(labC.verify?.note).toMatch(/clean slate/i);
+      expect(labC.verify?.note).toMatch(/40401/);
+      expect(labC.verify?.note).toMatch(/down -v/);
+      // distinguishes "stack not ready" from "clean"
+      expect(labC.verify?.note).toMatch(/not the same as clean|not.*clean/i);
+    });
+
+    it("registers a closed v1 schema and evolves it with an optional field under BACKWARD", () => {
+      const v1 = step("produce-v1");
+      expect(v1.command).toMatch(/"additionalProperties":false/);
+      const evolve = step("evolve-compatible");
+      expect(evolve.command).toMatch(/discountCode/);
+      // discountCode is added to properties but not to `required`
+      expect(evolve.command).not.toMatch(/"required":\[[^\]]*discountCode/);
+      expect(evolve.expected).toMatch(/\[1,2\]/);
+      expect(evolve.observe).toMatch(/without a restart|no restart/i);
+      // BACKWARD = a consumer ON the v2 schema reads a v1 record; it does NOT protect a v1-pinned reader
+      expect(evolve.observe).toMatch(/consumer ON the v2 schema can still read a v1 record/i);
+      expect(evolve.observe).toMatch(/does NOT promise.*pinned to v1|still pinned to v1 can read this v2 record/i);
+      expect(evolve.observe).toMatch(/FORWARD'?s job|FORWARD \(step 8\)/i);
+    });
+
+    it("rejects a type change under every checking mode — but is precise that NONE would accept it", () => {
+      const reject = step("reject-type-change");
+      expect(reject.command).toMatch(/"amountCents":\{"type":"string"\}/);
+      expect(reject.expected).toMatch(/TYPE_CHANGED/);
+      expect(reject.expected).toMatch(/error code: 409/);
+      expect(reject.observe).toMatch(/still `\[1,2\]`|nothing registered/i);
+      // BACKWARD/FORWARD/FULL reject it; NONE would accept it because it disables the check
+      expect(reject.observe).toMatch(/BACKWARD, FORWARD, and FULL/);
+      expect(reject.observe).toMatch(/NONE would accept it|Only NONE/i);
+      expect(reject.observe).not.toMatch(/no (compatibility )?mode (lets it|accepts)/i);
+    });
+
+    it("shows the same optional-field add FAILING once the subject is FORWARD", () => {
+      const fwd = step("same-add-under-forward");
+      expect(fwd.command).toMatch(/"compatibility":"FORWARD"/);
+      expect(fwd.command).toMatch(/config\/order-events-value/);
+      expect(fwd.command).toMatch(/giftMessage/);
+      expect(fwd.expected).toMatch(/error code: 409/);
+      expect(fwd.observe).toMatch(/reverse question|opposite outcome/i);
+    });
+
+    it("restores BACKWARD, registers v3, and states the non-transitive gap in the right direction", () => {
+      const restore = step("restore-mode");
+      expect(restore.command).toMatch(/"compatibility":"BACKWARD"/);
+      expect(restore.expected).toMatch(/\[1,2,3\]/);
+      expect(restore.observe).toMatch(/BACKWARD_TRANSITIVE/);
+      // the gap is "v3 reads v2 fine but was never checked against v1", not the reverse
+      expect(restore.observe).toMatch(/never compares v3 with v1|checked against version 2|reads v2'?s data fine but chokes on a v1/i);
+      expect(restore.observe).toMatch(/resets? to the earliest offset|replays? from v1/i);
+    });
+
+    it("never puts a permanent schema delete in a command (it would orphan topic records)", () => {
+      const commands = [
+        ...labC.setup.map((c) => c.command),
+        ...labC.steps.map((s) => s.command),
+        ...labC.steps.flatMap((s) => (s.commonError ? [s.commonError.recovery] : [])),
+        ...(labC.troubleshooting ?? []).map((t) => t.fix),
+        ...labC.teardown.map((c) => c.command),
+      ].join("\n");
+      expect(commands).not.toMatch(/permanent=true/);
+      // the reset advice is down -v, which wipes _schemas and the topic together
+      expect(labC.teardownWarning).toMatch(/_schemas/);
+      expect(labC.teardownWarning).toMatch(/no undo|down -v/i);
+    });
+
+    it("is carried by the schemas-and-data-contracts module", () => {
+      const mod = modules.find((m) => m.slug === "schemas-and-data-contracts")!;
+      expect(mod.labs?.map((l) => l.slug)).toEqual([labC.slug]);
+    });
   });
 
   describe("verify-lab.sh", () => {
