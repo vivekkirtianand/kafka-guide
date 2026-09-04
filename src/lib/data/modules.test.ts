@@ -33,6 +33,21 @@ describe("module data", () => {
     }
   });
 
+  it("every topicDetail entry carries a valid beginner/intermediate/advanced level", () => {
+    for (const m of modules) {
+      for (const [topic, d] of Object.entries(m.topicDetail ?? {})) {
+        expect(["beginner", "intermediate", "advanced"], `${m.slug}: ${topic}`).toContain(d.level);
+      }
+    }
+  });
+
+  it("Module 0's topics are all beginner-level — it is the foundational module", () => {
+    const m0 = getModule("why-kafka")!;
+    for (const d of Object.values(m0.topicDetail!)) {
+      expect(d.level).toBe("beginner");
+    }
+  });
+
   describe("Module 1 — mental model accuracy", () => {
     const m1 = getModule("mental-model")!;
     const detail = (t: string) => m1.topicDetail![t];

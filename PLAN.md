@@ -835,7 +835,39 @@ corrected once (see the accuracy notes).
 
 **Phase 5 complete** — PRs 5a + 5b. Module 4 and its lab are done.
 
----
+## Phase 6 — re-sequence core material
+
+Getting the module list into the plan's target 0–10 order and letting a learner tell the
+foundational topics from the deep mechanical ones. Split across four PRs (the roadmap's "6a"
+becomes 6a–6c; the advanced-topic prefaces are 6d).
+
+**AskUserQuestion decisions:** four PRs, not one; `mental-model`'s "Leaders, followers, ISR,
+and controllers" topic → the new Module 4 (Keys, ordering, delivery); a
+`status: "planned"` **Kafka Connect and Kafka Streams** stub goes in at index 7 now (Phase 7
+fills it); `consumer-configuration` → **beginner-path** when it becomes Module 6.
+
+| PR | Scope | Status |
+|---|---|---|
+| 6a | Topic-level `level` (beginner/intermediate/advanced) on `TopicDetail`, a badge in `TopicExplorer`, backfilled on all 65 existing topics | ✅ Done |
+| 6b | Split `mental-model` → Module 1 "Events, topics, partitions, brokers" + new Module 4 "Keys, ordering, delivery guarantees" (move the partition-ordering demo) | ⭕ Planned |
+| 6c | Retitle/rescope `consumer-configuration` → Module 6 "Consumer groups and resilient processing" (beginner-path); insert the Connect/Streams `planned` stub; renumber to the target 0–10; fix nav / tests / glossary / README | ⭕ Planned |
+| 6d | A plain-language preface before each advanced mechanical topic in the broker/topic module (roadmap's "6b") | ⭕ Planned |
+
+### PR 6a — topic-level difficulty
+
+- `src/lib/types.ts` — `TopicDetail` gains `level?: Difficulty` (reuses the existing
+  `"beginner" | "intermediate" | "advanced"` type).
+- `src/components/TopicExplorer.tsx` — renders `detail.level` as a `<Badge>` on the topic
+  row, visible while collapsed, using the same tone map as `ModuleMeta` (beginner→success,
+  intermediate→stream, advanced→accent).
+- `src/lib/data/modules.ts` — `level` added to **every** `topicDetail` entry across the 8
+  modules that have one (65 topics). Module 0 is all `beginner`; the reference config /
+  observability modules skew intermediate/advanced; the deep mechanical topics (segments,
+  threads, quotas, KRaft internals, GC, request-latency phases, static membership,
+  cooperative assignment, transactions, retry ordering) are `advanced`.
+- Tests: `modules.test.ts` — every `topicDetail` entry has a valid `level`; Module 0's are
+  all `beginner`. `TopicExplorer.test.tsx` — the badge shows only when `level` is set.
+  Suite 354 → 357.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. Phase 4b inserted "Build a producer and consumer" at `index: 3`

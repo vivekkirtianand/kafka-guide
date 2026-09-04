@@ -12,6 +12,7 @@ const topics = [
 
 const detail: Record<string, TopicDetail> = {
   "First topic (foo, bar)": {
+    level: "advanced",
     summary: "First summary.",
     configs: ["foo", "bar"],
     points: [
@@ -46,6 +47,16 @@ describe("TopicExplorer", () => {
     // A topic with no detail entry still shows, as a non-interactive stub.
     expect(screen.getByRole("heading", { name: "Outline-only topic" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Outline-only topic/ })).not.toBeInTheDocument();
+  });
+
+  it("shows a level badge only for topics that declare one", () => {
+    render(<TopicExplorer topics={topics} detail={detail} />);
+
+    const firstRow = firstButton().closest("div.overflow-hidden") as HTMLElement;
+    expect(within(firstRow).getByText("advanced")).toBeInTheDocument();
+
+    const secondRow = secondButton().closest("div.overflow-hidden") as HTMLElement;
+    expect(within(secondRow).queryByText(/beginner|intermediate|advanced/)).not.toBeInTheDocument();
   });
 
   it("keeps every panel mounted so aria-controls always resolves, and links it back with aria-labelledby", () => {

@@ -1,8 +1,17 @@
 "use client";
 
 import { useId, useState } from "react";
-import { TopicDetail } from "@/lib/types";
+import { Difficulty, TopicDetail } from "@/lib/types";
 import { renderGlossaryText } from "./GlossaryTerm";
+import Badge from "./Badge";
+
+// Matches the module-level difficulty tones in ModuleMeta so a topic badge reads the same
+// as its module's badge.
+const LEVEL_TONE: Record<Difficulty, "success" | "stream" | "accent"> = {
+  beginner: "success",
+  intermediate: "stream",
+  advanced: "accent",
+};
 
 // The trailing "(acks, enable.idempotence, …)" in a topic string duplicates the
 // config chips, so drop it from the displayed heading.
@@ -92,6 +101,11 @@ function TopicRow({
               <Chevron open={open} />
             </button>
           </h3>
+          {detail.level && (
+            <div className="mt-1.5">
+              <Badge tone={LEVEL_TONE[detail.level]}>{detail.level}</Badge>
+            </div>
+          )}
           <p className="mt-1 text-sm leading-relaxed text-text-muted">{renderGlossaryText(detail.summary)}</p>
           {detail.configs && detail.configs.length > 0 && <ConfigChips configs={detail.configs} />}
         </div>
