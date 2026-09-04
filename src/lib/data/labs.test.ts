@@ -228,13 +228,23 @@ describe("lab data", () => {
       expect(labC.prerequisites.join(" ")).toMatch(/finished Lab B/i);
     });
 
-    it("hangs a long-running consumer that is never restarted", () => {
+    it("finds the lab directory from anywhere in the checkout, not a fixed cd from the repo root", () => {
+      const paths = [...labC.setup.map((c) => c.command), ...labC.teardown.map((c) => c.command)].join("\n");
+      expect(paths).toMatch(/git rev-parse --show-toplevel/);
+      // a bare `cd kafka-guide/local-cluster-lab` breaks from the repo root or from within local-cluster-lab
+      expect(paths).not.toMatch(/cd kafka-guide\/local-cluster-lab/);
+    });
+
+    it("keeps a consumer running and is honest that the console consumer is generic", () => {
       const consumer = step("start-old-consumer");
       expect(consumer.command).toMatch(/kafka-json-schema-console-consumer/);
       expect(consumer.command).toMatch(/--from-beginning/);
       expect(consumer.intro).toMatch(/leave it (up|running)|never restarted/i);
       // Jackson does not preserve field order — the lab must not promise it does
       expect(consumer.observe).toMatch(/does not preserve field order|not match what you typed/i);
+      // it must not be framed as an old *typed* consumer surviving — it has no reader schema
+      expect(consumer.observe).toMatch(/generic|no fixed .*reader schema|reader.* schema of its own/i);
+      expect(consumer.observe).toMatch(/registry gate|never lets a breaking schema register/i);
     });
 
     it("uses a fresh topic so the JSON-Schema consumer never meets Lab A/B's plain records", () => {
@@ -251,16 +261,19 @@ describe("lab data", () => {
       // discountCode is added to properties but not to `required`
       expect(evolve.command).not.toMatch(/"required":\[[^\]]*discountCode/);
       expect(evolve.expected).toMatch(/\[1,2\]/);
-      expect(evolve.observe).toMatch(/never touched|no restart/i);
+      expect(evolve.observe).toMatch(/without a restart|still running/i);
     });
 
-    it("rejects a type change outright — no mode accepts it — with a 409 and nothing on the topic", () => {
+    it("rejects a type change under every checking mode — but is precise that NONE would accept it", () => {
       const reject = step("reject-type-change");
       expect(reject.command).toMatch(/"amountCents":\{"type":"string"\}/);
       expect(reject.expected).toMatch(/TYPE_CHANGED/);
       expect(reject.expected).toMatch(/error code: 409/);
       expect(reject.observe).toMatch(/still `\[1,2\]`|nothing registered/i);
-      expect(reject.observe).toMatch(/both directions|no compatibility mode/i);
+      // BACKWARD/FORWARD/FULL reject it; NONE would accept it because it disables the check
+      expect(reject.observe).toMatch(/BACKWARD, FORWARD, and FULL/);
+      expect(reject.observe).toMatch(/NONE would accept it|Only NONE/i);
+      expect(reject.observe).not.toMatch(/no (compatibility )?mode (lets it|accepts)/i);
     });
 
     it("shows the same optional-field add FAILING once the subject is FORWARD", () => {
@@ -272,11 +285,14 @@ describe("lab data", () => {
       expect(fwd.observe).toMatch(/reverse question|opposite outcome/i);
     });
 
-    it("restores BACKWARD, registers v3, and flags the non-transitive gap", () => {
+    it("restores BACKWARD, registers v3, and states the non-transitive gap in the right direction", () => {
       const restore = step("restore-mode");
       expect(restore.command).toMatch(/"compatibility":"BACKWARD"/);
       expect(restore.expected).toMatch(/\[1,2,3\]/);
-      expect(restore.observe).toMatch(/BACKWARD_TRANSITIVE|transitive/i);
+      expect(restore.observe).toMatch(/BACKWARD_TRANSITIVE/);
+      // the gap is "v3 reads v2 fine but was never checked against v1", not the reverse
+      expect(restore.observe).toMatch(/never compares v3 with v1|checked against version 2|reads v2'?s data fine but chokes on a v1/i);
+      expect(restore.observe).toMatch(/resets? to the earliest offset|replays? from v1/i);
     });
 
     it("never puts a permanent schema delete in a command (it would orphan topic records)", () => {

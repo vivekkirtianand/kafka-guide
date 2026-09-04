@@ -235,29 +235,35 @@ docker compose --profile extras up -d schema-registry   # just the registry
 ### Lab C — evolving a schema under a running consumer
 
 Module 4 ("Schemas and data contracts") drives an in-app walkthrough against the Schema
-Registry above. It registers a **closed** JSON Schema (`additionalProperties: false`) for an
-`order-events` topic, starts a `kafka-json-schema-console-consumer` and leaves it running,
-then evolves the schema:
+Registry above. Run every command from the lab directory — `cd "$(git rev-parse
+--show-toplevel)/local-cluster-lab"` works from anywhere in the checkout. It registers a
+**closed** JSON Schema (`additionalProperties: false`) for an `order-events` topic, starts a
+`kafka-json-schema-console-consumer` and leaves it running, then evolves the schema:
 
 1. **Compatible** — add an optional `discountCode` (in `properties`, not `required`). The
    registry accepts version 2 under the default `BACKWARD` mode, and the consumer that
    started before version 2 existed reads the new records with no restart.
 2. **Always broken** — change `amountCents` from an integer to a string. The producer fails
    to register it: `RestClientException ... errorType:"TYPE_CHANGED" ... error code: 409`. A
-   type change breaks readers both ways, so no mode accepts it.
+   type change breaks readers both ways, so `BACKWARD`, `FORWARD`, and `FULL` all reject it —
+   only `NONE` would let it through, because `NONE` disables the check.
 3. **Direction matters** — `curl -X PUT .../config/order-events-value` to `FORWARD`, then try
    to add another optional field, `giftMessage`. Now it is *rejected*
    (`PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL`) — FORWARD asks whether an old, closed
    schema can read the new data, and it can't. Set the mode back to `BACKWARD` and the same
    add registers as version 3.
 
-The JSON-Schema console producer/consumer ship in the `kafka-lab-schema-registry` image, not
-the broker image — run them with `docker exec ... kafka-lab-schema-registry`. Everything
-schema-side is plain `curl` against `http://localhost:8081`. To re-run the lab from scratch,
-use `docker compose --profile extras down -v` — it wipes the `_schemas` topic and the
-`order-events` topic together, keeping schema ids and records consistent. A soft
-`DELETE /subjects/order-events-value` alone is not enough, and a *permanent* delete
-(`?permanent=true`) makes the records already on the topic undecodable.
+The console consumer is **generic** — it deserializes each record with whatever schema its
+id points at, and has no pinned "reader" schema. It would happily print an incompatible
+record too; what protects a real consumer built against version 1 is the registry gate that
+never lets the breaking schema register. The JSON-Schema console producer/consumer ship in
+the `kafka-lab-schema-registry` image, not the broker image — run them with `docker exec
+... kafka-lab-schema-registry`. Everything schema-side is plain `curl` against
+`http://localhost:8081`. To re-run the lab from scratch, use `docker compose --profile
+extras down -v` — it wipes the `_schemas` topic and the `order-events` topic together,
+keeping schema ids and records consistent. A soft `DELETE /subjects/order-events-value`
+alone is not enough, and a *permanent* delete (`?permanent=true`) makes the records already
+on the topic undecodable.
 
 ## Metrics and dashboards
 

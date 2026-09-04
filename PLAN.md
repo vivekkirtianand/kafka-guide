@@ -749,7 +749,7 @@ corrected once (see the accuracy notes).
   `order-events-value` v1) → inspect the subject via `curl` → add an optional `discountCode`
   (v2 registers under BACKWARD, the still-running consumer reads it with no restart) →
   change `amountCents` int→string (producer fails: `errorType:"TYPE_CHANGED" … error code:
-  409`, nothing registered — a type change breaks both directions, no mode allows it) →
+  409`, nothing registered — every *checking* mode rejects it; `NONE` would not) →
   `PUT .../config/order-events-value {"compatibility":"FORWARD"}` then try to add another
   optional field `giftMessage` (now **rejected**: `PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL`,
   `compatibility: 'FORWARD'` — the same shape of add BACKWARD waved through) → restore
@@ -780,11 +780,21 @@ corrected once (see the accuracy notes).
     BACKWARD-compatible.
   - With a **closed** schema: adding a property (optional, and even required-with-default)
     passes BACKWARD; **removing** a property fails BACKWARD
-    (`PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL`); a **type change** fails every mode
-    (`TYPE_CHANGED`).
+    (`PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL`); a **type change** fails every *checking*
+    mode — BACKWARD, FORWARD, FULL (`TYPE_CHANGED`). `NONE` accepts anything, including a
+    type change, because it disables the check.
   - An optional-field add that passes BACKWARD **fails FORWARD** on a closed schema
     (`PROPERTY_REMOVED_FROM_CLOSED_CONTENT_MODEL` in the reverse direction) — this is the
     lab's "direction of the check" payoff.
+- Non-transitive BACKWARD checks a new version **only against the immediately previous one**.
+  The gap it leaves: v3 reads v2's data fine (so the check passes) but was **never checked
+  against v1** — a consumer on the v3 schema replaying from the earliest offset can choke on
+  a v1 record. `BACKWARD_TRANSITIVE` checks every earlier version.
+- The console consumer (`kafka-json-schema-console-consumer`) is **generic** — no pinned
+  reader schema, decodes by writer-schema id. It proves dynamic lookup + that a running
+  client needs no redeploy; it does **not** prove an old *typed* consumer survives (it would
+  print an incompatible record too). What protects a real typed consumer is the registry
+  gate refusing the bad schema.
 - Schema **ids are never reused**: re-registering after a delete gets a *new* id. A
   **permanent** delete (`DELETE …?permanent=true`) makes records still on the topic
   undecodable (`Schema N not found; 40403`) — the lab never uses it, and the reset is
@@ -793,6 +803,18 @@ corrected once (see the accuracy notes).
   broker image. Both tools dump their full client config to stderr on startup. Jackson does
   **not** preserve field order in the consumer's printed output.
 - `--profile extras up -d schema-registry` starts just the registry (Connect stays down).
+- The lab's `cd` paths use `cd "$(git rev-parse --show-toplevel)/local-cluster-lab"` so they
+  work from the repo root or from wherever Lab B left the learner, not a fixed
+  `cd kafka-guide/local-cluster-lab` that assumes running from the repo's parent.
+
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The console consumer is generic, not pinned to v1 — it proves dynamic schema lookup, not that an old *typed* consumer survives evolution. | `start-old-consumer` observe now says the console consumer has no reader schema of its own and would print an incompatible record too; the summary and `evolve-compatible` observe reframe the payoff as "the registry gate keeps the breaking change from ever reaching a real typed consumer". New test asserts the honesty. |
+| 2 (P1) | "no mode lets a type change through" — **NONE** does, by disabling checks. | `reject-type-change` title → "every checking mode rejects it"; observe now "BACKWARD, FORWARD, and FULL all reject it. Only NONE would accept it — because NONE turns the check off." PLAN + READMEs matched. Test asserts NONE is called out. |
+| 3 (P1) | The non-transitive example had the versions backwards. | `restore-mode` observe rewritten: v3 passes because it reads v2's data, but was **never checked against v1** — the gap bites a v3 consumer replaying from the earliest offset. Test asserts the direction. |
+| 4 (P2) | `cd kafka-guide/local-cluster-lab` in setup/teardown assumes you run from the repo's parent — fails from the repo root or from inside `local-cluster-lab/` (where Lab B ends). | Setup and teardown use `cd "$(git rev-parse --show-toplevel)/local-cluster-lab"`; a dedicated setup step explains it. Every `commonError`/`troubleshooting` reset now says "from the lab directory". Test asserts no bare `cd kafka-guide/local-cluster-lab`. |
 
 **Phase 5 complete** — PRs 5a + 5b. Module 4 and its lab are done.
 
