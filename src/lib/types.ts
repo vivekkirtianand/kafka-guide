@@ -21,6 +21,9 @@ export type ChangeMechanism =
 // A topic broken into scannable pieces for the expand/collapse Topic explorer, as an
 // alternative to the prose in `topicNarrative`. Keyed by the exact string in `topics`.
 export interface TopicDetail {
+  // How much prior context this topic assumes — rendered as a small badge on the row so a
+  // learner can tell the foundational topics from the deep mechanical ones at a glance.
+  level?: Difficulty;
   // One sentence of framing, shown even while the topic is collapsed.
   summary: string;
   // Config keys this topic turns on — rendered as monospace chips.

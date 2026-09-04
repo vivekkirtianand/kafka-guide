@@ -42,6 +42,7 @@ export const modules: Module[] = [
     ],
     topicDetail: {
       "What an event is": {
+        level: "beginner",
         summary:
           "An event is an immutable record of something that already happened, at a point in time — the unit Kafka stores and moves.",
         points: [
@@ -70,6 +71,7 @@ export const modules: Module[] = [
           "\"Event\" is an overloaded word. Here it always means a stored, immutable record on a log — not an in-memory callback, a UI click handler, or a webhook call.",
       },
       "Event key, value, timestamp, headers, and schema": {
+        level: "beginner",
         summary:
           "Every Kafka event has the same shape: a value, an optional key, a timestamp, optional headers, and — by convention — a schema for the value.",
         points: [
@@ -103,6 +105,7 @@ export const modules: Module[] = [
           "The key's job is grouping and ordering, not identity or uniqueness. Reaching for it as a database-style primary key is the most common early mistake.",
       },
       "Event streaming versus request/response": {
+        level: "beginner",
         summary:
           "Request/response is one caller asking one service for an answer now. Event streaming is one [[producer|producer]] publishing facts that any number of [[consumer|consumers]] read later, each on its own schedule.",
         points: [
@@ -131,6 +134,7 @@ export const modules: Module[] = [
           "Streaming doesn't replace request/response. It removes the need for the producer to know about and call every downstream system.",
       },
       "Kafka versus queues": {
+        level: "beginner",
         summary:
           "A traditional message queue hands each message to one consumer and then deletes it. Kafka keeps every event in an ordered log that many consumers read independently — and can re-read.",
         points: [
@@ -159,6 +163,7 @@ export const modules: Module[] = [
           "If you specifically need to track delivery of each message individually, priority levels, or long delayed redelivery, a dedicated queue such as SQS or RabbitMQ may fit better than Kafka.",
       },
       "Kafka versus databases": {
+        level: "beginner",
         summary:
           "A database answers \"what is the current state?\" Kafka answers \"what happened, and in what order?\" One holds the latest value; the other holds the history that produced it.",
         points: [
@@ -187,6 +192,7 @@ export const modules: Module[] = [
           "Kafka can be the system of record for events — the authoritative log that other systems are derived from, which many event-sourced designs rely on. What it is not is a query database: lookups, joins, and transactions across entities are a database's job, downstream.",
       },
       "Kafka versus object storage": {
+        level: "beginner",
         summary:
           "Object storage (S3, GCS) is cheap, durable storage for large files written once and read occasionally. Kafka is for a continuous stream of small events that many systems react to within seconds.",
         points: [
@@ -215,6 +221,7 @@ export const modules: Module[] = [
           "Don't use Kafka as a bulk file store or a data lake. It is a moving pipe, not a warehouse.",
       },
       "Common use cases": {
+        level: "beginner",
         summary:
           "Kafka fits wherever many systems need to react to the same stream of events, decoupled from whoever produced them.",
         points: [
@@ -248,6 +255,7 @@ export const modules: Module[] = [
           "The common thread is many consumers, retained history, and decoupling — not simply \"moving data around\". Plain point-to-point transfer rarely needs Kafka.",
       },
       "When Kafka is a poor choice": {
+        level: "beginner",
         summary:
           "Kafka pays back its operational cost when the streaming need is real. Without one, it is a heavy dependency that a simpler tool would beat.",
         points: [
@@ -281,6 +289,7 @@ export const modules: Module[] = [
           "\"We might need to scale one day\" is not a reason to adopt Kafka today. Adopt it when the streaming problem is real — moving to it later is a normal, well-trodden path.",
       },
       "Kafka's main components at a high level": {
+        level: "beginner",
         summary:
           "A few parts: producers write events, brokers store them in topics that are split into partitions, and consumers read them — with a cluster of brokers sharing the load.",
         points: [
@@ -496,6 +505,7 @@ export const modules: Module[] = [
     ],
     topicDetail: {
       "Kafka's append-only log": {
+        level: "beginner",
         summary:
           "Every topic-partition is an ordered, immutable, append-only sequence of records — the one data structure everything else is built on.",
         points: [
@@ -524,6 +534,7 @@ export const modules: Module[] = [
           "The log is per-partition. \"The order of a topic\" only means something for a single-partition topic; across partitions there is no total order.",
       },
       "Brokers, topics, partitions, replicas": {
+        level: "beginner",
         summary:
           "A [[topic|topic]] is split into [[partition|partitions]] for scale; each partition is [[replica|replicated]] across [[broker|brokers]] for durability.",
         points: [
@@ -552,6 +563,7 @@ export const modules: Module[] = [
           "Partition count can be raised but never lowered, and raising it changes which partition future keys hash to — so keyed ordering resets for those keys.",
       },
       "Leaders, followers, ISR, and controllers": {
+        level: "intermediate",
         summary:
           "Every partition has one [[leader|leader]] that handles all of its reads and writes; the [[controller|controller]] decides which broker that is.",
         configs: ["acks", "min.insync.replicas", "replica.lag.time.max.ms"],
@@ -581,6 +593,7 @@ export const modules: Module[] = [
           "A new leader is chosen from the ISR, so it has every committed record — one replicated to the full ISR, which is what acks=all waits for. A record acknowledged only by the leader (acks=1) can still be lost in a clean election. Unclean leader election (off by default) goes further, letting an out-of-sync replica take over and dropping committed records too.",
       },
       "Producers, consumers, offsets, and consumer groups": {
+        level: "beginner",
         summary:
           "Producers append to partitions; consumers track a position per partition; a consumer group splits the partitions across its members.",
         configs: ["group.id", "enable.auto.commit"],
@@ -610,6 +623,7 @@ export const modules: Module[] = [
           "The read position and the committed offset are different things. Whether a crash reprocesses or skips records depends entirely on when you commit relative to doing the work.",
       },
       "Ordering guarantees": {
+        level: "intermediate",
         summary: "Kafka orders records within a single [[partition|partition]] — and only there.",
         configs: ["enable.idempotence", "max.in.flight.requests.per.connection"],
         points: [
@@ -638,6 +652,7 @@ export const modules: Module[] = [
           "Adding partitions raises throughput but breaks ordering for keys whose partition changes — the key hash is taken over the current partition count.",
       },
       "At-most-once, at-least-once, and exactly-once processing": {
+        level: "intermediate",
         summary:
           "Which one you get is set by when you commit the offset relative to doing the work — plus, for exactly-once, transactions.",
         configs: ["enable.idempotence", "isolation.level"],
@@ -714,6 +729,7 @@ export const modules: Module[] = [
     ],
     topicDetail: {
       "Three Kafka brokers in KRaft mode": {
+        level: "beginner",
         summary:
           "Three Apache Kafka 4.0.2 nodes, each also a KRaft controller — no ZooKeeper. The smallest cluster where replication and leader election behave like production.",
         configs: ["min.insync.replicas"],
@@ -743,6 +759,7 @@ export const modules: Module[] = [
           "Auto topic creation is turned off on purpose — topic creation and its settings (partitions, replication factor, configs) stay deliberate, and a mistyped topic name fails instead of silently spawning a topic with broker defaults.",
       },
       "Kafka CLI tools": {
+        level: "beginner",
         summary:
           "The standard kafka-*.sh scripts, run via docker exec into a broker container — no local Kafka install needed.",
         points: [
@@ -766,6 +783,7 @@ export const modules: Module[] = [
           "The host-facing bootstrap (localhost:29092…) and the in-container one (kafka-1:19092) are different listeners — CLI run inside a container must use the latter.",
       },
       "A simple producer and consumer": {
+        level: "beginner",
         summary:
           "The console producer and consumer — the fastest way to watch keys, partitions, and offsets behave.",
         points: [
@@ -792,6 +810,7 @@ export const modules: Module[] = [
         ],
       },
       "Kafka UI": {
+        level: "beginner",
         summary:
           "provectuslabs/kafka-ui at localhost:8080 — browse topics, partitions, messages, and consumer groups without the CLI.",
         points: [
@@ -810,6 +829,7 @@ export const modules: Module[] = [
           "No authentication — bound to 127.0.0.1 for local-only use, and its dynamic-config editing is unauthenticated too.",
       },
       "Metrics collection with Prometheus and Grafana": {
+        level: "intermediate",
         summary:
           "kafka-exporter feeds Prometheus, Grafana renders a pre-provisioned dashboard. No JMX agent needed.",
         points: [
@@ -838,6 +858,7 @@ export const modules: Module[] = [
           "kafka-exporter surfaces cluster and consumer-group state, not JVM internals — no heap, GC, or request-handler metrics. Those need a JMX exporter, which this lab skips.",
       },
       "Optional Schema Registry and Kafka Connect": {
+        level: "intermediate",
         summary:
           "Off by default; bring them up with the extras profile when a lab needs schemas or connectors.",
         points: [
@@ -987,6 +1008,7 @@ export const modules: Module[] = [
     ],
     topicDetail: {
       "Kafka moves bytes, not objects": {
+        level: "beginner",
         summary:
           "A producer [[serialization|serializes]] the key and value to byte arrays before they leave the client; the broker stores and returns those bytes untouched; the consumer deserializes them back. The two ends have to agree on the format — that agreement is the contract.",
         configs: ["key.serializer", "value.serializer", "key.deserializer", "value.deserializer"],
@@ -1021,6 +1043,7 @@ export const modules: Module[] = [
           "A mismatched deserializer is not a loud failure at startup — it fails on the first record that doesn't fit, mid-stream, often long after the deploy that caused it.",
       },
       "Serialization formats: JSON, Avro, and Protobuf": {
+        level: "beginner",
         summary:
           "The three formats most teams choose between. They differ on whether a human can read the bytes, how big a record is on disk, and whether the schema travels with each record or is referenced by id.",
         points: [
@@ -1054,6 +1077,7 @@ export const modules: Module[] = [
           "\"JSON is simpler\" is true on day one. What that simplicity costs is a machine-checked contract — every schema mistake a registry would have rejected instead ships and breaks a consumer.",
       },
       "What the Schema Registry adds": {
+        level: "intermediate",
         summary:
           "A separate service that stores schemas and gives each one an id. Producers register the schema they write and put its id in the record; consumers fetch the schema by id to decode. It also checks every new version against a compatibility rule.",
         configs: ["schema.registry.url", "auto.register.schemas", "use.latest.version"],
@@ -1088,6 +1112,7 @@ export const modules: Module[] = [
           "The registry stores schemas, not data, and runs as its own process — its own storage (a Kafka topic, _schemas), its own backups, its own availability. Losing it while every client cache is cold is an outage.",
       },
       "Subjects, versions, and naming strategies": {
+        level: "intermediate",
         summary:
           "A [[subject|subject]] is the name a schema is registered under. Each subject holds an ordered list of versions and its own compatibility setting.",
         configs: ["value.subject.name.strategy", "key.subject.name.strategy"],
@@ -1122,6 +1147,7 @@ export const modules: Module[] = [
           "Putting several unrelated event types on one topic under the default TopicNameStrategy forces their schemas to share one lineage — every type's fields have to coexist in a single schema. Split the topics, or change the naming strategy deliberately.",
       },
       "Compatibility modes": {
+        level: "intermediate",
         summary:
           "The rule the registry checks a new schema version against. It encodes which direction of mismatch you are willing to tolerate during a deploy — and therefore which side you upgrade first. The direction is format-neutral; the concrete list of safe changes is not.",
         points: [
@@ -1160,6 +1186,7 @@ export const modules: Module[] = [
           "Plain BACKWARD only compares the new schema with the one immediately before it. A chain of individually-backward changes can leave version 5 unable to read version 1's records — which bites the moment a consumer resets to earliest. If you replay history, use the transitive mode.",
       },
       "Evolving a schema without breaking consumers": {
+        level: "intermediate",
         summary:
           "The safe changes are a short list — and the list below is Avro's. Protobuf and JSON Schema reach the same goal by their own rules. Anything off the list needs a new topic or a coordinated stop-the-world.",
         points: [
@@ -1193,6 +1220,7 @@ export const modules: Module[] = [
           "Adding the default is not a step you can defer. In Avro a field added without one is FORWARD-compatible only — safe if the subject is FORWARD and you ship producers first, but it fails a BACKWARD or FULL check and breaks a consumer that reads old data on the new schema.",
       },
       "Deserialization failures and poison records": {
+        level: "intermediate",
         summary:
           "Bytes the deserializer can't turn into an object — the wrong format, a schema id the registry can't resolve, a genuinely corrupt record. To the consumer it looks exactly like Module 3's [[poison-message|poison record]], and it stalls the partition the same way.",
         configs: ["value.deserializer"],
@@ -1227,6 +1255,7 @@ export const modules: Module[] = [
           "Routing bad records to a dead-letter topic is the right move, but the DLT is an inbox, not a fix. With nothing reading and alerting on it, a poison record becomes silent data loss with extra steps.",
       },
       "When a schema registry is worth it": {
+        level: "beginner",
         summary:
           "A registry is real infrastructure with real operating cost. It pays for itself when producers and consumers evolve independently; it is overhead when they don't.",
         points: [
@@ -1294,6 +1323,7 @@ export const modules: Module[] = [
     ],
     topicDetail: {
       "Prevent acknowledged data loss (acks, enable.idempotence, retries)": {
+        level: "intermediate",
         summary:
           "acks defines what \"success\" means; idempotence is what makes repeating that success safe.",
         configs: ["acks", "enable.idempotence", "retries", "min.insync.replicas"],
@@ -1328,6 +1358,7 @@ export const modules: Module[] = [
           "acks=all alone doesn't make retries safe. If a produce request times out after the broker already wrote the record, a naive retry appends it a second time — idempotence is what closes that gap.",
       },
       "Improve batching (batch.size, linger.ms)": {
+        level: "intermediate",
         summary:
           "Records are grouped per partition before they're sent; fuller batches mean fewer, cheaper requests.",
         configs: ["batch.size", "linger.ms"],
@@ -1357,6 +1388,7 @@ export const modules: Module[] = [
           "A bigger batch.size only helps if records actually arrive fast enough to fill it. Otherwise linger.ms is doing all the work.",
       },
       "Control memory and backpressure (buffer.memory, max.block.ms)": {
+        level: "intermediate",
         summary:
           "The producer buffers unsent records in memory; when that fills, send() blocks rather than failing.",
         configs: ["buffer.memory", "max.block.ms"],
@@ -1386,6 +1418,7 @@ export const modules: Module[] = [
           "The failure mode is the opposite of a crash — a calling thread that looks hung for up to max.block.ms with no error, because nothing has actually failed yet.",
       },
       "Handle large records (max.request.size)": {
+        level: "intermediate",
         summary:
           "Caps the largest request the producer will build, enforced locally inside send() before batching.",
         configs: ["max.request.size"],
@@ -1410,6 +1443,7 @@ export const modules: Module[] = [
           "Raising max.request.size without raising the matching broker or topic limit just moves where the same record is rejected — from a local exception to a failed round trip.",
       },
       "Bound request latency (request.timeout.ms, delivery.timeout.ms)": {
+        level: "intermediate",
         summary:
           "One bounds a single network round trip; the other bounds the whole journey from send() to final outcome.",
         configs: ["request.timeout.ms", "delivery.timeout.ms"],
@@ -1434,6 +1468,7 @@ export const modules: Module[] = [
           "request.timeout.ms must stay comfortably below delivery.timeout.ms, or one slow request can burn the entire delivery budget in a single attempt.",
       },
       "Preserve ordering during retries": {
+        level: "advanced",
         summary:
           "Kafka only orders records within a partition, and retries are the easiest way to break that by accident.",
         configs: ["max.in.flight.requests.per.connection", "enable.idempotence"],
@@ -1458,6 +1493,7 @@ export const modules: Module[] = [
           "Without idempotence, the only way to guarantee order under retries is max.in.flight.requests.per.connection=1 — which costs throughput.",
       },
       "Use transactions (transactional.id, transaction timeouts)": {
+        level: "advanced",
         summary:
           "Idempotence gives no-duplicates per partition; transactions add all-or-nothing atomicity across partitions.",
         configs: ["transactional.id", "transaction.timeout.ms"],
@@ -1533,6 +1569,7 @@ export const modules: Module[] = [
     ],
     topicDetail: {
       "Consumer groups and partition assignment": {
+        level: "beginner",
         summary:
           "A group is the unit of both scaling and offset tracking; each partition goes to exactly one member at a time.",
         configs: ["group.id", "group.protocol"],
@@ -1562,6 +1599,7 @@ export const modules: Module[] = [
           "Running more consumers than partitions doesn't add throughput — the extra members are assigned nothing and sit idle.",
       },
       "Polling and heartbeats": {
+        level: "intermediate",
         summary:
           "Two independent liveness clocks watch the poll loop; conflating them is the source of most rebalance confusion.",
         configs: [
@@ -1597,6 +1635,7 @@ export const modules: Module[] = [
           "A session timeout too tight for the app's GC pauses — client session.timeout.ms on the classic protocol, broker-side group.consumer.session.timeout.ms under group.protocol=consumer — or processing that keeps overrunning max.poll.interval.ms, makes a group rebalance constantly, sometimes more than it actually works.",
       },
       "Offset commits": {
+        level: "beginner",
         summary:
           "A committed offset is the recovery point for the next owner of a partition — not the consumer's live read position.",
         configs: ["enable.auto.commit", "auto.commit.interval.ms"],
@@ -1626,6 +1665,7 @@ export const modules: Module[] = [
           "Auto-commit advances the bookmark past records that were never handled if you're still processing them on another path, or crash after poll() but before the work is done.",
       },
       "Rebalance behavior": {
+        level: "intermediate",
         summary:
           "Recomputing and redistributing a group's partition assignments — cheap to make rare, expensive when it's constant.",
         configs: ["partition.assignment.strategy", "group.protocol"],
@@ -1655,6 +1695,7 @@ export const modules: Module[] = [
           "The operational goal is two-fold: make rebalances rare (stable membership, processing that fits the poll interval) and cheap when they happen (cooperative assignment, static membership).",
       },
       "Static membership": {
+        level: "advanced",
         summary:
           "Lets a restarting consumer keep its identity, so a rolling deploy doesn't cost two rebalances per instance.",
         configs: ["group.instance.id", "session.timeout.ms", "group.protocol"],
@@ -1684,6 +1725,7 @@ export const modules: Module[] = [
           "On the classic protocol this usually means raising session.timeout.ms and pairing it with deployment tooling that bounces instances fast enough to reconnect inside that window.",
       },
       "Cooperative assignment": {
+        level: "advanced",
         summary:
           "Changes what a rebalance costs — only the partitions that actually move are paused, not the whole group.",
         configs: ["partition.assignment.strategy", "group.protocol"],
@@ -1713,6 +1755,7 @@ export const modules: Module[] = [
           "The new protocol (group.protocol=consumer) sidesteps this entirely — assignment is broker-side and incremental by design, with no assignor list to manage.",
       },
       "Poison messages and retry strategies": {
+        level: "intermediate",
         summary:
           "A record that always fails is either silently skipped or blocks its whole partition — which one depends on how the error handler is written.",
         points: [
@@ -1797,6 +1840,7 @@ export const modules: Module[] = [
     ],
     topicDetail: {
       "Replication and durability": {
+        level: "intermediate",
         summary:
           "How many copies of each partition exist, and how many must confirm a write before it counts.",
         configs: ["replication.factor", "min.insync.replicas", "unclean.leader.election.enable"],
@@ -1826,6 +1870,7 @@ export const modules: Module[] = [
           "replication.factor=2 with min.insync.replicas=2 is a trap: one broker down drops you below the floor and every acks=all produce starts failing. Keep the replication factor above min.insync.replicas.",
       },
       "Retention and compaction": {
+        level: "intermediate",
         summary:
           "Two independent ways a partition sheds old data: delete by age or size, or compact to the latest value per key.",
         configs: ["cleanup.policy", "retention.ms", "retention.bytes"],
@@ -1855,6 +1900,7 @@ export const modules: Module[] = [
           "Compaction only promises the latest value per key survives — never rely on replaying the full history of a compacted topic.",
       },
       "Segment management": {
+        level: "advanced",
         summary:
           "A partition's log is a series of segment files; retention, compaction, and indexing all operate on whole segments.",
         configs: ["segment.bytes", "segment.ms", "index.interval.bytes"],
@@ -1879,6 +1925,7 @@ export const modules: Module[] = [
           "Retention granularity is the segment: retention.ms only takes effect once the whole segment is old enough, so a low-traffic partition can hold data well past retention.ms because its active segment hasn't rolled.",
       },
       "Request and record-size limits": {
+        level: "advanced",
         summary:
           "The broker caps the size of a record batch it will accept — a hard limit the producer and topic must agree on, plus softer fetch limits on the replication and consume paths.",
         configs: ["message.max.bytes", "max.message.bytes", "replica.fetch.max.bytes"],
@@ -1903,6 +1950,7 @@ export const modules: Module[] = [
           "The hard limit is message.max.bytes (or the topic's max.message.bytes): a batch over it is rejected outright with RecordTooLargeException. Set the producer's max.request.size and the broker/topic limit together so the producer never builds a batch the broker will refuse.",
       },
       "Network and I/O threads": {
+        level: "advanced",
         summary:
           "Two broker thread pools: network threads move bytes on and off sockets; I/O threads do the actual request work.",
         configs: ["num.network.threads", "num.io.threads", "queued.max.requests"],
@@ -1927,6 +1975,7 @@ export const modules: Module[] = [
           "The signal is request-handler-avg-idle-percent, not CPU. Low idle there means add I/O threads or faster disks; adding network threads instead does nothing, since I/O threads block on the page cache and disk.",
       },
       "Quotas": {
+        level: "advanced",
         summary:
           "Per-client throttles on produce and fetch bandwidth and on request-handler time, so one client can't starve the cluster.",
         configs: ["producer_byte_rate", "consumer_byte_rate", "request_percentage"],
@@ -1951,6 +2000,7 @@ export const modules: Module[] = [
           "Throttling appears to the client as latency, not errors — a throttled producer just looks slow. The produce/fetch throttle-time metrics are how you tell it apart from real slowness.",
       },
       "Controller and KRaft settings": {
+        level: "advanced",
         summary:
           "In KRaft a quorum of controller nodes keeps cluster metadata in its own replicated log; these settings define that quorum.",
         configs: ["process.roles", "controller.quorum.voters", "controller.quorum.bootstrap.servers"],
@@ -1975,6 +2025,7 @@ export const modules: Module[] = [
           "Losing quorum — 2 of 3 controllers down — freezes all metadata changes: no leader elections, no topic creation, even though existing partition leaders keep serving. Controller nodes are critical infrastructure.",
       },
       "Listener configuration": {
+        level: "advanced",
         summary:
           "A broker exposes several named listeners on different ports for different traffic — internal, external, controller — each with its own security.",
         configs: ["listeners", "advertised.listeners", "inter.broker.listener.name"],
@@ -1999,6 +2050,7 @@ export const modules: Module[] = [
           "A wrong advertised.listeners is the classic \"connects, then times out\": the client reaches the bootstrap broker, gets back an address it can't route to, and hangs on the next request.",
       },
       "Security": {
+        level: "intermediate",
         summary:
           "Three independent layers: encryption in transit, authentication (who), and authorization (what they may do).",
         configs: ["security.protocol", "sasl.mechanism", "authorizer.class.name"],
@@ -2023,6 +2075,7 @@ export const modules: Module[] = [
           "SASL/PLAIN sends the password in the clear, so it's only safe on a TLS listener. SCRAM uses a salted challenge-response and never transmits the password itself — but without TLS the channel still isn't confidential, so use SASL_SSL for anything exposed either way.",
       },
       "Rack awareness": {
+        level: "advanced",
         summary:
           "Tell each broker its failure domain so a partition's replicas are spread across domains rather than stacked in one.",
         configs: ["broker.rack", "replica.selector.class", "client.rack"],
@@ -2047,6 +2100,7 @@ export const modules: Module[] = [
           "Rack-aware placement only affects new assignments — adding broker.rack to a running cluster won't spread existing replicas across racks without a partition reassignment. Rack-aware fetching, by contrast, starts working on existing partitions as soon as replica.selector.class and client.rack are set.",
       },
       "Automatic topic creation and defaults": {
+        level: "intermediate",
         summary:
           "Whether a produce or fetch to a missing topic creates it, and the defaults it would inherit.",
         configs: ["auto.create.topics.enable", "num.partitions", "default.replication.factor"],
@@ -2118,6 +2172,7 @@ export const modules: Module[] = [
     ],
     topicDetail: {
       "Consumer lag and lag growth rate": {
+        level: "intermediate",
         summary:
           "How far behind a consumer group is, and whether the gap is stable, shrinking, or running away.",
         points: [
@@ -2141,6 +2196,7 @@ export const modules: Module[] = [
           "Lag on a short-retention topic is doubly urgent: fall further behind than retention and the records are deleted before the consumer reads them — the data is simply gone.",
       },
       "Under-replicated and offline partitions": {
+        level: "intermediate",
         summary:
           "Partitions that don't currently have their full in-sync replica set — or no leader at all.",
         points: [
@@ -2164,6 +2220,7 @@ export const modules: Module[] = [
           "A brief spike during a rolling restart is normal. A sustained non-zero count, or any offline partition, is an incident — start with which brokers the affected replicas live on.",
       },
       "ISR changes": {
+        level: "advanced",
         summary:
           "How often replicas drop out of and rejoin the in-sync set — a proxy for replication health.",
         points: [
@@ -2187,6 +2244,7 @@ export const modules: Module[] = [
           "Steady shrink/expand churn with min.insync.replicas set tight means acks=all produces are riding the edge — every shrink that crosses the floor rejects writes.",
       },
       "Request latency and request queues": {
+        level: "advanced",
         summary:
           "Where time goes inside the broker for a produce or fetch — queue, local processing, remote wait, response.",
         points: [
@@ -2210,6 +2268,7 @@ export const modules: Module[] = [
           "Watch p99, not the mean. Broker latency is bimodal — page-cache hit vs disk read — so a healthy average routinely hides a p99 that's far worse.",
       },
       "Produce and fetch error rates": {
+        level: "intermediate",
         summary:
           "The rate and type of failed requests — the difference between \"slow\" and \"broken\".",
         points: [
@@ -2233,6 +2292,7 @@ export const modules: Module[] = [
           "NOT_LEADER_OR_FOLLOWER should be a brief burst around a leader election, then back to zero. A continuous low rate is not background noise — clients are persistently acting on stale metadata, so check metadata propagation and the controller.",
       },
       "Disk usage and disk latency": {
+        level: "intermediate",
         summary:
           "How full the log directories are, and how long the disk takes to serve the reads and writes Kafka can't avoid.",
         points: [
@@ -2256,6 +2316,7 @@ export const modules: Module[] = [
           "One slow disk on one broker drags down every partition it leads, and via replication the ISRs of partitions led elsewhere. Disk problems rarely stay contained to one broker's metrics.",
       },
       "Network saturation": {
+        level: "advanced",
         summary:
           "Whether the NIC or the inter-broker links are the ceiling — replication and consumer fan-out both live here.",
         points: [
@@ -2279,6 +2340,7 @@ export const modules: Module[] = [
           "Cross-zone replication and cross-zone consumer fetches cost money as well as latency — rack-aware fetching and a budgeted replication quota are the levers.",
       },
       "Controller health": {
+        level: "advanced",
         summary:
           "Whether the KRaft controller quorum is intact and metadata is propagating to brokers.",
         points: [
@@ -2302,6 +2364,7 @@ export const modules: Module[] = [
           "Controller problems are quiet — existing partition leaders keep serving, so dashboards look fine while topic creation hangs and failed brokers never get their partitions reassigned.",
       },
       "JVM memory and garbage collection": {
+        level: "advanced",
         summary:
           "GC pauses on a broker stall replication and heartbeats — this is where \"the broker looks up but acts dead\" comes from.",
         points: [
@@ -2325,6 +2388,7 @@ export const modules: Module[] = [
           "kafka-exporter doesn't expose JVM metrics — GC and heap need a JMX exporter or the JVM's own telemetry. A cluster watched only through kafka-exporter is blind to its most common latency cause.",
       },
       "Rebalance frequency": {
+        level: "intermediate",
         summary:
           "How often consumer groups reassign partitions — cheap when rare, crippling when constant.",
         points: [
@@ -2348,6 +2412,7 @@ export const modules: Module[] = [
           "Frequent rebalances and rising lag are usually the same incident — the group can't progress because it keeps re-forming. Fix the rebalance cause, not the lag.",
       },
       "Log-cleaner performance": {
+        level: "advanced",
         summary:
           "For compacted topics, whether the background cleaner keeps up with the un-compacted portion of the log.",
         points: [

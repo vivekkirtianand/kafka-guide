@@ -102,6 +102,10 @@ an inline `<GlossaryTerm slug>` link and `renderGlossaryText()`, which the Topic
 uses to turn `[[slug]]` / `[[slug|display]]` tokens in lesson content into dotted-underline
 links back to the glossary.
 
+Each Topic-explorer topic carries a `level` (`beginner` / `intermediate` / `advanced`),
+shown as a badge on the row so a learner can pick the foundational topics out of a deep
+reference module at a glance.
+
 ## What's scaffolded vs. what's next
 
 - **Module 0 (Why Kafka?)** is built: Topic explorer content for all 9 topics — what an
