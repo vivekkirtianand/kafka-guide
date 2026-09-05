@@ -26,6 +26,10 @@ export interface TopicDetail {
   level?: Difficulty;
   // One sentence of framing, shown even while the topic is collapsed.
   summary: string;
+  // A plain-language paragraph shown first inside the expanded panel, before the mechanics
+  // — why this exists and why a beginner would care, ahead of the configs and edge cases.
+  // Reserved for `level: "advanced"` topics, where the summary alone assumes too much.
+  preface?: string;
   // Config keys this topic turns on — rendered as monospace chips.
   configs?: string[];
   // The mechanics, one point at a time. `term` is the knob or concept; `detail` explains it.

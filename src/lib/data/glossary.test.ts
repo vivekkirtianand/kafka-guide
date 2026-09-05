@@ -48,7 +48,7 @@ describe("inline [[glossary]] tokens in module content", () => {
     for (const m of modules) {
       const blobs: string[] = [];
       for (const d of Object.values(m.topicDetail ?? {})) {
-        blobs.push(d.summary, d.watchOut ?? "", ...d.points.map((p) => p.detail));
+        blobs.push(d.summary, d.watchOut ?? "", d.preface ?? "", ...d.points.map((p) => p.detail));
       }
       for (const text of blobs) {
         for (const match of text.matchAll(TOKEN)) {

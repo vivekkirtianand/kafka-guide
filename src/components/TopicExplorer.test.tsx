@@ -14,6 +14,7 @@ const detail: Record<string, TopicDetail> = {
   "First topic (foo, bar)": {
     level: "advanced",
     summary: "First summary.",
+    preface: "Before the mechanics: here is the plain-language version.",
     configs: ["foo", "bar"],
     points: [
       { term: "alpha", detail: "does the alpha thing" },
@@ -109,6 +110,30 @@ describe("TopicExplorer", () => {
     await user.click(screen.getByRole("button", { name: "collapse all" }));
     expect(firstButton()).toHaveAttribute("aria-expanded", "false");
     expect(secondButton()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("shows the plain-language preface only when the open topic defines one", () => {
+    render(<TopicExplorer topics={topics} detail={detail} />);
+
+    const panel = panelFor(firstButton());
+    expect(within(panel).getByText(/plain-language version/)).toBeVisible();
+    expect(within(panel).getByText("In plain terms")).toBeVisible();
+
+    expect(within(panelFor(secondButton())).queryByText("In plain terms")).not.toBeInTheDocument();
+  });
+
+  it("places the preface before the points and before watch-out in the DOM, not just anywhere in the panel", () => {
+    render(<TopicExplorer topics={topics} detail={detail} />);
+
+    // Use compareDocumentPosition rather than a plain textContent substring search, so this
+    // fails if the preface were ever moved below the mechanics or the watch-out callout.
+    const panel = panelFor(firstButton());
+    const preface = within(panel).getByText("In plain terms").closest("div")!;
+    const firstPointTerm = within(panel).getByText("alpha");
+    const watchOut = within(panel).getByText("the classic foot-gun");
+
+    expect(preface.compareDocumentPosition(firstPointTerm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(preface.compareDocumentPosition(watchOut) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows the watch-out callout only when the open topic defines one", async () => {

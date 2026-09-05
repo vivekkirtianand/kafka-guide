@@ -104,7 +104,10 @@ links back to the glossary.
 
 Each Topic-explorer topic carries a `level` (`beginner` / `intermediate` / `advanced`),
 shown as a badge on the row so a learner can pick the foundational topics out of a deep
-reference module at a glance.
+reference module at a glance. An `advanced` topic can also carry a `preface` — one
+plain-language paragraph rendered first inside the expanded panel, before the config-heavy
+mechanics, explaining what the topic is for and why a beginner would care. All 7 advanced
+topics in the broker/topic module have one (Phase 6d).
 
 ## What's scaffolded vs. what's next
 
@@ -163,7 +166,10 @@ reference module at a glance.
   labs land in Phase 7. Renders the generic "planned" callout, same as any unbuilt module.
 - **Module 9 (Broker and topic configuration)** is built: scannable Topic explorer content
   for all 11 topics plus 4 interactive demos (ISR floor vs. min.insync.replicas, delete vs.
-  compact cleanup, rack placement and rack failure, client quota throttling).
+  compact cleanup, rack placement and rack failure, client quota throttling). Its 7
+  `level: "advanced"` topics (segments, request/record-size limits, network/I-O threads,
+  quotas, controller/KRaft, listeners, rack awareness) each open with a plain-language
+  `preface` before the mechanics (Phase 6d).
 - **Module 10 (Observability)** is built: Topic explorer content for all 11 signals plus 4
   interactive demos (unlabeled-dashboard bottleneck diagnosis, request-latency phase
   breakdown, lag slope vs. absolute value, ISR-churn localization).
