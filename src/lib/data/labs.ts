@@ -418,7 +418,7 @@ export const labC: Lab = {
     "Docker and Docker Compose v2, with Docker's memory raised to at least 4 GB as in Lab B",
     "Two terminals: one holds a long-running consumer, the other runs everything else",
     "`curl` on the host — bundled with macOS and every Linux; on Windows run it from the WSL shell",
-    "You have read Module 4's \"Compatibility modes\" and \"Evolving a schema\" topics",
+    "You have read Module 5's \"Compatibility modes\" and \"Evolving a schema\" topics",
   ],
   setup: [
     {

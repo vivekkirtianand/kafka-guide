@@ -48,12 +48,18 @@ describe("module data", () => {
     }
   });
 
-  describe("Module 1 — mental model accuracy", () => {
+  describe("Module 1 — events, topics, partitions, brokers", () => {
     const m1 = getModule("mental-model")!;
     const detail = (t: string) => m1.topicDetail![t];
 
-    it("is built as Topic explorer content, not an outline", () => {
-      expect(m1.status).toBe("available");
+    it("keeps its slug but is retitled and cut to the three foundational topics (Phase 6b)", () => {
+      expect(m1.index).toBe(1);
+      expect(m1.title).toMatch(/events, topics, partitions, brokers/i);
+      expect(m1.topics).toEqual([
+        "Kafka's append-only log",
+        "Brokers, topics, partitions, replicas",
+        "Producers, consumers, offsets, and consumer groups",
+      ]);
       expect(Object.keys(m1.topicDetail ?? {})).toHaveLength(m1.topics.length);
     });
 
@@ -61,22 +67,6 @@ describe("module data", () => {
       const offsets = detail("Kafka's append-only log").points.find((p) => p.term === "Offsets")!;
       expect(offsets.detail).toMatch(/gap|hole/i);
       expect(offsets.detail).toMatch(/compact/i);
-    });
-
-    it("keeps min.insync.replicas as a separate admission floor from acks=all", () => {
-      const isr = detail("Leaders, followers, ISR, and controllers").points.find(
-        (p) => p.term === "Why the ISR matters"
-      )!;
-      expect(isr.detail).toMatch(/every replica currently in the ISR/i);
-      expect(isr.detail).toMatch(/admission floor/i);
-    });
-
-    it("has the producer (not the broker) assign the sequence number, and the broker reject out-of-order", () => {
-      const retries = detail("Ordering guarantees").points.find((p) => p.term === "Retries can reorder")!;
-      expect(retries.detail).toMatch(/producer stamps each batch with a per-partition sequence number/i);
-      expect(retries.detail).toMatch(/the broker rejects any batch that arrives out of order/i);
-      expect(retries.detail).not.toMatch(/broker tags each batch with a sequence number/i);
-      expect(retries.detail).not.toMatch(/restore order/i);
     });
 
     it("requires at least R brokers to host a replication factor of R", () => {
@@ -94,6 +84,46 @@ describe("module data", () => {
       expect(key.detail).toMatch(/modulo the partition count/i);
       expect(key.detail).toMatch(/in batches, not strictly one record at a time/i);
     });
+  });
+
+  describe("Module 4 — keys, ordering, and delivery guarantees (Phase 6b split)", () => {
+    const m4 = getModule("keys-ordering-and-delivery")!;
+    const detail = (t: string) => m4.topicDetail![t];
+
+    it("is a beginner-path module at index 4, split out of the mental model", () => {
+      expect(m4.index).toBe(4);
+      expect(m4.track).toBe("beginner-path");
+      expect(m4.difficulty).toBe("intermediate");
+      expect(m4.status).toBe("available");
+      expect(m4.prerequisites).toEqual(["mental-model", "build-a-producer-and-consumer"]);
+      expect(m4.topics).toEqual([
+        "Keys and the partitioner",
+        "Ordering guarantees",
+        "Leaders, followers, ISR, and controllers",
+        "At-most-once, at-least-once, and exactly-once processing",
+      ]);
+      expect(Object.keys(m4.topicDetail ?? {})).toHaveLength(m4.topics.length);
+    });
+
+    it("leads with a keys topic that says a key groups, it does not identify", () => {
+      const keys = detail("Keys and the partitioner");
+      const text = keys.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+      expect(text).toMatch(/murmur2/);
+      expect(text).toMatch(/not a primary key|does not identify|not.*unique id/i);
+      expect(keys.watchOut).toMatch(/partition count/i);
+      // a custom partitioner can still route on the key — don't claim it always makes the key "just data"
+      const override = keys.points.find((p) => /overrid/i.test(p.term))!;
+      expect(override.detail).toMatch(/still route on the key|often still routes on the key/i);
+      expect(override.detail).not.toMatch(/either way the key becomes just data/i);
+    });
+
+    it("keeps min.insync.replicas as a separate admission floor from acks=all", () => {
+      const isr = detail("Leaders, followers, ISR, and controllers").points.find(
+        (p) => p.term === "Why the ISR matters"
+      )!;
+      expect(isr.detail).toMatch(/every replica currently in the ISR/i);
+      expect(isr.detail).toMatch(/admission floor/i);
+    });
 
     it("names replica.lag.time.max.ms (with its 30s default) as the ISR-drop clock and lists it as a config", () => {
       const topic = detail("Leaders, followers, ISR, and controllers");
@@ -101,6 +131,14 @@ describe("module data", () => {
       const isr = topic.points.find((p) => p.term === "ISR — in-sync replicas")!;
       expect(isr.detail).toMatch(/replica\.lag\.time\.max\.ms/);
       expect(isr.detail).toMatch(/30s/i);
+    });
+
+    it("has the producer (not the broker) assign the sequence number, and the broker reject out-of-order", () => {
+      const retries = detail("Ordering guarantees").points.find((p) => p.term === "Retries can reorder")!;
+      expect(retries.detail).toMatch(/producer stamps each batch with a per-partition sequence number/i);
+      expect(retries.detail).toMatch(/the broker rejects any batch that arrives out of order/i);
+      expect(retries.detail).not.toMatch(/broker tags each batch with a sequence number/i);
+      expect(retries.detail).not.toMatch(/restore order/i);
     });
 
     it("does not claim the idempotent producer gives end-to-end exactly-once", () => {
@@ -230,12 +268,12 @@ describe("Module 0 — Why Kafka?", () => {
   });
 });
 
-describe("Module 4 — schemas and data contracts", () => {
+describe("Module 5 — schemas and data contracts", () => {
   const m = getModule("schemas-and-data-contracts")!;
   const detail = (t: string) => m.topicDetail![t];
 
-  it("is inserted at index 4 on the beginner path, after Build a producer and consumer", () => {
-    expect(m.index).toBe(4);
+  it("sits at index 5 on the beginner path (after Keys/ordering, Phase 6b bumped it)", () => {
+    expect(m.index).toBe(5);
     expect(m.track).toBe("beginner-path");
     expect(m.difficulty).toBe("intermediate");
     expect(m.status).toBe("available");

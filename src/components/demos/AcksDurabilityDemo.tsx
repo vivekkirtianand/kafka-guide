@@ -44,7 +44,7 @@ export default function AcksDurabilityDemo() {
   function send() {
     // Every trial starts from a clean, fully in-sync cluster — this demo isolates the
     // acks/crash-timing interaction, not leader election (see the leader election demo
-    // in Module 1 for that).
+    // in Module 4, Keys/ordering/delivery, for that).
     let next: Broker[] = INITIAL.map((b) => (b.role === "leader" ? { ...b, hasRecord: true } : b));
     let kind: OutcomeKind;
     let line: string;

@@ -47,26 +47,26 @@ src/
       QueueVsLogDemo.tsx           Module 0 activity: queue (deliver once) vs. Kafka topic (retained, replayable)
       LabelTheEventDemo.tsx        Module 0 activity: label the key, value, timestamp, and headers of sample events
       RecordFlowDemo.tsx            Module 1 activity: producer → partition → consumer, predict-before-reveal
-      PartitionOrderingDemo.tsx     Module 1 activity: partition count vs. ordering guarantees
-      LeaderElectionDemo.tsx        Module 1 activity: broker failure, catch-up, and leader election
-      AcksDurabilityDemo.tsx        Module 5 activity: acks=0/1/all vs. a leader crash mid-produce
-      BatchingThroughputDemo.tsx    Module 5 activity: linger.ms/batch.size vs. request count and latency
-      BufferAndTimeoutDemo.tsx      Module 5 activity: buffer fill, oversized records, delivery.timeout.ms
-      IdempotenceDemo.tsx           Module 5 activity: duplicate sends with and without idempotence
-      PollIntervalDemo.tsx          Module 6 activity: processing time vs. max.poll.interval.ms
-      ConsumerGroupScalingDemo.tsx  Module 6 activity: adding/removing consumers, partition assignment, rebalances
-      CommitStrategyDemo.tsx        Module 6 activity: automatic vs. manual offset commits
-      CommitCrashDemo.tsx           Module 6 activity: crashing before vs. after a commit
-      OffsetResetDemo.tsx           Module 6 activity: offset reset (--to-earliest/--shift-by/…) and replay
-      PoisonMessageDemo.tsx         Module 6 activity: poison messages, retry topics, dead-letter topics
-      ReplicationFloorDemo.tsx      Module 7 activity: shrink the ISR below min.insync.replicas
-      RetentionCompactionDemo.tsx  Module 7 activity: delete vs. compact cleanup on a keyed log
-      RackPlacementDemo.tsx         Module 7 activity: spread replicas across racks, then fail a rack
-      QuotaThrottleDemo.tsx         Module 7 activity: a client past its byte-rate quota slows, not errors
-      BottleneckDiagnosis.tsx       Module 8 activity: read an unlabeled dashboard, name the bottleneck
-      RequestLatencyBreakdown.tsx   Module 8 activity: split a request-latency total into its phases
-      LagSlopeVsAbsolute.tsx        Module 8 activity: runaway lag slope vs. flat-but-breaching backlog
-      IsrChurnDemo.tsx              Module 8 activity: localize ISR churn to one broker vs. a shared cause
+      PartitionOrderingDemo.tsx     Module 4 activity: partition count vs. ordering guarantees
+      LeaderElectionDemo.tsx        Module 4 activity: broker failure, catch-up, and leader election
+      AcksDurabilityDemo.tsx        Module 6 activity: acks=0/1/all vs. a leader crash mid-produce
+      BatchingThroughputDemo.tsx    Module 6 activity: linger.ms/batch.size vs. request count and latency
+      BufferAndTimeoutDemo.tsx      Module 6 activity: buffer fill, oversized records, delivery.timeout.ms
+      IdempotenceDemo.tsx           Module 6 activity: duplicate sends with and without idempotence
+      PollIntervalDemo.tsx          Module 7 activity: processing time vs. max.poll.interval.ms
+      ConsumerGroupScalingDemo.tsx  Module 7 activity: adding/removing consumers, partition assignment, rebalances
+      CommitStrategyDemo.tsx        Module 7 activity: automatic vs. manual offset commits
+      CommitCrashDemo.tsx           Module 7 activity: crashing before vs. after a commit
+      OffsetResetDemo.tsx           Module 7 activity: offset reset (--to-earliest/--shift-by/…) and replay
+      PoisonMessageDemo.tsx         Module 7 activity: poison messages, retry topics, dead-letter topics
+      ReplicationFloorDemo.tsx      Module 8 activity: shrink the ISR below min.insync.replicas
+      RetentionCompactionDemo.tsx  Module 8 activity: delete vs. compact cleanup on a keyed log
+      RackPlacementDemo.tsx         Module 8 activity: spread replicas across racks, then fail a rack
+      QuotaThrottleDemo.tsx         Module 8 activity: a client past its byte-rate quota slows, not errors
+      BottleneckDiagnosis.tsx       Module 9 activity: read an unlabeled dashboard, name the bottleneck
+      RequestLatencyBreakdown.tsx   Module 9 activity: split a request-latency total into its phases
+      LagSlopeVsAbsolute.tsx        Module 9 activity: runaway lag slope vs. flat-but-breaching backlog
+      IsrChurnDemo.tsx              Module 9 activity: localize ISR churn to one broker vs. a shared cause
       IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
   lib/
     types.ts                        Shared content types (incl. per-module course metadata)
@@ -115,12 +115,11 @@ reference module at a glance.
   technology-choice picker, an order-event fan-out walkthrough, a queue-vs-retained-log
   comparison, and a label-the-event exercise — plus a 10-question knowledge check and a
   "should this system use Kafka?" design exercise.
-- **Module 1 (Kafka mental model)** is built: scannable Topic explorer content for all 6
-  topics (append-only log, brokers/partitions/replicas, leaders/ISR/controllers,
-  producers/consumers/offsets/groups, ordering guarantees, delivery semantics) plus the
-  four interactive activities — producer → partition → consumer flow, partition-count vs.
-  ordering, broker failure and leader election, and predict-before-reveal. See
-  [PLAN.md](PLAN.md) for the detailed status.
+- **Module 1 (Events, topics, partitions, brokers)** is built: the three foundational Topic
+  explorer topics — the append-only log and offsets, topics/partitions/replicas/brokers, and
+  producers/consumers/offsets/groups — plus the producer → partition → consumer
+  predict-before-reveal demo. The harder half (keys, ordering, replication durability,
+  delivery semantics) split off into Module 4 in Phase 6b.
 - **Module 3 (Build a producer and consumer)** is built: a 16-lesson in-app code
   walkthrough (`CodeWalkthrough`, data in `src/lib/data/walkthroughs.ts`) over the
   `examples/order-pipeline-java/` scaffold, in two phases. **Build the happy path** —
@@ -131,7 +130,12 @@ reference module at a glance.
   at-least-once redelivery. Every snippet is a verbatim slice of a real source file, checked
   by `walkthroughs.test.ts`; each lesson has a persisted "read it" checkbox and, where
   relevant, a "try it" command against Lab A.
-- **Module 4 (Schemas and data contracts)** is built: Topic explorer content for all 8
+- **Module 4 (Keys, ordering, and delivery guarantees)** is built: Topic explorer content
+  for keys and the partitioner, per-partition ordering (and how retries break it),
+  leaders / ISR / how `acks=all` makes a write durable, and the at-most / at-least /
+  exactly-once spectrum. Two demos — partition-count vs. keyed ordering, and broker failure
+  with ISR shrink and leader election. Split out of the old mental model in Phase 6b.
+- **Module 5 (Schemas and data contracts)** is built: Topic explorer content for all 8
   topics — the serializer/deserializer boundary and the implicit data contract, JSON vs.
   Avro vs. Protobuf, what the Schema Registry adds (schema id in the wire format, register
   on write / fetch on read), subjects and naming strategies, the compatibility modes
@@ -144,19 +148,19 @@ reference module at a glance.
   a type change under every checking mode, and reject that same kind of add once the subject
   is switched to FORWARD — with the lab spelling out that BACKWARD protects a consumer
   moving to the new schema, not one still on the old one.
-- **Module 5 (Producer configuration)** is fully built: real lesson prose for all 7
+- **Module 6 (Producer configuration)** is fully built: real lesson prose for all 7
   topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
   demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout
   failures, idempotence and duplicates).
-- **Module 6 (Consumer configuration)** is fully built: real lesson prose for all 7
+- **Module 7 (Consumer configuration)** is fully built: real lesson prose for all 7
   topics plus one interactive demo per activity (6 demos): processing vs.
   max.poll.interval.ms, consumer-group scaling and rebalances, automatic vs. manual
   commits, crashing before/after a commit, offset reset and replay, and poison-message
   handling with retry and dead-letter topics.
-- **Module 7 (Broker and topic configuration)** is built: scannable Topic explorer content
+- **Module 8 (Broker and topic configuration)** is built: scannable Topic explorer content
   for all 11 topics plus 4 interactive demos (ISR floor vs. min.insync.replicas, delete vs.
   compact cleanup, rack placement and rack failure, client quota throttling).
-- **Module 8 (Observability)** is built: Topic explorer content for all 11 signals plus 4
+- **Module 9 (Observability)** is built: Topic explorer content for all 11 signals plus 4
   interactive demos (unlabeled-dashboard bottleneck diagnosis, request-latency phase
   breakdown, lag slope vs. absolute value, ISR-churn localization).
 - **The incident simulator** has all 10 scenarios built out (reveal clues, pick a
@@ -167,12 +171,12 @@ reference module at a glance.
   look like.
 - **Config explorer** ships with real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
-- **Module 9 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
+- **Module 10 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
   content: all 10 symptom entries, each with an overview, cause → evidence pairs (the
   specific metric/log/command that confirms or rules out each cause), a resolution flow,
   key config chips, and a "watch out" — the durability setting you could lower to make the
   error disappear while making the system worse. Searchable by symptom, cause, evidence, or
-  config key. The Module 9 page embeds the catalog; `/troubleshooting` is the standalone
+  config key. The Module 10 page embeds the catalog; `/troubleshooting` is the standalone
   reference view.
 - **Production runbooks** ships all 14 written to full content — prechecks, execution,
   validation, rollback, and escalation criteria — each on its own `/runbooks/[slug]` page:
@@ -191,7 +195,7 @@ reference module at a glance.
     `acks=all` admission control below `min.insync.replicas` → the Grafana dashboard →
     dynamic topic config. Carries an OS matrix (macOS / Windows-WSL / Linux), a Docker
     memory floor, and lab-level troubleshooting.
-  - **Lab C** (Module 4) — schema evolution on Lab B's stack with the Schema Registry
+  - **Lab C** (Module 5) — schema evolution on Lab B's stack with the Schema Registry
     (`--profile extras`), 9 steps: register a closed JSON Schema → start a consumer and
     leave it running → add an optional field (BACKWARD accepts it, the running consumer
     reads it with no restart) → change a field's type (409 `TYPE_CHANGED` — every checking
