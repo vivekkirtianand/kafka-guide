@@ -7,6 +7,7 @@ import {
   referenceModules,
   advancedModules,
   trackNeighbors,
+  trackableBeginnerPath,
 } from "./course";
 import { modules } from "./data/modules";
 
@@ -49,6 +50,30 @@ describe("course helpers", () => {
   it("the beginner-path length is a sane part-time estimate", () => {
     expect(courseWeeks(beginnerPath(modules))).toBeGreaterThanOrEqual(1);
     expect(courseWeeks(beginnerPath(modules))).toBeLessThan(52);
+  });
+});
+
+describe("trackableBeginnerPath", () => {
+  it("drops planned modules but keeps every other beginner-path module", () => {
+    const mods = [
+      fixture({ slug: "b1", track: "beginner-path", status: "available" }),
+      fixture({ slug: "b2", track: "beginner-path", status: "planned" }),
+      fixture({ slug: "b3", track: "beginner-path", status: "available" }),
+      fixture({ slug: "r1", track: "reference", status: "available" }),
+    ];
+    expect(trackableBeginnerPath(mods).map((m) => m.slug)).toEqual(["b1", "b3"]);
+  });
+
+  it("on the real module list, is one module shorter than the full beginner path — the planned Connect/Streams stub", () => {
+    const full = beginnerPath(modules);
+    const trackable = trackableBeginnerPath(modules);
+    expect(full.length - trackable.length).toBe(1);
+    expect(trackable.some((m) => m.slug === "connect-and-streams")).toBe(false);
+    expect(full.some((m) => m.slug === "connect-and-streams")).toBe(true);
+    // nothing else was dropped
+    for (const m of trackable) {
+      expect(m.status, m.slug).not.toBe("planned");
+    }
   });
 });
 

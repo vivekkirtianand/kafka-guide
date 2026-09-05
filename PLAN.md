@@ -963,6 +963,12 @@ the reference for ordering, replication durability, and delivery semantics. Spli
   objectives/topics/further-reading and the "planned" badge; Module 7's demos still render;
   home "Beginner path" now 8 modules · ~4 weeks.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P1) | The planned `connect-and-streams` module counted toward beginner-path progress, but a `planned` module renders no `ModuleCompletion` control (`mod.status !== "planned"` gates it) — so progress could never reach the full total, and once every buildable module was done, "Resume" pointed at the stub forever with no way to check it off. | New `trackableBeginnerPath()` in `course.ts` — `beginnerPath()` filtered to `status !== "planned"`. `page.tsx` passes that (not the full `beginnerPath`) into `<BeginnerPathProgress>`, so the denominator, `completedCount`, and `resumeSlug` candidates all exclude planned modules — while the module stays fully visible in the Sidebar and the home module-card grid (with its "planned" badge), which still use plain `beginnerPath()`. Verified live: seeded `localStorage` with the other 7 beginner-path modules complete → progress bar reads **7/7 (100%)** and no Resume/Start link renders, instead of the pre-fix 7/8 stuck at 87% with Resume pointing at the stub. `course.test.ts` — 2 new tests (a fixture case and a real-data assertion that the only module dropped is `connect-and-streams`). |
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
