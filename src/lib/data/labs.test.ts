@@ -344,6 +344,72 @@ describe("lab data", () => {
     });
   });
 
+  describe("Lab D — Kafka Connect file pipeline", () => {
+    const labD = labs.find((l) => l.slug === "lab-d-connect-file-pipeline")!;
+    const step = (id: string) => labD.steps.find((s) => s.id === id)!;
+
+    it("reuses Lab B's stack with the extras profile, connect worker only", () => {
+      expect(labD.setup.some((c) => /docker compose --profile extras up -d kafka-connect/.test(c.command))).toBe(true);
+      expect(labD.setup.some((c) => /git rev-parse --show-toplevel/.test(c.command))).toBe(true);
+      expect(labD.setup.some((c) => /cd kafka-guide\/local-cluster-lab/.test(c.command))).toBe(false);
+      expect(labD.prerequisites.join(" ")).toMatch(/finished Lab B/i);
+      // Connect + 3 brokers needs more than the Lab B 4 GB floor
+      expect(labD.resourceFloor).toMatch(/6 GB/);
+    });
+
+    it("is a code-free lab: every step is curl against :8083 or docker exec, no producer/consumer source", () => {
+      for (const s of labD.steps) {
+        expect(s.command, s.id).toMatch(/curl |docker exec /);
+      }
+      expect(labD.summary).toMatch(/No producer or consumer code|no code/i);
+    });
+
+    it("creates a file source connector via PUT and shows records reaching the topic", () => {
+      const create = step("create-source");
+      expect(create.command).toMatch(/-X PUT http:\/\/localhost:8083\/connectors\/file-source\/config/);
+      expect(create.command).toMatch(/FileStreamSourceConnector/);
+      const consume = step("consume-topic");
+      expect(consume.command).toMatch(/kafka-console-consumer\.sh/);
+      expect(consume.command).toMatch(/--max-messages 3\b/);
+      // JsonConverter + schemas.enable=false ⇒ a bare string line serialises with quotes
+      expect(consume.expected).toMatch(/"line one"/);
+    });
+
+    it("shows the source connector tails the file and tracks a byte offset", () => {
+      expect(step("append-tail").observe).toMatch(/didn't re-read|tails the file|resumes from/i);
+      const offsets = step("source-offsets");
+      expect(offsets.command).toMatch(/\/connectors\/file-source\/offsets/);
+      expect(offsets.observe).toMatch(/offset\.flush\.interval\.ms|60s|60 seconds/i);
+    });
+
+    it("creates a file sink connector and frames it as an ordinary consumer group", () => {
+      const sink = step("create-sink");
+      expect(sink.command).toMatch(/FileStreamSinkConnector/);
+      expect(sink.command).toMatch(/"topics":"connect-file-topic"/);
+      const group = step("sink-consumer-group");
+      expect(group.command).toMatch(/kafka-consumer-groups\.sh .*--group connect-file-sink/);
+      expect(group.observe).toMatch(/consumer group|managed consumer/i);
+    });
+
+    it("cleans up with DELETE and notes the topic's records survive", () => {
+      const cleanup = step("cleanup-connectors");
+      expect(cleanup.command).toMatch(/-X DELETE http:\/\/localhost:8083\/connectors\/file-source/);
+      expect(cleanup.expected).toMatch(/204/);
+      expect(cleanup.observe).toMatch(/records? stay|doesn't touch the data|still exists/i);
+    });
+
+    it("warns that down -v wipes the connect internal topics", () => {
+      expect(labD.teardown.some((c) => /down -v/.test(c.command))).toBe(true);
+      expect(labD.teardownWarning).toMatch(/_connect-configs|_connect-offsets|_connect-status/);
+      expect(labD.teardownWarning).toMatch(/no undo|down -v|wipes/i);
+    });
+
+    it("is carried by the connect-and-streams module", () => {
+      const mod = modules.find((m) => m.slug === "connect-and-streams")!;
+      expect(mod.labs?.map((l) => l.slug)).toEqual([labD.slug]);
+    });
+  });
+
   describe("verify-lab.sh", () => {
     it("checks the metrics-pipeline services the Grafana step depends on, not just the brokers", () => {
       // kafka-exporter is what makes the dashboard non-empty — the verifier must not pass without it

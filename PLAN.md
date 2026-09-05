@@ -1011,6 +1011,72 @@ now opens with one plain-language paragraph before the mechanics.
 
 **Phase 6 (re-sequence core material) is complete** — PRs 6a, 6b, 6c, 6d.
 
+## Phase 7 — Connect & Streams
+
+Fills the `connect-and-streams` module (Module 8) that 6c stubbed. Two PRs.
+
+**AskUserQuestion decisions:** 7a **flips the module to `"available"`** — it writes the two
+Connect topics in full *and* conceptual (lab-free) Topic-explorer content for the two Streams
+topics, so the module reads as coherent; 7b then adds the Streams lab and deepens the Streams
+content. The 7a lab is **file source → topic → file sink** (`FileStreamSourceConnector` /
+`FileStreamSinkConnector` via the REST API), no external database.
+
+| PR | Scope | Status |
+|---|---|---|
+| 7a | Module 8 Connect content (2 topics) + conceptual Streams content (2 topics) + Lab D (file source/sink via the Connect REST API); module → `"available"` | ✅ Done |
+| 7b | Deeper Streams content + a Streams lab (an order-total aggregation running against the lab stack) | ⭕ Planned |
+
+### PR 7a — Connect content + Lab D
+
+- `src/lib/data/modules.ts` — `connect-and-streams` gets full `topicDetail` for all 4
+  topics and `status: "planned"` → `"available"`, `estimatedMinutes` 90 → 100, `labs:
+  [connectFileLab]`, a 2nd completion criterion for the lab. **Connect** (2 topics):
+  source/sink is one connector one direction; you configure not code; tasks are the
+  parallelism unit; converters do serialization; Connect owns source offsets (internal
+  topic) while a sink commits ordinary consumer offsets; "Connect is not a transformation
+  engine — stateful work is Streams". Standalone vs. distributed; the REST API drives
+  distributed; even one worker runs distributed; the three internal topics are the cluster's
+  memory. **Streams** (2 topics, conceptual): it's a library not a cluster, scaled by
+  `application.id`; topology = source → ops → sink; KStream (events) vs. KTable (latest value
+  per key = the compacted-topic idea); the stream/table duality. Stateful: RocksDB state
+  stores backed by compacted changelog topics; aggregations fold a stream into a KTable;
+  windows keep one entry per (key, window); stream–table and stream–stream joins.
+- `src/lib/data/labs.ts` — `connectFileLab` (`slug: "lab-d-connect-file-pipeline"`), added
+  to the `labs` array. 11 steps on the Lab B stack with `docker compose --profile extras up
+  -d kafka-connect`: check the REST API → list plugins → make a source file → `PUT` a
+  `FileStreamSourceConnector` → check status (connector + task RUNNING) → consume the topic
+  (`"line one"` — JSON-quoted, `JsonConverter` + `schemas.enable=false`) → append a line and
+  watch only the new record appear → `GET /connectors/file-source/offsets` (byte position,
+  flushed every `offset.flush.interval.ms` = 60s) → `PUT` a `FileStreamSinkConnector` (note
+  `topics` plural) writing the topic back to a file → `kafka-consumer-groups.sh --describe
+  --group connect-file-sink` (a sink is a managed consumer group) → `DELETE` both (204, topic
+  survives). 4 lab-level `troubleshooting` entries. `teardownWarning` covers `down -v` wiping
+  `_connect-configs` / `_connect-offsets` / `_connect-status`.
+- **`local-cluster-lab/docker-compose.yml`** — `CONNECT_PLUGIN_PATH` gains
+  `/usr/share/filestream-connectors`. The FileStream connectors ship with Kafka but are NOT
+  on Connect's default plugin path in recent Confluent images (they live in that directory),
+  so without this a `FileStreamSourceConnector` PUT returns `Failed to find any class that
+  implements Connector`. CI's `docker compose … config --quiet` still passes (it's a syntax
+  check). `local-cluster-lab/README.md` — a "Lab D" subsection, the `kafka-connect` one-line
+  `up`, and a 6 GB Docker note (Connect is a second heavy JVM; on 4 GB it's OOM-killed).
+- `src/lib/data/glossary.ts` — 4 new terms: `kafka-connect`, `connector`, `kafka-streams`,
+  `ktable` (KStream/KTable), all listing `connect-and-streams`.
+- Tests: `modules.test.ts` — the "Module 8" block rewritten for the available module (all 4
+  topics covered, Connect-is-config-not-code + not-a-transformation-engine, KStream vs.
+  KTable, Streams state stores + changelog). `labs.test.ts` — a "Lab D" block (extras-profile
+  connect-only setup, code-free (every step is `curl`/`docker exec`), the source PUT + topic
+  consume, file-tailing + byte offset, the sink + its consumer group, DELETE cleanup, the
+  `down -v` warning, module wiring). `course.test.ts` — the 6c `trackableBeginnerPath`
+  real-data test generalised (it asserted exactly 1 planned module dropped; now it's `0`).
+  Suite 374 → 383.
+- **Verified end to end** against a real `apache/kafka:4.0.2` + `confluentinc/cp-kafka-connect:7.7.1`
+  stack: the plugin-path fix, every `curl` and its response, the JSON-quoted topic values,
+  the raw (unquoted) sink-file lines, the `{"offsets":[{"partition":{"filename":…},"offset":
+  {"position":39}}]}` shape and its 60s flush delay, the `connect-file-sink` consumer group,
+  and the `204` deletes. Also confirmed the "class not found" error is exactly what you get
+  without the plugin-path change. (Docker on this box has only 1.9 GB, so the test ran the
+  Connect JVM with a capped heap — hence Lab D's own 6 GB floor and OOM `commonError`.)
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

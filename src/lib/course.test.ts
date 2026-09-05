@@ -64,16 +64,17 @@ describe("trackableBeginnerPath", () => {
     expect(trackableBeginnerPath(mods).map((m) => m.slug)).toEqual(["b1", "b3"]);
   });
 
-  it("on the real module list, is one module shorter than the full beginner path — the planned Connect/Streams stub", () => {
+  it("on the real module list, drops exactly the planned beginner-path modules and nothing else", () => {
     const full = beginnerPath(modules);
     const trackable = trackableBeginnerPath(modules);
-    expect(full.length - trackable.length).toBe(1);
-    expect(trackable.some((m) => m.slug === "connect-and-streams")).toBe(false);
-    expect(full.some((m) => m.slug === "connect-and-streams")).toBe(true);
-    // nothing else was dropped
+    const plannedOnPath = full.filter((m) => m.status === "planned");
+    // whatever's planned right now, that's the difference
+    expect(full.length - trackable.length).toBe(plannedOnPath.length);
     for (const m of trackable) {
       expect(m.status, m.slug).not.toBe("planned");
     }
+    // and every non-planned beginner-path module survives
+    expect(trackable.map((m) => m.slug)).toEqual(full.filter((m) => m.status !== "planned").map((m) => m.slug));
   });
 });
 

@@ -299,6 +299,38 @@ export const glossary: GlossaryTerm[] = [
     seeAlso: ["broker", "cluster"],
     modules: ["producer-configuration", "consumer-configuration"],
   },
+  {
+    slug: "kafka-connect",
+    term: "Kafka Connect",
+    definition:
+      "A worker service that runs pre-built connector plugins to move data between Kafka and other systems — a source connector pulls data in, a sink connector pushes it out. Configured through a REST API, not written; tracks its own position in internal topics.",
+    seeAlso: ["connector", "kafka-streams"],
+    modules: ["connect-and-streams"],
+  },
+  {
+    slug: "connector",
+    term: "Connector",
+    definition:
+      "A Connect plugin plus its JSON config. A source connector reads an external system into Kafka topics; a sink connector reads topics out to an external system. Connect splits each connector's work into up to tasks.max tasks across the worker cluster.",
+    seeAlso: ["kafka-connect"],
+    modules: ["connect-and-streams"],
+  },
+  {
+    slug: "kafka-streams",
+    term: "Kafka Streams",
+    definition:
+      "A Java library (not a cluster) for computing over Kafka topics: a topology of operations — map, filter, join, aggregate, window — that reads topics and writes results back. Scales by running more copies of the app under one application.id.",
+    seeAlso: ["ktable", "kafka-connect"],
+    modules: ["connect-and-streams"],
+  },
+  {
+    slug: "ktable",
+    term: "KStream / KTable",
+    definition:
+      "The two views of a topic in Kafka Streams. A KStream is a stream of independent events; a KTable is the latest value per key, built from a stream of updates — the compacted-topic idea as a first-class type. A KStream aggregates into a KTable; a KTable's changes read back as a KStream.",
+    seeAlso: ["kafka-streams", "log-compaction"],
+    modules: ["connect-and-streams"],
+  },
 ];
 
 export function getGlossaryTerm(slug: string): GlossaryTerm | undefined {

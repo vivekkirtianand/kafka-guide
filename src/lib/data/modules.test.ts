@@ -384,38 +384,52 @@ describe("Module 7 — consumer groups and resilient processing (Phase 6c retitl
   });
 });
 
-describe("Module 8 — Kafka Connect and Kafka Streams (planned stub, Phase 6c)", () => {
+describe("Module 8 — Kafka Connect and Kafka Streams (Phase 7a: Connect content + Lab D)", () => {
   const m = getModule("connect-and-streams")!;
+  const detail = (t: string) => m.topicDetail![t];
 
-  it("is a planned beginner-path module at index 8", () => {
+  it("is now an available beginner-path module at index 8, with the Connect lab", () => {
     expect(m.index).toBe(8);
     expect(m.track).toBe("beginner-path");
-    expect(m.status).toBe("planned");
+    expect(m.status).toBe("available");
     expect(m.difficulty).toBe("intermediate");
-  });
-
-  it("has no topicDetail yet — content lands in Phase 7", () => {
-    expect(m.topicDetail).toBeUndefined();
-    expect(m.topics.length).toBeGreaterThan(0);
-  });
-
-  it("depends on the Java producer/consumer module and consumer groups", () => {
     expect(m.prerequisites).toEqual(["build-a-producer-and-consumer", "consumer-configuration"]);
-    for (const slug of m.prerequisites!) {
-      expect(getModule(slug)!.index).toBeLessThan(m.index);
+    expect(m.labs?.map((l) => l.slug)).toEqual(["lab-d-connect-file-pipeline"]);
+  });
+
+  it("covers all four topics — the two Connect ones and the two Streams ones", () => {
+    expect(Object.keys(m.topicDetail ?? {})).toHaveLength(m.topics.length);
+    for (const t of m.topics) {
+      const d = m.topicDetail![t];
+      expect(d, t).toBeDefined();
+      expect(d.points.length, t).toBeGreaterThanOrEqual(3);
     }
   });
 
-  it("still satisfies the course-metadata invariants (difficulty, time, objectives, links) despite being planned", () => {
-    expect(m.estimatedMinutes ?? 0).toBeGreaterThan(0);
-    expect(m.objectives?.length ?? 0).toBeGreaterThanOrEqual(3);
-    for (const r of m.furtherReading ?? []) {
-      expect(r.url).toMatch(/^https:\/\//);
-      if (/^https:\/\/kafka\.apache\.org\//.test(r.url)) {
-        expect(r.url).toMatch(/^https:\/\/kafka\.apache\.org\/\d+\//);
-        expect(r.url).not.toContain("/documentation/#");
-      }
-    }
+  it("frames Connect as config-not-code, and says it isn't a transformation engine", () => {
+    const conn = detail("Kafka Connect: source and sink connectors");
+    const text = conn.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    expect(text).toMatch(/you configure, you don't code|configure it, you don't write it/i);
+    expect(conn.watchOut).toMatch(/not a transformation engine/i);
+    expect(conn.watchOut).toMatch(/Kafka Streams/);
+  });
+
+  it("distinguishes KStream (events) from KTable (latest value per key)", () => {
+    const streams = detail("Kafka Streams: topologies, KStream, and KTable");
+    const text = streams.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    expect(text).toMatch(/KStream/);
+    expect(text).toMatch(/KTable/);
+    expect(text).toMatch(/latest value per key|current state/i);
+    // Streams is a library, not a cluster — the module's whole pitch
+    expect(`${streams.summary} ${text}`).toMatch(/library.*not a (cluster|service)|not a cluster/i);
+  });
+
+  it("names where stateful Streams operations keep their state and how it recovers", () => {
+    const stateful = detail("Stateful processing: joins, aggregations, and windows");
+    const text = stateful.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    expect(text).toMatch(/state store|RocksDB/i);
+    expect(text).toMatch(/changelog topic/i);
+    expect(stateful.watchOut).toMatch(/window|cardinality/i);
   });
 });
 

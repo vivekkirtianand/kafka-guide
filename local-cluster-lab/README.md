@@ -227,10 +227,16 @@ Off by default to keep the base lab light. Bring them up with the `extras` profi
 ```bash
 docker compose --profile extras up -d              # both extras services
 docker compose --profile extras up -d schema-registry   # just the registry
+docker compose --profile extras up -d kafka-connect     # just Connect
 ```
 
 - Schema Registry: http://localhost:8081
 - Kafka Connect REST API: http://localhost:8083
+
+The Connect worker's `CONNECT_PLUGIN_PATH` includes `/usr/share/filestream-connectors` so
+the built-in `FileStreamSourceConnector` / `FileStreamSinkConnector` are loadable — they
+aren't on Connect's default plugin path in recent Confluent images. Connect is a second
+heavy JVM; give Docker **6 GB** when running it alongside the three brokers.
 
 ### Lab C — evolving a schema under a running consumer
 
@@ -268,6 +274,29 @@ extras down -v` — it wipes the `_schemas` topic and the `order-events` topic t
 keeping schema ids and records consistent. A soft `DELETE /subjects/order-events-value`
 alone is not enough, and a *permanent* delete (`?permanent=true`) makes the records already
 on the topic undecodable.
+
+### Lab D — moving a file in and out of Kafka with Connect
+
+Module 8 ("Kafka Connect and Kafka Streams") drives an in-app walkthrough against the Connect
+worker above (`docker compose --profile extras up -d kafka-connect`). Everything is `curl`
+against `http://localhost:8083` plus `docker exec` for the files:
+
+1. **Source** — `curl -X PUT .../connectors/file-source/config` with a
+   `FileStreamSourceConnector` reading `/tmp/connect-source.txt` into `connect-file-topic`.
+   The connector tails the file: appending a line produces one more record, and it doesn't
+   re-read what it already sent (`.../connectors/file-source/offsets` shows the byte
+   position it resumes from, flushed every `offset.flush.interval.ms` — 60 s).
+2. **Sink** — a `FileStreamSinkConnector` reading `connect-file-topic` back out to
+   `/tmp/connect-sink.txt`. A sink is just a managed consumer group named
+   `connect-file-sink` — `kafka-consumer-groups.sh --describe --group connect-file-sink`
+   shows an ordinary committed offset and lag.
+3. **Delete** — `curl -X DELETE .../connectors/<name>` (204). The topic and its records
+   stay; only the connector stops.
+
+No producer or consumer code. Connect keeps every connector's config, offsets, and status in
+the internal topics `_connect-configs` / `_connect-offsets` / `_connect-status`, so
+`docker compose --profile extras down -v` wipes all your connectors along with the cluster
+data; plain `down` keeps them.
 
 ## Metrics and dashboards
 
