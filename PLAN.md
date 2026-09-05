@@ -911,6 +911,13 @@ the reference for ordering, replication durability, and delivery semantics. Spli
 | 4 (P2) | The `controller` glossary entry still linked `mental-model`; the leaders/ISR/controllers topic moved to Module 4. | `controller` / `kraft` / `zookeeper` repointed `mental-model` → `keys-ordering-and-delivery`; `controller` and `kraft` also gained `broker-topic-configuration` (its "Controller and KRaft settings" topic). |
 | 5 (P3) | An `AcksDurabilityDemo` comment located the leader-election demo in "Module 1". | → "Module 4, Keys/ordering/delivery". |
 
+**Review findings addressed (round 2)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | `LagSlopeVsAbsolute` said a raw exception "would skip it and move on" — an uncaught exception stops the poll loop; skipping needs the exception caught and the loop polling again. | Reworded: "An uncaught exception doesn't move past the record either — it stops the loop outright, and a naive restart lands right back on it; only catching it and letting the loop poll again, Module 7's skip policy, actually gets past it." |
+| 2 (P3) | README's "What's scaffolded" list ran Module 0 → 1 → 4 → 3 → 5, out of course order. | Moved the Module 4 bullet below Module 3, so the list reads 0 → 1 → 3 → 4 → 5 → … → 10, matching prerequisites and nav order. |
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b the current repo numbering is: Events,
 > topics, partitions, brokers (the old "mental model") = 1; Keys, ordering, and delivery

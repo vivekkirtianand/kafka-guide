@@ -120,11 +120,6 @@ reference module at a glance.
   producers/consumers/offsets/groups — plus the producer → partition → consumer
   predict-before-reveal demo. The harder half (keys, ordering, replication durability,
   delivery semantics) split off into Module 4 in Phase 6b.
-- **Module 4 (Keys, ordering, and delivery guarantees)** is built: Topic explorer content
-  for keys and the partitioner, per-partition ordering (and how retries break it),
-  leaders / ISR / how `acks=all` makes a write durable, and the at-most / at-least /
-  exactly-once spectrum. Two demos — partition-count vs. keyed ordering, and broker failure
-  with ISR shrink and leader election. Split out of the old mental model in Phase 6b.
 - **Module 3 (Build a producer and consumer)** is built: a 16-lesson in-app code
   walkthrough (`CodeWalkthrough`, data in `src/lib/data/walkthroughs.ts`) over the
   `examples/order-pipeline-java/` scaffold, in two phases. **Build the happy path** —
@@ -135,6 +130,11 @@ reference module at a glance.
   at-least-once redelivery. Every snippet is a verbatim slice of a real source file, checked
   by `walkthroughs.test.ts`; each lesson has a persisted "read it" checkbox and, where
   relevant, a "try it" command against Lab A.
+- **Module 4 (Keys, ordering, and delivery guarantees)** is built: Topic explorer content
+  for keys and the partitioner, per-partition ordering (and how retries break it),
+  leaders / ISR / how `acks=all` makes a write durable, and the at-most / at-least /
+  exactly-once spectrum. Two demos — partition-count vs. keyed ordering, and broker failure
+  with ISR shrink and leader election. Split out of the old mental model in Phase 6b.
 - **Module 5 (Schemas and data contracts)** is built: Topic explorer content for all 8
   topics — the serializer/deserializer boundary and the implicit data contract, JSON vs.
   Avro vs. Protobuf, what the Schema Registry adds (schema id in the wire format, register
