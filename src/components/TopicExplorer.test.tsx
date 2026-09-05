@@ -14,6 +14,7 @@ const detail: Record<string, TopicDetail> = {
   "First topic (foo, bar)": {
     level: "advanced",
     summary: "First summary.",
+    preface: "Before the mechanics: here is the plain-language version.",
     configs: ["foo", "bar"],
     points: [
       { term: "alpha", detail: "does the alpha thing" },
@@ -109,6 +110,16 @@ describe("TopicExplorer", () => {
     await user.click(screen.getByRole("button", { name: "collapse all" }));
     expect(firstButton()).toHaveAttribute("aria-expanded", "false");
     expect(secondButton()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("shows the plain-language preface only when the open topic defines one, before the mechanics", () => {
+    render(<TopicExplorer topics={topics} detail={detail} />);
+
+    const panel = panelFor(firstButton());
+    expect(within(panel).getByText(/plain-language version/)).toBeVisible();
+    expect(within(panel).getByText("In plain terms")).toBeVisible();
+
+    expect(within(panelFor(secondButton())).queryByText("In plain terms")).not.toBeInTheDocument();
   });
 
   it("shows the watch-out callout only when the open topic defines one", async () => {

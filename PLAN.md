@@ -865,7 +865,7 @@ what's preserved.
 | 6a | Topic-level `level` (beginner/intermediate/advanced) on `TopicDetail`, a badge in `TopicExplorer`, backfilled on all 65 existing topics | ✅ Done |
 | 6b | Split `mental-model` → Module 1 "Events, topics, partitions, brokers" + new Module 4 "Keys, ordering, and delivery guarantees" (moved the two demos) | ✅ Done |
 | 6c | Retitle/rescope `consumer-configuration` → "Consumer groups and resilient processing" (beginner-path, kept at its existing index 7); new Connect/Streams `planned` stub at index 8; fix nav / tests / README | ✅ Done |
-| 6d | A plain-language preface before each advanced mechanical topic in the broker/topic module (roadmap's "6b") | ⭕ Planned |
+| 6d | A plain-language preface before each advanced mechanical topic in the broker/topic module (roadmap's "6b") | ✅ Done |
 
 ### PR 6a — topic-level difficulty
 
@@ -968,6 +968,41 @@ the reference for ordering, replication durability, and delivery semantics. Spli
 | # | Finding | Fix |
 |---|---|---|
 | 1 (P1) | The planned `connect-and-streams` module counted toward beginner-path progress, but a `planned` module renders no `ModuleCompletion` control (`mod.status !== "planned"` gates it) — so progress could never reach the full total, and once every buildable module was done, "Resume" pointed at the stub forever with no way to check it off. | New `trackableBeginnerPath()` in `course.ts` — `beginnerPath()` filtered to `status !== "planned"`. `page.tsx` passes that (not the full `beginnerPath`) into `<BeginnerPathProgress>`, so the denominator, `completedCount`, and `resumeSlug` candidates all exclude planned modules — while the module stays fully visible in the Sidebar and the home module-card grid (with its "planned" badge), which still use plain `beginnerPath()`. Verified live: seeded `localStorage` with the other 7 beginner-path modules complete → progress bar reads **7/7 (100%)** and no Resume/Start link renders, instead of the pre-fix 7/8 stuck at 87% with Resume pointing at the stub. `course.test.ts` — 2 new tests (a fixture case and a real-data assertion that the only module dropped is `connect-and-streams`). |
+
+### PR 6d — plain-language prefaces on the advanced broker/topic topics
+
+Closes out Phase 6. The broker/topic module is the deepest reference material in the guide —
+7 of its 11 topics are `level: "advanced"` (backfilled in 6a) — and a beginner who wanders in
+from a glossary link or a search hit the config detail with no on-ramp. Each advanced topic
+now opens with one plain-language paragraph before the mechanics.
+
+- `src/lib/types.ts` — `TopicDetail` gains `preface?: string`: "shown first inside the
+  expanded panel, before the mechanics — why this exists and why a beginner would care,
+  ahead of the configs and edge cases. Reserved for `level: 'advanced'` topics."
+- `src/components/TopicExplorer.tsx` — when `detail.preface` is set, renders it as the first
+  child of the expanded panel (before the `<dl>` of points, before "Watch out"), styled as
+  its own callout — accent-toned border/background, a "IN PLAIN TERMS" mono label — visually
+  distinct from the danger-toned "Watch out" box so the two don't blur together.
+- `src/lib/data/modules.ts` — a preface for all 7 advanced topics in
+  `broker-topic-configuration`: **Segment management** (a partition is a stack of files, not
+  one — you don't manage segments directly), **Request and record-size limits** (a hard
+  ceiling plus a softer one, rarely hit as a beginner), **Network and I/O threads** (two
+  thread pools behind every request; matters once a broker is struggling), **Quotas** (a
+  speed bump against one noisy client, met as unexplained slowness rather than an error),
+  **Controller and KRaft settings** (the quorum that agrees on partition leadership —
+  cross-referenced to the Keys, ordering, and delivery module by name, not number, so it
+  can't go stale on a renumber), **Listener configuration** (an ordinary networking problem
+  in a Kafka costume), **Rack awareness** (replication factor protects you from losing a
+  broker, not a whole zone).
+- Tests: `TopicExplorer.test.tsx` — the preface renders only when defined, before the
+  mechanics. `modules.test.ts` — a "Module 9" block: the exact 7 advanced topics named, each
+  has a substantive `preface` that isn't a copy of `summary`, and non-advanced topics aren't
+  required to have one. `glossary.test.ts`'s `[[slug]]`-token scan extended to cover
+  `preface` text too (none used yet — future-proofing). Suite 368 → 372.
+  Browser-verified: expanding all 11 topics shows exactly 7 "In plain terms" callouts, each
+  ahead of its topic's mechanics and its watch-out, with no console errors.
+
+**Phase 6 (re-sequence core material) is complete** — PRs 6a, 6b, 6c, 6d.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:

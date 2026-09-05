@@ -419,6 +419,41 @@ describe("Module 8 — Kafka Connect and Kafka Streams (planned stub, Phase 6c)"
   });
 });
 
+describe("Module 9 — broker and topic configuration (Phase 6d advanced-topic prefaces)", () => {
+  const m = getModule("broker-topic-configuration")!;
+  const advancedTopics = m.topics.filter((t) => m.topicDetail![t].level === "advanced");
+
+  it("has more than one advanced topic to preface, and they're the deep mechanical ones", () => {
+    expect(advancedTopics).toEqual([
+      "Segment management",
+      "Request and record-size limits",
+      "Network and I/O threads",
+      "Quotas",
+      "Controller and KRaft settings",
+      "Listener configuration",
+      "Rack awareness",
+    ]);
+  });
+
+  it("every advanced topic in this module has a plain-language preface", () => {
+    for (const t of advancedTopics) {
+      const preface = m.topicDetail![t].preface;
+      expect(preface, t).toBeDefined();
+      expect(preface!.length, t).toBeGreaterThan(40);
+      // a preface earns its keep by explaining the "why", not repeating the config-key summary
+      expect(preface, t).not.toBe(m.topicDetail![t].summary);
+    }
+  });
+
+  it("does not overclaim: only advanced topics need a preface, not every topic in the module", () => {
+    const nonAdvanced = m.topics.filter((t) => m.topicDetail![t].level !== "advanced");
+    expect(nonAdvanced.length).toBeGreaterThan(0);
+    // beginner/intermediate topics in this module may or may not have one; this just
+    // confirms the assertion above didn't accidentally cover the whole module
+    expect(advancedTopics.length).toBeLessThan(m.topics.length);
+  });
+});
+
 describe("knowledge checks (any module)", () => {
   it("every KnowledgeCheck has an in-range answerIndex and enough options", () => {
     for (const m of modules) {

@@ -2004,6 +2004,8 @@ export const modules: Module[] = [
         level: "advanced",
         summary:
           "A partition's log is a series of segment files; retention, compaction, and indexing all operate on whole segments.",
+        preface:
+          "A partition isn't one giant file — Kafka writes it as a stack of smaller files, and periodically closes the current one and starts a fresh one. You don't manage that directly, but the sizes below decide how coarse retention and compaction actually are, and how many files a busy broker ends up juggling.",
         configs: ["segment.bytes", "segment.ms", "index.interval.bytes"],
         points: [
           {
@@ -2029,6 +2031,8 @@ export const modules: Module[] = [
         level: "advanced",
         summary:
           "The broker caps the size of a record batch it will accept — a hard limit the producer and topic must agree on, plus softer fetch limits on the replication and consume paths.",
+        preface:
+          "There's a ceiling on how big a single record (really, a batch) Kafka will store, and a separate, softer ceiling on how much a fetch returns at once. As a beginner you'll rarely hit either — it becomes relevant the day someone tries to push an unusually large payload through and the send fails outright instead of just going slowly.",
         configs: ["message.max.bytes", "max.message.bytes", "replica.fetch.max.bytes"],
         points: [
           {
@@ -2054,6 +2058,8 @@ export const modules: Module[] = [
         level: "advanced",
         summary:
           "Two broker thread pools: network threads move bytes on and off sockets; I/O threads do the actual request work.",
+        preface:
+          "Behind every request a broker serves, two pools of threads hand work to each other — one just moving bytes on and off the network, the other doing the real work of reading and writing the log. Nothing here to tune on day one; it starts to matter once a broker is struggling and you need to know which pool is actually the bottleneck.",
         configs: ["num.network.threads", "num.io.threads", "queued.max.requests"],
         points: [
           {
@@ -2079,6 +2085,8 @@ export const modules: Module[] = [
         level: "advanced",
         summary:
           "Per-client throttles on produce and fetch bandwidth and on request-handler time, so one client can't starve the cluster.",
+        preface:
+          "Quotas exist so one noisy or misbehaving client can't starve everyone else sharing the cluster — think of them as a speed bump, not a wall. You won't set these as a beginner; you'll meet them from the other side, when a client mysteriously slows down for no visible reason instead of throwing an error.",
         configs: ["producer_byte_rate", "consumer_byte_rate", "request_percentage"],
         points: [
           {
@@ -2104,6 +2112,8 @@ export const modules: Module[] = [
         level: "advanced",
         summary:
           "In KRaft a quorum of controller nodes keeps cluster metadata in its own replicated log; these settings define that quorum.",
+        preface:
+          "Somewhere in the cluster, a small group of nodes has to agree on which broker leads which partition — that's the controller's job, and KRaft is how it reaches that agreement without ZooKeeper. You met the idea of a leader and a controller back in the Keys, ordering, and delivery module; this is the operational detail of standing its quorum up and keeping it healthy.",
         configs: ["process.roles", "controller.quorum.voters", "controller.quorum.bootstrap.servers"],
         points: [
           {
@@ -2129,6 +2139,8 @@ export const modules: Module[] = [
         level: "advanced",
         summary:
           "A broker exposes several named listeners on different ports for different traffic — internal, external, controller — each with its own security.",
+        preface:
+          "A broker doesn't have just one address — it can expose several, one for clients, one for other brokers, one for the controller quorum, each potentially with its own security. Getting this right is mostly an ordinary networking problem wearing a Kafka costume, and misconfiguring it produces one of the most confusing failure modes in the whole system.",
         configs: ["listeners", "advertised.listeners", "inter.broker.listener.name"],
         points: [
           {
@@ -2179,6 +2191,8 @@ export const modules: Module[] = [
         level: "advanced",
         summary:
           "Tell each broker its failure domain so a partition's replicas are spread across domains rather than stacked in one.",
+        preface:
+          "Replication factor 3 protects you from losing a broker. It protects you from nothing if all three replicas happen to sit in the same physical rack, data-center room, or cloud availability zone and that whole zone goes down together. Rack awareness is just telling Kafka about that physical layout so it spreads replicas across it on purpose.",
         configs: ["broker.rack", "replica.selector.class", "client.rack"],
         points: [
           {

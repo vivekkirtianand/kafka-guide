@@ -123,6 +123,13 @@ function TopicRow({
         hidden={!open}
         className="border-t border-border-soft px-4 py-4"
       >
+        {detail.preface && (
+          <div className="mb-4 rounded-md border border-border-soft border-l-2 border-l-accent bg-accent-soft px-3 py-2">
+            <span className="font-mono text-[10px] uppercase tracking-wide text-accent">In plain terms</span>
+            <p className="mt-1 text-sm leading-relaxed text-text-muted">{renderGlossaryText(detail.preface)}</p>
+          </div>
+        )}
+
         <dl className="flex flex-col gap-3">
           {detail.points.map((p) => (
             <div key={p.term} className="flex flex-col gap-0.5">
