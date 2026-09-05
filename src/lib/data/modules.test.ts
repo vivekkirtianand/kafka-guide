@@ -452,6 +452,13 @@ describe("Module 9 — broker and topic configuration (Phase 6d advanced-topic p
     // confirms the assertion above didn't accidentally cover the whole module
     expect(advancedTopics.length).toBeLessThan(m.topics.length);
   });
+
+  it("the rack-awareness preface doesn't claim replication factor alone survives a broker loss", () => {
+    const preface = m.topicDetail!["Rack awareness"].preface!;
+    // durability also needs the survivors to be in sync and electable, not just RF=3
+    expect(preface).toMatch(/in sync|electable|electing|elected/i);
+    expect(preface).not.toMatch(/replication factor 3 protects you from losing a broker\.\s/i);
+  });
 });
 
 describe("knowledge checks (any module)", () => {

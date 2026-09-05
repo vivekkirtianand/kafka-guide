@@ -112,7 +112,7 @@ describe("TopicExplorer", () => {
     expect(secondButton()).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("shows the plain-language preface only when the open topic defines one, before the mechanics", () => {
+  it("shows the plain-language preface only when the open topic defines one", () => {
     render(<TopicExplorer topics={topics} detail={detail} />);
 
     const panel = panelFor(firstButton());
@@ -120,6 +120,20 @@ describe("TopicExplorer", () => {
     expect(within(panel).getByText("In plain terms")).toBeVisible();
 
     expect(within(panelFor(secondButton())).queryByText("In plain terms")).not.toBeInTheDocument();
+  });
+
+  it("places the preface before the points and before watch-out in the DOM, not just anywhere in the panel", () => {
+    render(<TopicExplorer topics={topics} detail={detail} />);
+
+    // Use compareDocumentPosition rather than a plain textContent substring search, so this
+    // fails if the preface were ever moved below the mechanics or the watch-out callout.
+    const panel = panelFor(firstButton());
+    const preface = within(panel).getByText("In plain terms").closest("div")!;
+    const firstPointTerm = within(panel).getByText("alpha");
+    const watchOut = within(panel).getByText("the classic foot-gun");
+
+    expect(preface.compareDocumentPosition(firstPointTerm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(preface.compareDocumentPosition(watchOut) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows the watch-out callout only when the open topic defines one", async () => {

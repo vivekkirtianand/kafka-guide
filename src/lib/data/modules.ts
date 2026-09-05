@@ -2192,7 +2192,7 @@ export const modules: Module[] = [
         summary:
           "Tell each broker its failure domain so a partition's replicas are spread across domains rather than stacked in one.",
         preface:
-          "Replication factor 3 protects you from losing a broker. It protects you from nothing if all three replicas happen to sit in the same physical rack, data-center room, or cloud availability zone and that whole zone goes down together. Rack awareness is just telling Kafka about that physical layout so it spreads replicas across it on purpose.",
+          "Replication factor 3 only makes a broker loss survivable if the replicas left standing are actually in sync — an out-of-sync copy doesn't count, and can't become leader without accepting data loss. Even when that holds, it protects you from nothing if all three replicas happen to sit in the same physical rack, data-center room, or cloud availability zone and that whole zone goes down together. Rack awareness is telling Kafka about that physical layout so it spreads replicas across it on purpose.",
         configs: ["broker.rack", "replica.selector.class", "client.rack"],
         points: [
           {

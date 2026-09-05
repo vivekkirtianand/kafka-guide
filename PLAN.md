@@ -1002,6 +1002,13 @@ now opens with one plain-language paragraph before the mechanics.
   Browser-verified: expanding all 11 topics shows exactly 7 "In plain terms" callouts, each
   ahead of its topic's mechanics and its watch-out, with no console errors.
 
+**Review findings addressed (round 1)**
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 (P2) | The rack-awareness preface said flatly "Replication factor 3 protects you from losing a broker" — durability also needs the surviving replicas to actually be in sync and electable, not just to exist. | Reworded: "only makes a broker loss survivable if the replicas left standing are actually in sync — an out-of-sync copy doesn't count, and can't become leader without accepting data loss." New test asserts the caveat and rejects the flat claim. |
+| 2 (P3) | The preface-placement test only checked visibility (`toBeVisible()`), not DOM order — it would still pass if the preface were moved below the mechanics or watch-out. | New test uses `compareDocumentPosition` to assert the preface node precedes a point term and the watch-out text in document order, so reordering the JSX would actually fail it. |
+
 **Phase 6 (re-sequence core material) is complete** — PRs 6a, 6b, 6c, 6d.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
