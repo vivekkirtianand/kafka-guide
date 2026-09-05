@@ -59,14 +59,14 @@ src/
       CommitCrashDemo.tsx           Module 7 activity: crashing before vs. after a commit
       OffsetResetDemo.tsx           Module 7 activity: offset reset (--to-earliest/--shift-by/…) and replay
       PoisonMessageDemo.tsx         Module 7 activity: poison messages, retry topics, dead-letter topics
-      ReplicationFloorDemo.tsx      Module 8 activity: shrink the ISR below min.insync.replicas
-      RetentionCompactionDemo.tsx  Module 8 activity: delete vs. compact cleanup on a keyed log
-      RackPlacementDemo.tsx         Module 8 activity: spread replicas across racks, then fail a rack
-      QuotaThrottleDemo.tsx         Module 8 activity: a client past its byte-rate quota slows, not errors
-      BottleneckDiagnosis.tsx       Module 9 activity: read an unlabeled dashboard, name the bottleneck
-      RequestLatencyBreakdown.tsx   Module 9 activity: split a request-latency total into its phases
-      LagSlopeVsAbsolute.tsx        Module 9 activity: runaway lag slope vs. flat-but-breaching backlog
-      IsrChurnDemo.tsx              Module 9 activity: localize ISR churn to one broker vs. a shared cause
+      ReplicationFloorDemo.tsx      Module 9 activity: shrink the ISR below min.insync.replicas
+      RetentionCompactionDemo.tsx  Module 9 activity: delete vs. compact cleanup on a keyed log
+      RackPlacementDemo.tsx         Module 9 activity: spread replicas across racks, then fail a rack
+      QuotaThrottleDemo.tsx         Module 9 activity: a client past its byte-rate quota slows, not errors
+      BottleneckDiagnosis.tsx       Module 10 activity: read an unlabeled dashboard, name the bottleneck
+      RequestLatencyBreakdown.tsx   Module 10 activity: split a request-latency total into its phases
+      LagSlopeVsAbsolute.tsx        Module 10 activity: runaway lag slope vs. flat-but-breaching backlog
+      IsrChurnDemo.tsx              Module 10 activity: localize ISR churn to one broker vs. a shared cause
       IncidentDiagnosis.tsx         Reveal-clues-then-diagnose flow used by the incident simulator
   lib/
     types.ts                        Shared content types (incl. per-module course metadata)
@@ -152,15 +152,19 @@ reference module at a glance.
   topics (not just an outline) plus all 6 planned activities, covered by 4 interactive
   demos (acks vs. a leader crash, batching/throughput, buffer/size/delivery-timeout
   failures, idempotence and duplicates).
-- **Module 7 (Consumer configuration)** is fully built: real lesson prose for all 7
-  topics plus one interactive demo per activity (6 demos): processing vs.
+- **Module 7 (Consumer groups and resilient processing)** is fully built: real lesson prose
+  for all 7 topics plus one interactive demo per activity (6 demos): processing vs.
   max.poll.interval.ms, consumer-group scaling and rebalances, automatic vs. manual
   commits, crashing before/after a commit, offset reset and replay, and poison-message
-  handling with retry and dead-letter topics.
-- **Module 8 (Broker and topic configuration)** is built: scannable Topic explorer content
+  handling with retry and dead-letter topics. Retitled and moved onto the beginner path in
+  Phase 6c (same slug and content as the old "Consumer configuration").
+- **Module 8 (Kafka Connect and Kafka Streams)** is a `status: "planned"` stub added in
+  Phase 6c — objectives, prerequisites, and 4 topic titles are scoped, content and hands-on
+  labs land in Phase 7. Renders the generic "planned" callout, same as any unbuilt module.
+- **Module 9 (Broker and topic configuration)** is built: scannable Topic explorer content
   for all 11 topics plus 4 interactive demos (ISR floor vs. min.insync.replicas, delete vs.
   compact cleanup, rack placement and rack failure, client quota throttling).
-- **Module 9 (Observability)** is built: Topic explorer content for all 11 signals plus 4
+- **Module 10 (Observability)** is built: Topic explorer content for all 11 signals plus 4
   interactive demos (unlabeled-dashboard bottleneck diagnosis, request-latency phase
   breakdown, lag slope vs. absolute value, ISR-churn localization).
 - **The incident simulator** has all 10 scenarios built out (reveal clues, pick a
@@ -171,12 +175,12 @@ reference module at a glance.
   look like.
 - **Config explorer** ships with real settings across producer/consumer/broker/topic
   scope, filterable by scope and goal, seeded from the plan's configuration priorities.
-- **Module 10 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
+- **Module 11 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
   content: all 10 symptom entries, each with an overview, cause → evidence pairs (the
   specific metric/log/command that confirms or rules out each cause), a resolution flow,
   key config chips, and a "watch out" — the durability setting you could lower to make the
   error disappear while making the system worse. Searchable by symptom, cause, evidence, or
-  config key. The Module 10 page embeds the catalog; `/troubleshooting` is the standalone
+  config key. The Module 11 page embeds the catalog; `/troubleshooting` is the standalone
   reference view.
 - **Production runbooks** ships all 14 written to full content — prechecks, execution,
   validation, rollback, and escalation criteria — each on its own `/runbooks/[slug]` page:

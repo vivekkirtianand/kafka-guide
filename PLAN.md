@@ -837,20 +837,34 @@ corrected once (see the accuracy notes).
 
 ## Phase 6 — re-sequence core material
 
-Getting the module list into the plan's target 0–10 order and letting a learner tell the
+Getting the module list toward the plan's target order and letting a learner tell the
 foundational topics from the deep mechanical ones. Split across four PRs (the roadmap's "6a"
 becomes 6a–6c; the advanced-topic prefaces are 6d).
 
 **AskUserQuestion decisions:** four PRs, not one; `mental-model`'s "Leaders, followers, ISR,
 and controllers" topic → the new Module 4 (Keys, ordering, delivery); a
-`status: "planned"` **Kafka Connect and Kafka Streams** stub goes in at index 7 now (Phase 7
-fills it); `consumer-configuration` → **beginner-path** when it becomes Module 6.
+`status: "planned"` **Kafka Connect and Kafka Streams** stub goes in once
+`consumer-configuration` is on the beginner path (Phase 7 fills the content in).
+
+**A decision made without asking, in 6c:** the plan's target map has no standalone
+"Producer configuration" module — Phase 6's roadmap literally can't fit 12 modules into a
+0–10 range without either deleting `producer-configuration`'s built content (7 topics, 4
+demos, tests) or reordering the array. Deleting it was out of scope for a re-sequence PR, and
+a full reorder was unnecessary: `trackNeighbors()` already sequences the beginner path by
+filtering on `track` and sorting by `index`, so a `reference`-track module sitting between
+beginner-path ones in raw array order is invisible to beginner-path prev/next and to the
+Sidebar/home groupings — it doesn't need to move. So `producer-configuration` **keeps its
+slug, content, and index (6)** as a `reference` module; `consumer-configuration` becomes
+beginner-path **without moving its own index (7)**, and the new Connect/Streams stub lands
+right after it at **8**. The target map's exact numbers (Module 6 = consumer groups, Module 7
+= Connect/Streams) are therefore a guide, not literal — the *relative order* they describe is
+what's preserved.
 
 | PR | Scope | Status |
 |---|---|---|
 | 6a | Topic-level `level` (beginner/intermediate/advanced) on `TopicDetail`, a badge in `TopicExplorer`, backfilled on all 65 existing topics | ✅ Done |
 | 6b | Split `mental-model` → Module 1 "Events, topics, partitions, brokers" + new Module 4 "Keys, ordering, and delivery guarantees" (moved the two demos) | ✅ Done |
-| 6c | Retitle/rescope `consumer-configuration` → Module 6 "Consumer groups and resilient processing" (beginner-path); insert the Connect/Streams `planned` stub; renumber to the target 0–10; fix nav / tests / glossary / README | ⭕ Planned |
+| 6c | Retitle/rescope `consumer-configuration` → "Consumer groups and resilient processing" (beginner-path, kept at its existing index 7); new Connect/Streams `planned` stub at index 8; fix nav / tests / README | ✅ Done |
 | 6d | A plain-language preface before each advanced mechanical topic in the broker/topic module (roadmap's "6b") | ⭕ Planned |
 
 ### PR 6a — topic-level difficulty
@@ -918,13 +932,47 @@ the reference for ordering, replication durability, and delivery semantics. Spli
 | 1 (P2) | `LagSlopeVsAbsolute` said a raw exception "would skip it and move on" — an uncaught exception stops the poll loop; skipping needs the exception caught and the loop polling again. | Reworded: "An uncaught exception doesn't move past the record either — it stops the loop outright, and a naive restart lands right back on it; only catching it and letting the loop poll again, Module 7's skip policy, actually gets past it." |
 | 2 (P3) | README's "What's scaffolded" list ran Module 0 → 1 → 4 → 3 → 5, out of course order. | Moved the Module 4 bullet below Module 3, so the list reads 0 → 1 → 3 → 4 → 5 → … → 10, matching prerequisites and nav order. |
 
+### PR 6c — consumer groups onto the path, Connect/Streams stub
+
+- `src/lib/data/modules.ts` — `consumer-configuration` retitled **"Consumer groups and
+  resilient processing"**, `track: "reference"` → `"beginner-path"`, prereqs
+  `["mental-model"]` → `["mental-model", "build-a-producer-and-consumer"]`, `lastReviewed`
+  bumped. **Kept at its existing `index: 7`** — no reorder (see the decision above).
+  `estimatedMinutes`, topics, `topicDetail`, and its 6 demos are untouched.
+- New **`connect-and-streams`** module at `index: 8`, `status: "planned"`,
+  `track: "beginner-path"`, `difficulty: "intermediate"`, prereqs
+  `["build-a-producer-and-consumer", "consumer-configuration"]`, 4 objectives, 2 completion
+  criteria, 2 `furtherReading` links (verified live: the Kafka 4.0 docs landing page and its
+  dedicated `/documentation/streams/` subpage — Connect has no equivalent dedicated subpage,
+  only an anchor on the single documentation page, which the version-pinned-link test
+  rejects), 4 topic titles, no `topicDetail` (content is Phase 7). Renders through the
+  existing generic paths: no `topicDetail`/`walkthrough`/`labs` falls through to the bare
+  topic-list branch in `[slug]/page.tsx`, and `status === "planned"` renders the existing
+  "planned" callout — no page changes needed.
+- **Renumber**: inserting at 8 shifts `broker-topic-configuration` 8→9, `observability`
+  9→10, `troubleshooting-scenarios` 10→11. `producer-configuration` (6) and
+  `consumer-configuration` (7) do not move.
+- Tests: `modules.test.ts` — new "Module 7" (retitle/retrack, and its position in the
+  beginner-path sequence between Schemas and Connect/Streams) and "Module 8" (planned-stub
+  invariants: no `topicDetail`, valid prerequisites, and the course-metadata checks — every
+  module needs `estimatedMinutes > 0` / 3+ objectives / valid links regardless of `status`)
+  blocks. `walkthroughs.test.ts` — index assertions for the three shifted modules.
+  README demo-tree + "What's scaffolded" renumbered; new Module 8 bullet. Suite 360 → 366.
+  Browser-verified: sidebar shows beginner path 00,01,02,03,04,05,07,08 (06 sits in
+  Reference, invisible to beginner-path nav as designed); the planned module renders its
+  objectives/topics/further-reading and the "planned" badge; Module 7's demos still render;
+  home "Beginner path" now 8 modules · ~4 weeks.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
-> their original numbers. After Phases 4b / 5a / 6b the current repo numbering is: Events,
-> topics, partitions, brokers (the old "mental model") = 1; Keys, ordering, and delivery
+> their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
+> Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
 > guarantees (new) = 4; Schemas and data contracts = 5; Producer configuration = 6;
-> Consumer configuration = 7; Broker and topic configuration = 8; Observability = 9;
-> Troubleshooting scenarios = 10. Phase 6c does the last of the re-sequence (Connect/Streams
-> stub, consumer-groups onto the path).
+> Consumer groups and resilient processing (old "Consumer configuration") = 7; Kafka Connect
+> and Kafka Streams (new, planned) = 8; Broker and topic configuration = 9; Observability =
+> 10; Troubleshooting scenarios = 11. This is the end of Phase 6's re-sequence — the
+> remaining numbering gap from the plan's original target map is `producer-configuration`
+> staying a reference module rather than being folded away (see the decision note above);
+> 6d (advanced-topic prefaces) touches only prose, not indexes.
 
 ## Module 1 — Kafka mental model
 
@@ -1050,6 +1098,10 @@ PR; all reproduced and re-verified live):
 | PLAN.md's Verification section still said "25/25 passing" after the suite grew to 53 tests | ✅ Done | Corrected to 53/53. |
 
 ## Module 4 — Consumer configuration
+
+> **Retitled and moved to the beginner path in Phase 6c (PR #32).** Same slug
+> (`consumer-configuration`), same content — now **"Consumer groups and resilient
+> processing"**, `track: "beginner-path"`, at the current repo's index 7.
 
 Built to the same bar as Module 3: real lesson prose for all 7 topics (not a bullet
 outline) plus one interactive demo per listed activity (6 demos). `Module.status` is now
