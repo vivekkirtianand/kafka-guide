@@ -1602,13 +1602,13 @@ export const modules: Module[] = [
   {
     slug: "consumer-configuration",
     index: 7,
-    title: "Consumer configuration",
+    title: "Consumer groups and resilient processing",
     summary:
-      "Consumer groups, partition assignment, offset commits, rebalances, and poison-message handling.",
+      "Consumer groups, partition assignment, offset commits, rebalances, and poison-message handling — the configuration that decides what a crash or a slow batch actually costs you.",
     difficulty: "intermediate",
     estimatedMinutes: 90,
-    prerequisites: ["mental-model"],
-    track: "reference",
+    prerequisites: ["mental-model", "build-a-producer-and-consumer"],
+    track: "beginner-path",
     objectives: [
       "Explain how partitions are assigned across a consumer group and what triggers a rebalance",
       "Compare automatic and manual offset commits and their failure modes",
@@ -1623,7 +1623,7 @@ export const modules: Module[] = [
       { label: "Apache Kafka 4.0 — Consumer configs", url: "https://kafka.apache.org/40/configuration/consumer-configs/" },
     ],
     applicableVersions: ["4.0"],
-    lastReviewed: "2026-09-01",
+    lastReviewed: "2026-09-05",
     topics: [
       "Consumer groups and partition assignment",
       "Polling and heartbeats",
@@ -1866,8 +1866,43 @@ export const modules: Module[] = [
     status: "available",
   },
   {
-    slug: "broker-topic-configuration",
+    slug: "connect-and-streams",
     index: 8,
+    title: "Kafka Connect and Kafka Streams",
+    summary:
+      "Move data in and out of Kafka without hand-writing a producer or consumer (Connect), and compute continuously over topics — joins, aggregations, windows — without standing up a separate processing cluster (Streams). Content and hands-on labs land in Phase 7.",
+    difficulty: "intermediate",
+    estimatedMinutes: 90,
+    prerequisites: ["build-a-producer-and-consumer", "consumer-configuration"],
+    track: "beginner-path",
+    objectives: [
+      "Explain what a Connect source and sink connector do, and why you'd reach for Connect instead of a hand-written client",
+      "Describe how Connect tracks each connector's offsets and config, and where that state lives",
+      "Distinguish a KStream from a KTable and say when each is the right shape",
+      "Name the state a Streams aggregation or windowed join needs, and where it's stored",
+    ],
+    completionCriteria: [
+      "Given a data-movement problem, you can decide between Connect, a hand-written client, or neither",
+      "You can sketch a Streams topology for a simple aggregation and name the state store it needs",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka 4.0 — Documentation", url: "https://kafka.apache.org/40/documentation.html" },
+      { label: "Apache Kafka 4.0 — Kafka Streams", url: "https://kafka.apache.org/40/documentation/streams/" },
+    ],
+    applicableVersions: ["4.0"],
+    lastReviewed: "2026-09-05",
+    topics: [
+      "Kafka Connect: source and sink connectors",
+      "Connect standalone vs. distributed mode",
+      "Kafka Streams: topologies, KStream, and KTable",
+      "Stateful processing: joins, aggregations, and windows",
+    ],
+    activities: [],
+    status: "planned",
+  },
+  {
+    slug: "broker-topic-configuration",
+    index: 9,
     title: "Broker and topic configuration",
     summary:
       "Replication, retention, compaction, request limits, quotas, and listener/security configuration.",
@@ -2201,7 +2236,7 @@ export const modules: Module[] = [
   },
   {
     slug: "observability",
-    index: 9,
+    index: 10,
     title: "Observability",
     summary: "Moving from symptom to evidence across lag, ISR, latency, disk, network, and GC signals.",
     difficulty: "advanced",
@@ -2512,7 +2547,7 @@ export const modules: Module[] = [
   },
   {
     slug: "troubleshooting-scenarios",
-    index: 10,
+    index: 11,
     title: "Troubleshooting scenarios",
     summary:
       "A searchable symptom → evidence → cause → resolution catalog covering the most common Kafka incidents.",

@@ -17,6 +17,16 @@ export function beginnerPath(mods: Module[]): Module[] {
   return mods.filter((m) => m.track === "beginner-path");
 }
 
+// Beginner-path modules that a learner can actually complete. A `planned` module (a
+// scaffolded-but-unbuilt stub, e.g. Connect/Streams) has no completion control — see
+// `mod.status !== "planned"` in `[slug]/page.tsx` — so counting it toward progress or
+// offering it as a "Resume" target would make the denominator uncompletable and could get
+// Resume stuck pointing at a page with no way to check it off. Still fully visible in the
+// module list and Sidebar via `beginnerPath()`; only excluded from progress/resume math.
+export function trackableBeginnerPath(mods: Module[]): Module[] {
+  return beginnerPath(mods).filter((m) => m.status !== "planned");
+}
+
 // Reference modules — looked up as needed rather than worked through in order.
 export function referenceModules(mods: Module[]): Module[] {
   return mods.filter((m) => m.track === "reference");

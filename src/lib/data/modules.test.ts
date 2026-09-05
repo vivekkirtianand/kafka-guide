@@ -365,6 +365,60 @@ describe("Module 5 — schemas and data contracts", () => {
   });
 });
 
+describe("Module 7 — consumer groups and resilient processing (Phase 6c retitle)", () => {
+  const m = getModule("consumer-configuration")!;
+
+  it("moved onto the beginner path without moving its array position", () => {
+    expect(m.index).toBe(7);
+    expect(m.title).toMatch(/consumer groups and resilient processing/i);
+    expect(m.track).toBe("beginner-path");
+    expect(m.status).toBe("available");
+    expect(m.prerequisites).toEqual(["mental-model", "build-a-producer-and-consumer"]);
+  });
+
+  it("sits after Schemas and before the Connect/Streams stub in beginner-path order", () => {
+    const path = modules.filter((x) => x.track === "beginner-path").sort((a, b) => a.index - b.index);
+    const slugs = path.map((x) => x.slug);
+    expect(slugs.indexOf("schemas-and-data-contracts")).toBeLessThan(slugs.indexOf("consumer-configuration"));
+    expect(slugs.indexOf("consumer-configuration")).toBeLessThan(slugs.indexOf("connect-and-streams"));
+  });
+});
+
+describe("Module 8 — Kafka Connect and Kafka Streams (planned stub, Phase 6c)", () => {
+  const m = getModule("connect-and-streams")!;
+
+  it("is a planned beginner-path module at index 8", () => {
+    expect(m.index).toBe(8);
+    expect(m.track).toBe("beginner-path");
+    expect(m.status).toBe("planned");
+    expect(m.difficulty).toBe("intermediate");
+  });
+
+  it("has no topicDetail yet — content lands in Phase 7", () => {
+    expect(m.topicDetail).toBeUndefined();
+    expect(m.topics.length).toBeGreaterThan(0);
+  });
+
+  it("depends on the Java producer/consumer module and consumer groups", () => {
+    expect(m.prerequisites).toEqual(["build-a-producer-and-consumer", "consumer-configuration"]);
+    for (const slug of m.prerequisites!) {
+      expect(getModule(slug)!.index).toBeLessThan(m.index);
+    }
+  });
+
+  it("still satisfies the course-metadata invariants (difficulty, time, objectives, links) despite being planned", () => {
+    expect(m.estimatedMinutes ?? 0).toBeGreaterThan(0);
+    expect(m.objectives?.length ?? 0).toBeGreaterThanOrEqual(3);
+    for (const r of m.furtherReading ?? []) {
+      expect(r.url).toMatch(/^https:\/\//);
+      if (/^https:\/\/kafka\.apache\.org\//.test(r.url)) {
+        expect(r.url).toMatch(/^https:\/\/kafka\.apache\.org\/\d+\//);
+        expect(r.url).not.toContain("/documentation/#");
+      }
+    }
+  });
+});
+
 describe("knowledge checks (any module)", () => {
   it("every KnowledgeCheck has an in-range answerIndex and enough options", () => {
     for (const m of modules) {
