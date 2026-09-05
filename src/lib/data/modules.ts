@@ -1,5 +1,5 @@
 import { Module } from "@/lib/types";
-import { labA, labB, labC } from "./labs";
+import { labA, labB, labC, connectFileLab } from "./labs";
 import { producerConsumerWalkthrough } from "./walkthroughs";
 
 export const modules: Module[] = [
@@ -1870,9 +1870,9 @@ export const modules: Module[] = [
     index: 8,
     title: "Kafka Connect and Kafka Streams",
     summary:
-      "Move data in and out of Kafka without hand-writing a producer or consumer (Connect), and compute continuously over topics — joins, aggregations, windows — without standing up a separate processing cluster (Streams). Content and hands-on labs land in Phase 7.",
+      "Move data in and out of Kafka without hand-writing a producer or consumer (Connect), and compute continuously over topics — joins, aggregations, windows — without standing up a separate processing cluster (Streams).",
     difficulty: "intermediate",
-    estimatedMinutes: 90,
+    estimatedMinutes: 100,
     prerequisites: ["build-a-producer-and-consumer", "consumer-configuration"],
     track: "beginner-path",
     objectives: [
@@ -1883,6 +1883,7 @@ export const modules: Module[] = [
     ],
     completionCriteria: [
       "Given a data-movement problem, you can decide between Connect, a hand-written client, or neither",
+      "You have run Lab D — created a file source and a file sink connector through the REST API and watched records flow through a topic",
       "You can sketch a Streams topology for a simple aggregation and name the state store it needs",
     ],
     furtherReading: [
@@ -1891,14 +1892,152 @@ export const modules: Module[] = [
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-05",
+    labs: [connectFileLab],
     topics: [
       "Kafka Connect: source and sink connectors",
       "Connect standalone vs. distributed mode",
       "Kafka Streams: topologies, KStream, and KTable",
       "Stateful processing: joins, aggregations, and windows",
     ],
+    topicDetail: {
+      "Kafka Connect: source and sink connectors": {
+        level: "intermediate",
+        summary:
+          "Connect is a worker process that runs pre-built connector plugins to move data between Kafka and other systems — you configure it, you don't write it.",
+        configs: ["connector.class", "tasks.max", "key.converter", "value.converter"],
+        points: [
+          {
+            term: "Source vs. sink — one connector, one direction",
+            detail:
+              "A source connector reads from an external system (a file, a database, an S3 bucket, another queue) and writes records into Kafka topics. A sink connector does the reverse — reads a topic and writes each record out to an external system. If you need both directions you run two connectors.",
+          },
+          {
+            term: "You configure, you don't code",
+            detail:
+              "A connector is a JSON config: the plugin class, the topic(s), where the external system is, how to authenticate. You POST it to Connect's REST API and Connect runs it. The common integrations already exist as plugins — you'd write one only for a system nobody else has.",
+          },
+          {
+            term: "Tasks are the unit of parallelism",
+            detail:
+              "Connect splits a connector's work into up to tasks.max tasks and spreads them across the worker cluster, the way partitions spread across a [[consumer-group|consumer group]]. A file source runs one task; a database source might run one per table.",
+          },
+          {
+            term: "Converters do the serialization",
+            detail:
+              "key.converter / value.converter turn Connect's internal record shape into the bytes on the topic — JsonConverter, or an Avro / Protobuf converter backed by a [[schema-registry|registry]]. This is Connect's version of the serializer you set by hand in the producer/consumer module.",
+          },
+          {
+            term: "Connect owns the offsets",
+            detail:
+              "A source connector's position in the external system (which file byte, which database row) is tracked by Connect in an internal topic, so a restart resumes where it left off. A sink connector commits ordinary Kafka consumer offsets, just like any [[consumer|consumer]].",
+          },
+        ],
+        watchOut:
+          "Connect is not a transformation engine. Single Message Transforms can rename or route a field, but anything stateful — joins, aggregations, windowing — is a job for Kafka Streams, not a connector.",
+      },
+      "Connect standalone vs. distributed mode": {
+        level: "intermediate",
+        summary:
+          "The same connectors, run either by one process reading local config files, or by a cluster of workers that coordinate through Kafka.",
+        configs: ["group.id", "config.storage.topic", "offset.storage.topic", "status.storage.topic"],
+        points: [
+          {
+            term: "Standalone",
+            detail:
+              "One worker process, connector configs passed as .properties files, source offsets in a local file. Fine for a laptop demo or a single-machine edge collector — no fault tolerance, no REST-driven changes.",
+          },
+          {
+            term: "Distributed",
+            detail:
+              "Several worker processes sharing a group.id. Connector configs, source offsets, and connector status all live in internal Kafka topics, so any worker can pick up any task and a worker dying just moves its tasks elsewhere.",
+          },
+          {
+            term: "The REST API drives distributed mode",
+            detail:
+              "You don't restart a worker to add a connector — you PUT its config to any worker's REST endpoint (port 8083) and the cluster rebalances the work. GET the same paths for status and offsets, DELETE to remove one.",
+          },
+          {
+            term: "Even one worker runs distributed",
+            detail:
+              "A single-worker distributed cluster still behaves like the real thing — configs in topics, REST API, rebalancing — which is why the lab, and most production setups, run distributed even on one node.",
+          },
+        ],
+        watchOut:
+          "The three internal topics are the cluster's memory. Wipe offset.storage.topic and every source connector forgets its position and re-reads its source from the start; wipe config.storage.topic and the connectors themselves are gone.",
+      },
+      "Kafka Streams: topologies, KStream, and KTable": {
+        level: "intermediate",
+        summary:
+          "A Java library — not a cluster — that reads topics, runs each record through a topology of operations, and writes the results back to topics.",
+        configs: ["application.id", "num.stream.threads", "processing.guarantee"],
+        points: [
+          {
+            term: "A library, not a service",
+            detail:
+              "Kafka Streams runs inside your application process: add the dependency, define a topology, call start(). You scale out by running more copies of your app with the same application.id — they form a consumer group and split the partitions, exactly like the consumers in the previous module.",
+          },
+          {
+            term: "A topology is a graph of steps",
+            detail:
+              "Source (read a topic) → operations (map, filter, join, aggregate) → sink (write a topic). The DSL builds that graph; Streams runs it record by record.",
+          },
+          {
+            term: "KStream — a stream of events",
+            detail:
+              "Every record is an independent fact: \"order 5 placed\", \"order 6 placed\". map / filter / flatMap over a KStream are stateless — each record is handled on its own.",
+          },
+          {
+            term: "KTable — the latest value per key",
+            detail:
+              "A KTable is the current state built from a stream of updates: keyed by customer id, it holds each customer's latest record, and a new record for that key replaces the old one. It is the [[log-compaction|compacted-topic]] idea as a first-class type.",
+          },
+          {
+            term: "The stream/table duality",
+            detail:
+              "A KStream can be aggregated into a KTable (fold the events into a running total); a KTable's changes can be read back as a KStream (each update is an event). Choosing the right one is most of Streams design.",
+          },
+        ],
+        watchOut:
+          "application.id is also the consumer group id and the prefix for every internal topic Streams creates. Two different apps sharing an application.id will steal each other's partitions and corrupt each other's state.",
+      },
+      "Stateful processing: joins, aggregations, and windows": {
+        level: "intermediate",
+        summary:
+          "The operations that have to remember something — a running count, the other side of a join, the events in the last five minutes — and where Streams keeps that memory.",
+        configs: ["state.dir", "commit.interval.ms"],
+        points: [
+          {
+            term: "State stores",
+            detail:
+              "A stateful operation keeps a local key/value store (RocksDB on disk by default) on the instance that owns that key's partition. count() by customer keeps each customer's running total there.",
+          },
+          {
+            term: "Backed by a changelog topic",
+            detail:
+              "Every state store is mirrored to a compacted Kafka topic. If the instance dies, another replays that changelog to rebuild the store before taking over — the local store is a cache, the changelog is the truth.",
+          },
+          {
+            term: "Aggregations",
+            detail:
+              "groupByKey().count() / .reduce() / .aggregate() fold a stream into a KTable. Each input record updates the stored value and emits the new result downstream.",
+          },
+          {
+            term: "Windows",
+            detail:
+              "Time-bound the aggregation: \"orders per customer per hour\" is a windowed count. Streams keeps one store entry per (key, window) and drops windows older than a retention you set; late records still update their window while it is within the grace period.",
+          },
+          {
+            term: "Joins",
+            detail:
+              "A stream–table join enriches each event with the current value from a KTable (an order plus the customer's details). A stream–stream join matches events from two streams that arrive within a time window (a click and the purchase it led to).",
+          },
+        ],
+        watchOut:
+          "A windowed store grows with distinct keys times live windows. A high-cardinality key (a UUID per event) with hour-long windows kept for a day is millions of entries per instance — window on something bounded, or keep the retention short.",
+      },
+    },
     activities: [],
-    status: "planned",
+    status: "available",
   },
   {
     slug: "broker-topic-configuration",

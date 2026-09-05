@@ -623,4 +623,214 @@ export const labC: Lab = {
     "The Schema Registry keeps its entire state — every subject, version, and compatibility setting — in a Kafka topic called `_schemas`. `docker compose --profile extras down -v` deletes the volume that topic lives on, so it wipes the registry completely, with no undo. Plain `docker compose --profile extras down` keeps it. Because this lab writes schema ids into a real topic, a `down -v` is also the only fully clean way to re-run it from scratch — a soft `DELETE` of the subject alone leaves records on the topic pointing at ids the reset would orphan.",
 };
 
-export const labs: Lab[] = [labA, labB, labC];
+// Lab D — Kafka Connect. Reuses Lab B's stack plus its optional Kafka Connect worker
+// (`--profile extras`). No code: a file source connector and a file sink connector, both
+// created and inspected through the Connect REST API on :8083 with `curl`, plus `docker
+// exec` for the files and the console consumer. The point is that Connect moves data in and
+// out of Kafka with configuration alone, tracks its own position, and is driven entirely by
+// the REST API — never a worker restart.
+export const connectFileLab: Lab = {
+  slug: "lab-d-connect-file-pipeline",
+  title: "Lab D — moving a file in and out of Kafka with Connect",
+  summary:
+    "Run a file source connector that tails a text file into a topic, then a file sink connector that writes that topic back out to another file — created, inspected, and torn down entirely through the Connect REST API. No producer or consumer code.",
+  resourceFloor:
+    "Lab B's stack plus the Kafka Connect worker — a second heavy JVM. Give Docker at least 6 GB here (the Lab B floor is 4 GB); on a 4 GB limit the Connect container gets OOM-killed mid-startup and never answers on :8083.",
+  prerequisites: [
+    "You have finished Lab B — this lab uses the same three-broker Compose stack under local-cluster-lab/",
+    "Docker and Docker Compose v2, with Docker's memory raised to at least 6 GB",
+    "`curl` on the host — bundled with macOS and every Linux; on Windows run it from the WSL shell",
+    "You have read Module 8's \"Kafka Connect\" topics",
+  ],
+  setup: [
+    {
+      command: 'cd "$(git rev-parse --show-toplevel)/local-cluster-lab"',
+      note: "Every command below runs from the lab directory of your checkout. `git rev-parse --show-toplevel` finds the repo root from anywhere inside it. If you are already in `local-cluster-lab/`, skip it.",
+    },
+    {
+      command: "docker compose --profile extras up -d kafka-connect",
+      note: "Starts the Kafka Connect worker on localhost:8083 (and the brokers and Schema Registry it depends on, if they weren't already up). The first run pulls the confluentinc/cp-kafka-connect image, which is large. The worker itself then takes 30–60 seconds to load its plugins and open the REST port.",
+    },
+  ],
+  verify: {
+    command: "curl -sS http://localhost:8083/connector-plugins | tr ',' '\\n' | grep -i filestream",
+    note: "Two lines: `FileStreamSourceConnector` and `FileStreamSinkConnector`. If you get nothing, the worker hasn't loaded the FileStream plugins — the Compose file adds `/usr/share/filestream-connectors` to `CONNECT_PLUGIN_PATH` for exactly this; make sure you're on an up-to-date checkout and re-run the setup `up`. `curl: (7) Failed to connect` means the worker is still starting — wait and retry.",
+  },
+  steps: [
+    {
+      id: "connect-up",
+      title: "Confirm the Connect worker is answering",
+      intro:
+        "Connect is a long-running REST service. You never restart it to add or change a connector — everything in this lab is a call to this API.",
+      command: "curl -s http://localhost:8083/",
+      expected: '{"version":"7.7.1-ccs","commit":"...","kafka_cluster_id":"..."}',
+      observe:
+        "The worker reports its version and the id of the Kafka cluster it's attached to. This one worker is a full distributed Connect cluster of size 1 — its connector configs and offsets live in Kafka topics, not on local disk.",
+      commonError: {
+        symptom: "`curl: (7) Failed to connect to localhost port 8083` for more than a minute, or the container keeps restarting.",
+        cause:
+          "The Connect worker is a second large JVM on top of Lab B's three brokers. On a 4 GB Docker limit it is OOM-killed during startup.",
+        recovery:
+          "Raise Docker's memory to 6 GB (Docker Desktop → Settings → Resources), then from the lab directory `docker compose --profile extras up -d kafka-connect` and wait ~60 seconds.",
+      },
+    },
+    {
+      id: "list-plugins",
+      title: "See which connector plugins are installed",
+      intro:
+        "A connector is a plugin the worker loads at startup. You can only run a connector whose plugin is on the worker's plugin path.",
+      command:
+        "curl -s http://localhost:8083/connector-plugins | tr ',' '\\n' | grep -iE 'class|FileStream'",
+      expected:
+        '"class":"org.apache.kafka.connect.file.FileStreamSinkConnector"\n"class":"org.apache.kafka.connect.file.FileStreamSourceConnector"\n(plus MirrorMaker connectors — those ship on the default path)',
+      observe:
+        "The FileStream connectors ship with Kafka but not on Connect's default plugin path in recent Confluent images. `local-cluster-lab/docker-compose.yml` adds `/usr/share/filestream-connectors` to `CONNECT_PLUGIN_PATH` so this worker loads them.",
+      commonError: {
+        symptom: "The `grep` returns only MirrorMaker connectors, no FileStream.",
+        cause: "The worker started before the plugin-path change, or from an older checkout.",
+        recovery:
+          "`git pull`, then from the lab directory `docker compose --profile extras up -d --force-recreate kafka-connect` and wait for it to come back.",
+      },
+    },
+    {
+      id: "make-source-file",
+      title: "Create the file the source connector will read",
+      intro:
+        "This plain text file stands in for any external system — a log, an export, a feed. The source connector will turn each line into a Kafka record.",
+      command:
+        "docker exec kafka-lab-kafka-connect bash -c 'printf \"line one\\nline two\\nline three\\n\" > /tmp/connect-source.txt && cat /tmp/connect-source.txt'",
+      expected: "line one\nline two\nline three",
+      observe:
+        "The file lives inside the Connect container, at a path the worker can read. In a real deployment this is a mounted volume, a network share, or — far more often — a database the JDBC source connector queries.",
+    },
+    {
+      id: "create-source",
+      title: "Create the file source connector",
+      intro:
+        "PUT a JSON config to /connectors/<name>/config. PUT is idempotent — the same call creates the connector or updates it in place.",
+      command:
+        "curl -s -X PUT http://localhost:8083/connectors/file-source/config -H 'Content-Type: application/json' -d '{\"connector.class\":\"org.apache.kafka.connect.file.FileStreamSourceConnector\",\"tasks.max\":\"1\",\"file\":\"/tmp/connect-source.txt\",\"topic\":\"connect-file-topic\"}'",
+      expected:
+        '{"name":"file-source","config":{"connector.class":"org.apache.kafka.connect.file.FileStreamSourceConnector","tasks.max":"1","file":"/tmp/connect-source.txt","topic":"connect-file-topic","name":"file-source"},"tasks":[],"type":"source"}',
+      observe:
+        "`tasks` is empty in the immediate response — the worker creates the task a moment later. `tasks.max: 1` because a single file is read start-to-end by one reader; there's nothing to parallelise.",
+      commonError: {
+        symptom: '`{"error_code":500,"message":"Failed to find any class that implements Connector and which name matches org.apache.kafka.connect.file.FileStreamSourceConnector ..."}`.',
+        cause: "The FileStream plugin isn't on the worker's plugin path (see the previous step).",
+        recovery: "Fix the plugin path as in the `list-plugins` step, then re-run this PUT.",
+      },
+    },
+    {
+      id: "source-status",
+      title: "Check the connector and its task are running",
+      intro: "Creating a connector doesn't mean it works — check the status endpoint.",
+      command: "curl -s http://localhost:8083/connectors/file-source/status",
+      expected:
+        '{"name":"file-source","connector":{"state":"RUNNING","worker_id":"kafka-connect:8083"},"tasks":[{"id":0,"state":"RUNNING","worker_id":"kafka-connect:8083"}],"type":"source"}',
+      observe:
+        "Both the connector and task 0 are RUNNING on `kafka-connect:8083`. A FAILED task carries a `trace` field with the stack trace — that's the first place to look when a connector is quiet.",
+    },
+    {
+      id: "consume-topic",
+      title: "Read the topic the connector is writing",
+      intro: "The connector has produced one record per line. Consume the topic to see them.",
+      command:
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic connect-file-topic --from-beginning --max-messages 3",
+      expected: '"line one"\n"line two"\n"line three"\nProcessed a total of 3 messages',
+      observe:
+        "Each value is a JSON string — quotes included — because the lab's Connect worker uses `JsonConverter` with `schemas.enable=false`, so a bare string line serialises as `\"line one\"`. No producer code wrote these; the connector did.",
+    },
+    {
+      id: "append-tail",
+      title: "Append a line and watch the connector pick it up",
+      intro: "The file source connector tails the file — it keeps reading as the file grows.",
+      command:
+        "docker exec kafka-lab-kafka-connect bash -c 'printf \"line four\\n\" >> /tmp/connect-source.txt' && sleep 3 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic connect-file-topic --from-beginning --max-messages 4",
+      expected: '"line one"\n"line two"\n"line three"\n"line four"\nProcessed a total of 4 messages',
+      observe:
+        "The connector produced only the new line — it didn't re-read the first three. Connect tracks how far into the file it has read (see the next step) so a restart or an append resumes from exactly there.",
+    },
+    {
+      id: "source-offsets",
+      title: "Look at where the source connector thinks it is",
+      intro:
+        "Connect stores a source connector's position — here, a byte offset into the file — in an internal topic, and exposes it through the REST API.",
+      command: "curl -s http://localhost:8083/connectors/file-source/offsets",
+      expected:
+        '{"offsets":[{"partition":{"filename":"/tmp/connect-source.txt"},"offset":{"position":39}}]}',
+      observe:
+        "`position` is the byte count of everything the connector has read (39 = the four lines plus newlines). If you see `{\"offsets\":[]}`, the worker hasn't flushed yet — source offsets are committed on `offset.flush.interval.ms` (60s by default); wait and re-run.",
+    },
+    {
+      id: "create-sink",
+      title: "Create a file sink connector to write the topic back out",
+      intro:
+        "A sink connector is the mirror image: it consumes a topic and writes each record to an external system — here, another file.",
+      command:
+        "curl -s -X PUT http://localhost:8083/connectors/file-sink/config -H 'Content-Type: application/json' -d '{\"connector.class\":\"org.apache.kafka.connect.file.FileStreamSinkConnector\",\"tasks.max\":\"1\",\"file\":\"/tmp/connect-sink.txt\",\"topics\":\"connect-file-topic\"}' && sleep 4 && docker exec kafka-lab-kafka-connect cat /tmp/connect-sink.txt",
+      expected: "line one\nline two\nline three\nline four",
+      observe:
+        "Note `topics` (plural) for a sink versus `topic` for the source. The sink read the whole topic from offset 0 and wrote each value to the file — as the raw line, no JSON quotes, because the sink converts the record value back to a plain string on the way out.",
+    },
+    {
+      id: "sink-consumer-group",
+      title: "See that the sink is just a consumer group",
+      intro:
+        "Unlike the source, a sink connector's position is an ordinary Kafka consumer offset — you can inspect it with the same CLI tool you used in Lab A.",
+      command:
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka-1:19092 --describe --group connect-file-sink",
+      expected:
+        "GROUP              TOPIC               PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG\nconnect-file-sink  connect-file-topic  0          4               4               0",
+      observe:
+        "The group is named `connect-` plus the connector name. It's a normal consumer group with a normal committed offset and lag — a sink connector is a managed consumer, nothing more. (CURRENT-OFFSET may briefly show `-` until the sink's first commit.)",
+    },
+    {
+      id: "cleanup-connectors",
+      title: "Delete both connectors",
+      intro: "Removing a connector is a DELETE. The topic and its records stay; only the connector and its task stop.",
+      command:
+        "curl -s -X DELETE http://localhost:8083/connectors/file-source -w '%{http_code}\\n' && curl -s -X DELETE http://localhost:8083/connectors/file-sink -w '%{http_code}\\n' && curl -s http://localhost:8083/connectors",
+      expected: "204\n204\n[]",
+      observe:
+        "`204 No Content` on each delete, then an empty connector list. `connect-file-topic` still exists with its 4 records — deleting the connector that filled it doesn't touch the data.",
+    },
+  ],
+  troubleshooting: [
+    {
+      symptom: "`curl` to `localhost:8083` refuses the connection or times out well past a minute.",
+      cause:
+        "The Connect worker is down or still starting. It only comes up with the `extras` profile, it depends on the brokers and Schema Registry being healthy first, and it is a heavy JVM that gets OOM-killed on a 4 GB Docker limit.",
+      fix: "Raise Docker to 6 GB, then from the lab directory `docker compose --profile extras up -d kafka-connect`; poll `curl -s http://localhost:8083/` for up to a minute.",
+    },
+    {
+      symptom: "Creating a FileStream connector returns `Failed to find any class that implements Connector`.",
+      cause:
+        "The FileStream plugin jars live at `/usr/share/filestream-connectors`, which isn't on Connect's default plugin path.",
+      fix: "The Compose file already adds that directory to `CONNECT_PLUGIN_PATH`. Make sure your checkout is current and recreate the worker: `docker compose --profile extras up -d --force-recreate kafka-connect`.",
+    },
+    {
+      symptom: "A connector's status shows the task `FAILED`.",
+      cause: "A bad config — an unreadable file path, a topic that can't be created, a converter mismatch.",
+      fix: "`curl -s http://localhost:8083/connectors/<name>/status` and read the `trace` on the failed task. Fix the config and PUT it again (PUT is idempotent), or `curl -X POST .../connectors/<name>/restart`.",
+    },
+    {
+      symptom: "`/connectors/file-source/offsets` stays `{\"offsets\":[]}`.",
+      cause: "Source offsets are only written to the internal topic every `offset.flush.interval.ms` — 60 seconds by default.",
+      fix: "Wait a minute after the connector last produced, then re-run. Nothing is wrong; the position is tracked in memory until the flush.",
+    },
+  ],
+  teardown: [
+    {
+      command: 'cd "$(git rev-parse --show-toplevel)/local-cluster-lab" && docker compose --profile extras down',
+      note: "Stops and removes every container (base stack, Schema Registry, Connect) but keeps the named volumes, so the connector configs and the topic survive the next `up`.",
+    },
+    {
+      command: "docker compose --profile extras down -v",
+      note: "The destructive one, run from the same directory. `-v` also deletes the volumes — including the `_connect-configs` / `_connect-offsets` / `_connect-status` topics that hold every connector and its position.",
+    },
+  ],
+  teardownWarning:
+    "Kafka Connect keeps its entire state — every connector's config, source offsets, and status — in three internal Kafka topics (`_connect-configs`, `_connect-offsets`, `_connect-status`). `docker compose --profile extras down -v` deletes the volumes those topics live on, so it wipes every connector you've created along with all cluster data. Plain `docker compose --profile extras down` keeps them. To remove just the connectors from this lab without touching anything else, `curl -X DELETE` each one.",
+};
+
+export const labs: Lab[] = [labA, labB, labC, connectFileLab];
