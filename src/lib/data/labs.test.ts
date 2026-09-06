@@ -465,6 +465,10 @@ describe("lab data", () => {
       expect(appendObserve).toMatch(/exactly\.once\.source\.support/);
       expect(appendObserve).toMatch(/FileStream source connector .*supports exactly-once|connector itself supports exactly-once/i);
       expect(appendObserve).not.toMatch(/FileStream .*(isn't|doesn't|can't)/i);
+      // observing EOS also needs a read_committed consumer — the console default is read_uncommitted
+      expect(appendObserve).toMatch(/read_committed/);
+      expect(appendObserve).toMatch(/read_uncommitted|isolation.level/i);
+      expect(appendObserve).not.toMatch(/would deliver each line exactly once\b/);
     });
 
     it("gets the by-hand source-offset reset right: stop (async) → wait for STOPPED → DELETE offsets, before deleting the connector", () => {

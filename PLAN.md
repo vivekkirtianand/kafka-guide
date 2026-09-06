@@ -1142,6 +1142,16 @@ the Kafka 4.0 source):
 Re-verified: `typecheck` / `lint` / `build` clean; suite still 393; browser-checked the two
 reworded passages render.
 
+**Review findings addressed (round 6)** (1 finding — a further tightening of the round-5 EOS
+wording):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Round 5 said turning on `exactly.once.source.support` would make this connector "deliver each line exactly once" — but the lab's `kafka-console-consumer.sh` defaults to `isolation.level=read_uncommitted`, so it can still surface records from aborted transactions. Observing exactly-once also needs `--isolation-level read_committed`. | Lab D `append-tail` observe: enabling the worker setting makes the *write* side transactional; "seeing the effect takes one more change — the console consumer in step 6 defaults to `isolation.level=read_uncommitted` … you'd run it with `--isolation-level read_committed`". Test asserts both `read_committed` and the `read_uncommitted`/`isolation.level` caveat, and forbids the bare "would deliver each line exactly once" claim. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite still 393; browser-checked the
+reworded `append-tail` observe renders.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
