@@ -184,6 +184,10 @@ describe("course metadata", () => {
         if (/^https:\/\/kafka\.apache\.org\//.test(r.url)) {
           expect(r.url, `${m.slug}: ${r.label}`).toMatch(/^https:\/\/kafka\.apache\.org\/\d+\//);
           expect(r.url, `${m.slug}: ${r.label}`).not.toContain("/documentation/#");
+          // legacy single-page redirects: documentation.html lands on Getting Started,
+          // /documentation/streams/ bounces to /NN/streams/
+          expect(r.url, `${m.slug}: ${r.label}`).not.toMatch(/documentation\.html/);
+          expect(r.url, `${m.slug}: ${r.label}`).not.toMatch(/\/documentation\/streams\//);
         }
       }
     }
@@ -448,13 +452,16 @@ describe("Module 8 — Kafka Connect and Kafka Streams (Phase 7a: Connect conten
     expect(changelog.detail).toMatch(/materializ|from that topic/i);
   });
 
-  it("describes source-offset storage as mode-dependent and delivery as at-least-once", () => {
+  it("describes source-offset storage as mode-dependent and delivery as at-least-once by default (EOS is opt-in)", () => {
     const conn = detail("Kafka Connect: source and sink connectors");
     const owns = conn.points.find((p) => /own(s)? the offsets/i.test(p.term))!;
     // not "always an internal topic" — standalone uses a local file
     expect(owns.detail).toMatch(/local file/i);
     expect(owns.detail).toMatch(/internal topic/i);
+    // at-least-once is the DEFAULT, not universal — exactly-once source support exists
+    expect(owns.detail).toMatch(/by default/i);
     expect(owns.detail).toMatch(/at-least-once/i);
+    expect(owns.detail).toMatch(/exactly.once.source.support|exactly-once source/i);
   });
 });
 

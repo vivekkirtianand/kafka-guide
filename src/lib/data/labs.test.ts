@@ -456,8 +456,28 @@ describe("lab data", () => {
     it("doesn't overclaim source-offset storage or restart semantics", () => {
       // standalone keeps the position in a local file, not always a topic
       expect(step("source-offsets").intro).toMatch(/standalone.*local file|local file.*standalone/i);
-      // a restart can replay from the last flushed offset — at-least-once
-      expect(step("append-tail").observe).toMatch(/flush|at-least-once|re-produced|last committed/i);
+      // a restart can replay from the last flushed offset — at-least-once BY DEFAULT,
+      // and the exactly-once source option is named
+      const appendObserve = step("append-tail").observe;
+      expect(appendObserve).toMatch(/flush|at-least-once|re-produced|last committed/i);
+      expect(appendObserve).toMatch(/exactly-once source|default at-least-once/i);
+    });
+
+    it("gets the by-hand source-offset reset right: clear it before deleting the connector, or the endpoint 404s", () => {
+      const cleanup = step("cleanup-connectors").observe;
+      const both = `${cleanup} ${labD.teardownWarning}`;
+      // the /offsets endpoint is gone once the connector is deleted
+      expect(both).toMatch(/404|before you delete|while the connector still exists/i);
+      // the correct sequence stops the connector first
+      expect(both).toMatch(/\/connectors\/file-source\/stop|stopping the connector/i);
+    });
+
+    it("verify note owns its blind spot — a stale source offset in _connect-offsets is invisible to the checks", () => {
+      const note = labD.verify!.note;
+      expect(note).toMatch(/blind spot/i);
+      expect(note).toMatch(/_connect-offsets/);
+      // and points at down -v as the fix for that specific case
+      expect(note).toMatch(/down -v/);
     });
 
     it("is carried by the connect-and-streams module", () => {

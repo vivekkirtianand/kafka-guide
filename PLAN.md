@@ -1109,6 +1109,17 @@ Re-verified: `typecheck` / `lint` / `build` clean; suite 387 → 390; browser-ch
 reworded offsets/changelog/standalone points and the Lab D `source-offsets` + `append-tail`
 text render.
 
+**Review findings addressed (round 3)** (3 more findings; doc URLs checked live with `curl`):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The round-2 by-hand reset said `DELETE /connectors/file-source/offsets` *after* deleting the connector — that endpoint 404s once the connector is gone, and the `verify` check can't see a stale offset left in `_connect-offsets`, so it can falsely report a clean slate. | `cleanup-connectors` observe + `teardownWarning` now give the correct sequence — the source offset can only be cleared while the connector still exists and is stopped (`PUT /connectors/file-source/stop` → `DELETE …/offsets`), *before* step 11's delete — and say plainly that `down -v` is much simpler. `verify` note gains a **BLIND SPOT** paragraph: an orphaned `file-source` byte position in `_connect-offsets` is invisible to the checks (no connector → no `/offsets`), so a "clean" verify followed by `Processed a total of 0 messages` means that orphan — `down -v` clears it. |
+| P2 | At-least-once presented as universal for Connect source delivery — a distributed worker can be configured for exactly-once source. | `modules.ts` "Connect owns the offsets": "by default … at-least-once. A distributed worker can be switched to exactly-once source delivery (`exactly.once.source.support`), which wraps each batch and its offset write in one transaction." Lab D `append-tail` observe notes this worker runs the default at-least-once and EOS source is the opt-in alternative. |
+| P3 | `furtherReading` used legacy redirect URLs — `…/40/documentation.html` bounces to Getting Started (not Connect), `…/40/documentation/streams/` bounces to `/40/streams/`. | Repointed to the canonical section pages: `https://kafka.apache.org/40/kafka-connect/` (label "Kafka Connect") and `https://kafka.apache.org/40/streams/`, both verified as real 200 pages. `modules.test.ts` further-reading test now also rejects `documentation.html` and `/documentation/streams/`. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite 390 → 392; browser-checked the
+reworded offsets/append-tail/verify text and the two new further-reading links render.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

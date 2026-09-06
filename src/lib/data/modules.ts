@@ -1887,8 +1887,8 @@ export const modules: Module[] = [
       "You can sketch a Streams topology for a simple aggregation and name the state store it needs",
     ],
     furtherReading: [
-      { label: "Apache Kafka 4.0 — Documentation", url: "https://kafka.apache.org/40/documentation.html" },
-      { label: "Apache Kafka 4.0 — Kafka Streams", url: "https://kafka.apache.org/40/documentation/streams/" },
+      { label: "Apache Kafka 4.0 — Kafka Connect", url: "https://kafka.apache.org/40/kafka-connect/" },
+      { label: "Apache Kafka 4.0 — Kafka Streams", url: "https://kafka.apache.org/40/streams/" },
     ],
     applicableVersions: ["4.0"],
     lastReviewed: "2026-09-05",
@@ -1929,7 +1929,7 @@ export const modules: Module[] = [
           {
             term: "Connect owns the offsets",
             detail:
-              "A source connector's position in the external system (which file byte, which database row) is tracked by Connect — in an internal topic on a distributed worker, a local file in standalone. It's committed periodically, not per record, so a restart resumes from the last committed position and may re-emit a little: source delivery is at-least-once. A sink connector commits ordinary Kafka consumer offsets, just like any [[consumer|consumer]].",
+              "A source connector's position in the external system (which file byte, which database row) is tracked by Connect — in an internal topic on a distributed worker, a local file in standalone. By default it's committed periodically, not per record, so a restart resumes from the last committed position and may re-emit a little: source delivery is at-least-once. A distributed worker can be switched to exactly-once source delivery (`exactly.once.source.support`), which wraps each batch and its offset write in one transaction. A sink connector commits ordinary Kafka consumer offsets, just like any [[consumer|consumer]].",
           },
         ],
         watchOut:
