@@ -1944,7 +1944,7 @@ export const modules: Module[] = [
           {
             term: "Standalone",
             detail:
-              "One worker process, connector configs passed as .properties files, source offsets in a local file. Fine for a laptop demo or a single-machine edge collector — no fault tolerance, no REST-driven changes.",
+              "One worker process, connector configs passed as .properties files at startup, source offsets in a local file. The REST API still runs and still accepts connector changes — but a connector you add or edit at runtime is held only in memory and gone on the next restart. Fine for a laptop demo or a single-machine edge collector — no fault tolerance.",
           },
           {
             term: "Distributed",
@@ -1952,9 +1952,9 @@ export const modules: Module[] = [
               "Several worker processes sharing a group.id. Connector configs, source offsets, and connector status all live in internal Kafka topics, so any worker can pick up any task and a worker dying just moves its tasks elsewhere.",
           },
           {
-            term: "The REST API drives distributed mode",
+            term: "The REST API is how you drive Connect",
             detail:
-              "You don't restart a worker to add a connector — you PUT its config to any worker's REST endpoint (port 8083) and the cluster rebalances the work. GET the same paths for status and offsets, DELETE to remove one.",
+              "Both modes expose it on port 8083; distributed is where it matters. You PUT a connector config to any worker and the cluster rebalances the work and stores that config durably in a topic — no worker restart, and the change survives one. GET the same paths for status and offsets, DELETE to remove one.",
           },
           {
             term: "Even one worker runs distributed",
@@ -2014,7 +2014,7 @@ export const modules: Module[] = [
           {
             term: "Backed by a changelog topic",
             detail:
-              "Every state store is mirrored to a compacted Kafka topic. If the instance dies, another replays that changelog to rebuild the store before taking over — the local store is a cache, the changelog is the truth.",
+              "By default each state store is mirrored to a compacted Kafka changelog topic. If the instance dies, another replays that changelog to rebuild the store before taking over — the local store is a cache, the changelog is the truth. Two exceptions: you can disable changelogging for a store, and a store that just materializes an existing topic can rebuild straight from that topic instead.",
           },
           {
             term: "Aggregations",

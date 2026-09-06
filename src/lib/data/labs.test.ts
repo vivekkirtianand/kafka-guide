@@ -395,13 +395,47 @@ describe("lab data", () => {
       const cleanup = step("cleanup-connectors");
       expect(cleanup.command).toMatch(/-X DELETE http:\/\/localhost:8083\/connectors\/file-source/);
       expect(cleanup.expected).toMatch(/204/);
-      expect(cleanup.observe).toMatch(/records? stay|doesn't touch the data|still exists/i);
+      expect(cleanup.observe).toMatch(/records? stay|doesn't touch the data|records still exist|still exists?/i);
     });
 
     it("warns that down -v wipes the connect internal topics", () => {
       expect(labD.teardown.some((c) => /down -v/.test(c.command))).toBe(true);
       expect(labD.teardownWarning).toMatch(/_connect-configs|_connect-offsets|_connect-status/);
       expect(labD.teardownWarning).toMatch(/no undo|down -v|wipes/i);
+    });
+
+    it("verify does a clean-slate check — no connectors, no leftover topic — without masking failures", () => {
+      const cmd = labD.verify!.command;
+      expect(cmd).toMatch(/curl -sS http:\/\/localhost:8083\/connectors/);
+      // exact topic by --describe, not a grep of the topic list
+      expect(cmd).toMatch(/--describe --topic connect-file-topic/);
+      // no `|| echo` that would turn a failed check into a false all-clear
+      expect(cmd).not.toMatch(/\|\|\s*echo/);
+      const note = labD.verify!.note;
+      expect(note).toMatch(/clean slate/i);
+      expect(note).toMatch(/leftover state/i);
+      // says down -v is the reset
+      expect(note).toMatch(/down -v/);
+    });
+
+    it("is deterministically rerunnable — every place a learner meets leftover state points at down -v", () => {
+      // connector delete leaves offsets + the sink group behind: cleanup observe says so
+      expect(step("cleanup-connectors").observe).toMatch(/_connect-offsets|consumer group keeps|resume past/i);
+      expect(step("cleanup-connectors").observe).toMatch(/down -v/);
+      // the first step where that bites (source resumed past EOF) has a recovery
+      const consume = step("consume-topic");
+      expect(consume.commonError?.cause).toMatch(/_connect-offsets|resumes past|previous run/i);
+      expect(consume.commonError?.recovery).toMatch(/down -v/);
+      // teardown warning: DELETE alone is not a clean reset
+      expect(labD.teardownWarning).toMatch(/only way|only.*clean slate|not its stored offsets/i);
+    });
+
+    it("does not let the sink consumer-group check race the 60s offset flush", () => {
+      const group = step("sink-consumer-group");
+      const text = `${group.expected} ${group.observe} ${group.commonError?.symptom ?? ""} ${group.commonError?.cause ?? ""} ${group.commonError?.recovery ?? ""}`;
+      expect(text).toMatch(/offset\.flush\.interval\.ms|60[\s-]?second|a minute/i);
+      // the file being right is the real signal; the committed offset just lags
+      expect(text).toMatch(/file .*already|already complete|file being correct/i);
     });
 
     it("is carried by the connect-and-streams module", () => {

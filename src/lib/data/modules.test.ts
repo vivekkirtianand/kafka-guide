@@ -431,6 +431,22 @@ describe("Module 8 — Kafka Connect and Kafka Streams (Phase 7a: Connect conten
     expect(text).toMatch(/changelog topic/i);
     expect(stateful.watchOut).toMatch(/window|cardinality/i);
   });
+
+  it("doesn't overclaim: standalone Connect has the REST API, and not every store is changelog-backed", () => {
+    const modes = detail("Connect standalone vs. distributed mode");
+    const standalone = modes.points.find((p) => /standalone/i.test(p.term))!;
+    // standalone runs the REST API too — the distinction is durability, not the API's absence
+    expect(standalone.detail).toMatch(/REST API still runs|REST API.*accepts/i);
+    expect(standalone.detail).not.toMatch(/no REST-driven changes/i);
+
+    const changelog = detail("Stateful processing: joins, aggregations, and windows").points.find(
+      (p) => /changelog/i.test(p.term),
+    )!;
+    expect(changelog.detail).toMatch(/by default/i);
+    // names the exceptions: disable logging, or restore from a source topic
+    expect(changelog.detail).toMatch(/disable|disabl/i);
+    expect(changelog.detail).toMatch(/materializ|from that topic/i);
+  });
 });
 
 describe("Module 9 — broker and topic configuration (Phase 6d advanced-topic prefaces)", () => {

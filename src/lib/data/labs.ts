@@ -653,8 +653,9 @@ export const connectFileLab: Lab = {
     },
   ],
   verify: {
-    command: "curl -sS http://localhost:8083/connector-plugins | tr ',' '\\n' | grep -i filestream",
-    note: "Two lines: `FileStreamSourceConnector` and `FileStreamSinkConnector`. If you get nothing, the worker hasn't loaded the FileStream plugins — the Compose file adds `/usr/share/filestream-connectors` to `CONNECT_PLUGIN_PATH` for exactly this; make sure you're on an up-to-date checkout and re-run the setup `up`. `curl: (7) Failed to connect` means the worker is still starting — wait and retry.",
+    command:
+      "curl -sS http://localhost:8083/connectors && echo && curl -sS http://localhost:8083/connector-plugins | tr ',' '\\n' | grep -iE 'FileStreamS(ource|ink)Connector' && echo && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --describe --topic connect-file-topic",
+    note: "Three checks: no connectors yet, the FileStream plugins are loaded, and the lab's topic doesn't exist. CLEAN SLATE: the first line is `[]`, the middle two lines are `\"class\":\"org.apache.kafka.connect.file.FileStreamSinkConnector\"` and `...FileStreamSourceConnector\"`, and the describe fails with `Topic 'Optional[connect-file-topic]' does not exist`. LEFTOVER STATE: `/connectors` returns a name like `[\"file-source\"]`, or the describe prints a real topic — a deleted connector leaves its source offsets and its sink consumer group behind and the topic keeps its records, so a rerun resumes past the data and steps 6–11 see nothing. From the lab directory run `docker compose --profile extras down -v && docker compose --profile extras up -d kafka-connect`, wait ~60s, and re-check. PLUGINS MISSING: the middle lines are empty — the worker hasn't loaded `/usr/share/filestream-connectors`; make sure you're on an up-to-date checkout and `docker compose --profile extras up -d --force-recreate kafka-connect`. `curl: (7) Failed to connect` means the worker is still starting — wait and retry.",
   },
   steps: [
     {
@@ -739,6 +740,14 @@ export const connectFileLab: Lab = {
       expected: '"line one"\n"line two"\n"line three"\nProcessed a total of 3 messages',
       observe:
         "Each value is a JSON string — quotes included — because the lab's Connect worker uses `JsonConverter` with `schemas.enable=false`, so a bare string line serialises as `\"line one\"`. No producer code wrote these; the connector did.",
+      commonError: {
+        symptom:
+          "The connector's status is RUNNING but the consumer times out with `Processed a total of 0 messages`.",
+        cause:
+          "A previous run of this lab left `file-source`'s byte position in the `_connect-offsets` topic. Deleting a connector doesn't clear that, so a new connector with the same name resumes past the end of the file and produces nothing.",
+        recovery:
+          "From the lab directory: `docker compose --profile extras down -v && docker compose --profile extras up -d kafka-connect`, wait ~60s, then start again from the `make-source-file` step. `down -v` is the only clean reset — it wipes the three internal Connect topics along with the data topic.",
+      },
     },
     {
       id: "append-tail",
@@ -780,9 +789,15 @@ export const connectFileLab: Lab = {
       command:
         "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka-1:19092 --describe --group connect-file-sink",
       expected:
-        "GROUP              TOPIC               PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG\nconnect-file-sink  connect-file-topic  0          4               4               0",
+        "GROUP              TOPIC               PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG\nconnect-file-sink  connect-file-topic  0          4               4               0\n(CURRENT-OFFSET and LAG may still read `-` / `4` for up to a minute — see below)",
       observe:
-        "The group is named `connect-` plus the connector name. It's a normal consumer group with a normal committed offset and lag — a sink connector is a managed consumer, nothing more. (CURRENT-OFFSET may briefly show `-` until the sink's first commit.)",
+        "The group is named `connect-` plus the connector name. It's a normal consumer group with a normal committed offset and lag — a sink connector is a managed consumer, nothing more. The sink writes the file the moment it polls, but it only *commits* its consumer offset every `offset.flush.interval.ms` (60s by default). So right after the previous step CURRENT-OFFSET can be `-` and LAG can equal the record count even though `connect-sink.txt` is already complete. Re-run this command a minute later and CURRENT-OFFSET catches up to 4, LAG to 0.",
+      commonError: {
+        symptom: "CURRENT-OFFSET is `-` or LAG is `4`, not `0`, even though the sink file has all four lines.",
+        cause:
+          "The sink's first offset commit hasn't happened yet — commits run on the 60-second `offset.flush.interval.ms`, not on every write.",
+        recovery: "Wait a minute and run the `--describe` again. The file being correct already tells you the sink is working; the committed offset is just lagging the flush interval.",
+      },
     },
     {
       id: "cleanup-connectors",
@@ -792,7 +807,7 @@ export const connectFileLab: Lab = {
         "curl -s -X DELETE http://localhost:8083/connectors/file-source -w '%{http_code}\\n' && curl -s -X DELETE http://localhost:8083/connectors/file-sink -w '%{http_code}\\n' && curl -s http://localhost:8083/connectors",
       expected: "204\n204\n[]",
       observe:
-        "`204 No Content` on each delete, then an empty connector list. `connect-file-topic` still exists with its 4 records — deleting the connector that filled it doesn't touch the data.",
+        "`204 No Content` on each delete, then an empty connector list. Deleting a connector is deliberately narrow: `connect-file-topic` and its 4 records still exist, `file-source`'s byte position stays in `_connect-offsets`, and the `connect-file-sink` consumer group keeps its committed offset. That's why a second run of this lab must start from `docker compose --profile extras down -v` — otherwise the recreated connectors resume past everything and you see no records flow.",
     },
   ],
   troubleshooting: [
@@ -830,7 +845,7 @@ export const connectFileLab: Lab = {
     },
   ],
   teardownWarning:
-    "Kafka Connect keeps its entire state — every connector's config, source offsets, and status — in three internal Kafka topics (`_connect-configs`, `_connect-offsets`, `_connect-status`). `docker compose --profile extras down -v` deletes the volumes those topics live on, so it wipes every connector you've created along with all cluster data. Plain `docker compose --profile extras down` keeps them. To remove just the connectors from this lab without touching anything else, `curl -X DELETE` each one.",
+    "Kafka Connect keeps its entire state — every connector's config, source offsets, and status — in three internal Kafka topics (`_connect-configs`, `_connect-offsets`, `_connect-status`). `docker compose --profile extras down -v` deletes the volumes those topics live on, so it wipes every connector you've created along with all cluster data. Plain `docker compose --profile extras down` keeps them. `curl -X DELETE` removes a connector but not its stored offsets or its sink consumer group — so `down -v` is also the only way to get a genuinely clean slate for re-running this lab from step 1.",
 };
 
 export const labs: Lab[] = [labA, labB, labC, connectFileLab];

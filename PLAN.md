@@ -1077,6 +1077,23 @@ content. The 7a lab is **file source → topic → file sink** (`FileStreamSourc
   without the plugin-path change. (Docker on this box has only 1.9 GB, so the test ran the
   Connect JVM with a capped heap — hence Lab D's own 6 GB floor and OOM `commonError`.)
 
+**Review findings addressed (round 1)** (4 findings from a review of PR #34; round-1 changes
+are behavioural documentation, not new lab commands — the commands themselves are unchanged
+from the end-to-end verification above, and the new `verify` command composes three checks
+each already verified individually, incl. the `Topic 'Optional[...]' does not exist` string
+shared with Lab C's verified verify):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Lab D isn't deterministically rerunnable — a connector `DELETE` leaves its source offsets in `_connect-offsets`, its sink consumer group, and the topic's records behind, so recreated connectors resume past all the data and steps 6–11 see nothing. | `verify` rewritten as a clean-slate check (`/connectors` is `[]`, the FileStream plugins are present, `connect-file-topic` doesn't exist) with a CLEAN SLATE / LEFTOVER STATE / PLUGINS MISSING breakdown and `down -v` as the reset — mirrors Lab C's verified verify, no `\|\|`-masking. New `commonError` on the `consume-topic` step (RUNNING connector, 0 messages → leftover byte position → `down -v`). `cleanup-connectors` observe now spells out what survives a `DELETE` and that a rerun must start from `down -v`. `teardownWarning`: `curl -X DELETE` is not a clean reset — only `down -v` is. |
+| P2 | The `sink-consumer-group` check races the default 60s `offset.flush.interval.ms` — the sink writes the file on poll but only commits its consumer offset on the flush interval. | Step 10 `expected` now flags CURRENT-OFFSET/LAG may read `-` / stale for up to a minute; `observe` explains the file is complete on poll while the committed offset lags the flush; new `commonError` says re-run after a minute, the correct file already proves the sink works. |
+| P2 | "Standalone" claimed "no REST-driven changes" — standalone Connect does run the REST API and accept connector changes; they're just not durable across a restart. | `modules.ts` "Standalone" point reworded: the REST API runs and accepts changes, but a runtime-added connector is in-memory only and gone on restart. "The REST API drives distributed mode" → "The REST API is how you drive Connect" (both modes expose it; distributed is where a PUT is stored durably and survives a restart). |
+| P2 | "Every state store is mirrored to a compacted changelog topic" overclaims — changelogging can be disabled, and a store that materializes an existing topic can restore from it. | `modules.ts` "Backed by a changelog topic" point: "By default…" plus the two exceptions (disable changelogging; a store that materializes an existing topic rebuilds from that topic). |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite 383 → 387; browser-checked the
+`connect-and-streams` topic-explorer (both reworded Connect/Streams points) and the Lab D
+walkthrough (clean-slate verify, step-10 race note, step-11 + teardown determinism note).
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
