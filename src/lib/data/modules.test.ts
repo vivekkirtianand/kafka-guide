@@ -462,8 +462,10 @@ describe("Module 8 — Kafka Connect and Kafka Streams (Phase 7a: Connect conten
     expect(owns.detail).toMatch(/by default/i);
     expect(owns.detail).toMatch(/at-least-once/i);
     expect(owns.detail).toMatch(/exactly.once.source.support|exactly-once source/i);
-    // EOS needs BOTH the worker setting AND a connector built for it
+    // EOS needs BOTH the worker setting AND a connector that declares support — but the
+    // module must not claim a specific connector lacks it (FileStream, for one, supports it)
     expect(owns.detail).toMatch(/both|and a connector|connector that/i);
+    expect(owns.detail).not.toMatch(/FileStream (doesn't|does not|can't|isn't)/i);
   });
 });
 

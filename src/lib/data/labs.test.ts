@@ -460,9 +460,11 @@ describe("lab data", () => {
       // and the exactly-once source option is named
       const appendObserve = step("append-tail").observe;
       expect(appendObserve).toMatch(/flush|at-least-once|re-produced|last committed/i);
-      expect(appendObserve).toMatch(/exactly-once source/i);
-      // EOS needs a connector built for it, not just the worker setting — FileStream isn't
-      expect(appendObserve).toMatch(/connector built for it|FileStream connector isn't|both the worker/i);
+      // at-least-once HERE is a worker-config choice, not a FileStream limitation:
+      // FileStreamSourceConnector does support exactly-once for a real file
+      expect(appendObserve).toMatch(/exactly\.once\.source\.support/);
+      expect(appendObserve).toMatch(/FileStream source connector .*supports exactly-once|connector itself supports exactly-once/i);
+      expect(appendObserve).not.toMatch(/FileStream .*(isn't|doesn't|can't)/i);
     });
 
     it("gets the by-hand source-offset reset right: stop (async) → wait for STOPPED → DELETE offsets, before deleting the connector", () => {

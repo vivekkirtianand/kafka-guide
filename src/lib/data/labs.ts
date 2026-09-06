@@ -757,7 +757,7 @@ export const connectFileLab: Lab = {
         "docker exec kafka-lab-kafka-connect bash -c 'printf \"line four\\n\" >> /tmp/connect-source.txt' && sleep 3 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic connect-file-topic --from-beginning --max-messages 4 --timeout-ms 20000",
       expected: '"line one"\n"line two"\n"line three"\n"line four"\nProcessed a total of 4 messages',
       observe:
-        "The connector produced only the new line — it didn't re-read the first three. Connect tracks how far into the file it has read (see the next step). An append resumes from exactly that byte; a restart resumes from the last *flushed* position, so anything read but not yet flushed when the worker died is re-produced. That makes this an at-least-once pipeline. Connect *can* do exactly-once source, but it needs both the worker setting and a connector built for it — the FileStream connector isn't, so at-least-once is the only option here.",
+        "The connector produced only the new line — it didn't re-read the first three. Connect tracks how far into the file it has read (see the next step). An append resumes from exactly that byte; a restart resumes from the last *flushed* position, so anything read but not yet flushed when the worker died is re-produced. That makes this pipeline at-least-once — but only because the lab's worker leaves `exactly.once.source.support` off. The FileStream source connector itself supports exactly-once for a real file; turn the worker setting on and this same connector would deliver each line exactly once.",
     },
     {
       id: "source-offsets",

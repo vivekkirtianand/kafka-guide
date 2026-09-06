@@ -1132,6 +1132,16 @@ confirmed against the Connect developer guide):
 Re-verified: `typecheck` / `lint` / `build` clean; suite 392 → 393; browser-checked the
 glossary term and the reworded module/lab text render.
 
+**Review findings addressed (round 5)** (1 finding — a correction to round 4, checked against
+the Kafka 4.0 source):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Round 4 wrongly said FileStream can't do exactly-once. `FileStreamSourceConnector.exactlyOnceSupport()` returns `SUPPORTED` whenever `file` is set (Lab D sets it) — so Lab D is at-least-once purely because the lab's worker leaves `exactly.once.source.support` off. | `modules.ts` "Connect owns the offsets": drop the "(FileStream doesn't)" aside — "a connector that declares it can support it for the given config". Lab D `append-tail` observe: "at-least-once — but only because the lab's worker leaves `exactly.once.source.support` off. The FileStream source connector itself supports exactly-once for a real file; turn the worker setting on and this same connector would deliver each line exactly once." Both tests updated to forbid a "FileStream can't" claim. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite still 393; browser-checked the two
+reworded passages render.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
