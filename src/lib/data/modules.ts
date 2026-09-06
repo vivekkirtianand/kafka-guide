@@ -1929,7 +1929,7 @@ export const modules: Module[] = [
           {
             term: "Connect owns the offsets",
             detail:
-              "A source connector's position in the external system (which file byte, which database row) is tracked by Connect in an internal topic, so a restart resumes where it left off. A sink connector commits ordinary Kafka consumer offsets, just like any [[consumer|consumer]].",
+              "A source connector's position in the external system (which file byte, which database row) is tracked by Connect — in an internal topic on a distributed worker, a local file in standalone. It's committed periodically, not per record, so a restart resumes from the last committed position and may re-emit a little: source delivery is at-least-once. A sink connector commits ordinary Kafka consumer offsets, just like any [[consumer|consumer]].",
           },
         ],
         watchOut:

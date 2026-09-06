@@ -1094,6 +1094,21 @@ Re-verified: `typecheck` / `lint` / `build` clean; suite 383 → 387; browser-ch
 `connect-and-streams` topic-explorer (both reworded Connect/Streams points) and the Lab D
 walkthrough (clean-slate verify, step-10 race note, step-11 + teardown determinism note).
 
+**Review findings addressed (round 2)** (4 more findings from a follow-up review; still
+prose, not new lab commands — the one command change is adding `--timeout-ms 20000` to the two
+consume steps, the same bound Labs A/B/C already use):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Source-offset storage described as always an internal topic — standalone keeps it in a local file. | `modules.ts` "Connect owns the offsets": "in an internal topic on a distributed worker, a local file in standalone". Lab D `source-offsets` intro and the `{"offsets":[]}` troubleshooting entry both now say "distributed → internal topic; standalone → local file". |
+| P2 | "Restart resumes from exactly there" ignores replay from the last flushed offset. | Lab D `append-tail` observe: an append resumes from that exact byte, but a restart resumes from the last *flushed* position and re-emits anything read-but-not-flushed — a file-source pipeline is at-least-once. Same point added to the `modules.ts` offsets bullet. |
+| P2 | The `consume-topic` `commonError` says the consumer "times out", but the command had no `--timeout-ms` (it would hang). | Added `--timeout-ms 20000` to `consume-topic` and `append-tail` (matches Lab A/B/C); the `commonError` symptom now names the flag that stops it and notes that without it the consumer just hangs. |
+| P3 | `down -v` called "the only" clean reset — a by-hand reset (drop topic + delete sink group + `DELETE /connectors/file-source/offsets`) also works. | `consume-topic` recovery, `cleanup-connectors` observe, and `teardownWarning` now frame `down -v` as the *simplest* reset and spell out the by-hand alternative. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite 387 → 390; browser-checked the
+reworded offsets/changelog/standalone points and the Lab D `source-offsets` + `append-tail`
+text render.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

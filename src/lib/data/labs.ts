@@ -736,17 +736,17 @@ export const connectFileLab: Lab = {
       title: "Read the topic the connector is writing",
       intro: "The connector has produced one record per line. Consume the topic to see them.",
       command:
-        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic connect-file-topic --from-beginning --max-messages 3",
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic connect-file-topic --from-beginning --max-messages 3 --timeout-ms 20000",
       expected: '"line one"\n"line two"\n"line three"\nProcessed a total of 3 messages',
       observe:
         "Each value is a JSON string — quotes included — because the lab's Connect worker uses `JsonConverter` with `schemas.enable=false`, so a bare string line serialises as `\"line one\"`. No producer code wrote these; the connector did.",
       commonError: {
         symptom:
-          "The connector's status is RUNNING but the consumer times out with `Processed a total of 0 messages`.",
+          "The connector's status is RUNNING but the consumer ends after 20s with `Processed a total of 0 messages` (`--timeout-ms 20000` is what stops it — without that flag it would just hang).",
         cause:
           "A previous run of this lab left `file-source`'s byte position in the `_connect-offsets` topic. Deleting a connector doesn't clear that, so a new connector with the same name resumes past the end of the file and produces nothing.",
         recovery:
-          "From the lab directory: `docker compose --profile extras down -v && docker compose --profile extras up -d kafka-connect`, wait ~60s, then start again from the `make-source-file` step. `down -v` is the only clean reset — it wipes the three internal Connect topics along with the data topic.",
+          "From the lab directory: `docker compose --profile extras down -v && docker compose --profile extras up -d kafka-connect`, wait ~60s, then start again from the `make-source-file` step. `down -v` is the simplest clean reset — it wipes the three internal Connect topics along with the data topic in one step.",
       },
     },
     {
@@ -754,16 +754,16 @@ export const connectFileLab: Lab = {
       title: "Append a line and watch the connector pick it up",
       intro: "The file source connector tails the file — it keeps reading as the file grows.",
       command:
-        "docker exec kafka-lab-kafka-connect bash -c 'printf \"line four\\n\" >> /tmp/connect-source.txt' && sleep 3 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic connect-file-topic --from-beginning --max-messages 4",
+        "docker exec kafka-lab-kafka-connect bash -c 'printf \"line four\\n\" >> /tmp/connect-source.txt' && sleep 3 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic connect-file-topic --from-beginning --max-messages 4 --timeout-ms 20000",
       expected: '"line one"\n"line two"\n"line three"\n"line four"\nProcessed a total of 4 messages',
       observe:
-        "The connector produced only the new line — it didn't re-read the first three. Connect tracks how far into the file it has read (see the next step) so a restart or an append resumes from exactly there.",
+        "The connector produced only the new line — it didn't re-read the first three. Connect tracks how far into the file it has read (see the next step). An append resumes from exactly that byte; a restart resumes from the last *flushed* position, so anything read but not yet flushed when the worker died is re-produced — a file-source pipeline is at-least-once, not exactly-once.",
     },
     {
       id: "source-offsets",
       title: "Look at where the source connector thinks it is",
       intro:
-        "Connect stores a source connector's position — here, a byte offset into the file — in an internal topic, and exposes it through the REST API.",
+        "Connect stores a source connector's position — here, a byte offset into the file. This worker is distributed, so that position lives in an internal Kafka topic (a standalone worker would keep it in a local file instead); either way the REST API reads it back.",
       command: "curl -s http://localhost:8083/connectors/file-source/offsets",
       expected:
         '{"offsets":[{"partition":{"filename":"/tmp/connect-source.txt"},"offset":{"position":39}}]}',
@@ -807,7 +807,7 @@ export const connectFileLab: Lab = {
         "curl -s -X DELETE http://localhost:8083/connectors/file-source -w '%{http_code}\\n' && curl -s -X DELETE http://localhost:8083/connectors/file-sink -w '%{http_code}\\n' && curl -s http://localhost:8083/connectors",
       expected: "204\n204\n[]",
       observe:
-        "`204 No Content` on each delete, then an empty connector list. Deleting a connector is deliberately narrow: `connect-file-topic` and its 4 records still exist, `file-source`'s byte position stays in `_connect-offsets`, and the `connect-file-sink` consumer group keeps its committed offset. That's why a second run of this lab must start from `docker compose --profile extras down -v` — otherwise the recreated connectors resume past everything and you see no records flow.",
+        "`204 No Content` on each delete, then an empty connector list. Deleting a connector is deliberately narrow: `connect-file-topic` and its 4 records still exist, `file-source`'s byte position stays in `_connect-offsets`, and the `connect-file-sink` consumer group keeps its committed offset. So a second run of this lab needs a real reset — simplest is `docker compose --profile extras down -v`; the by-hand alternative is to drop the topic, delete the `connect-file-sink` group, and reset the source offsets (`DELETE /connectors/file-source/offsets`, connector stopped). Skip the reset and the recreated connectors resume past everything and you see no records flow.",
     },
   ],
   troubleshooting: [
@@ -830,7 +830,7 @@ export const connectFileLab: Lab = {
     },
     {
       symptom: "`/connectors/file-source/offsets` stays `{\"offsets\":[]}`.",
-      cause: "Source offsets are only written to the internal topic every `offset.flush.interval.ms` — 60 seconds by default.",
+      cause: "Source offsets are only committed — to the internal offsets topic on this distributed worker — every `offset.flush.interval.ms`, 60 seconds by default.",
       fix: "Wait a minute after the connector last produced, then re-run. Nothing is wrong; the position is tracked in memory until the flush.",
     },
   ],
@@ -845,7 +845,7 @@ export const connectFileLab: Lab = {
     },
   ],
   teardownWarning:
-    "Kafka Connect keeps its entire state — every connector's config, source offsets, and status — in three internal Kafka topics (`_connect-configs`, `_connect-offsets`, `_connect-status`). `docker compose --profile extras down -v` deletes the volumes those topics live on, so it wipes every connector you've created along with all cluster data. Plain `docker compose --profile extras down` keeps them. `curl -X DELETE` removes a connector but not its stored offsets or its sink consumer group — so `down -v` is also the only way to get a genuinely clean slate for re-running this lab from step 1.",
+    "A distributed Kafka Connect worker keeps its entire state — every connector's config, source offsets, and status — in three internal Kafka topics (`_connect-configs`, `_connect-offsets`, `_connect-status`). `docker compose --profile extras down -v` deletes the volumes those topics live on, so it wipes every connector you've created along with all cluster data. Plain `docker compose --profile extras down` keeps them. `curl -X DELETE` removes a connector but not its stored offsets or its sink consumer group — so for a clean re-run of this lab, `down -v` is the simplest option (the alternative is to clear the topic, the `connect-file-sink` group, and the source offsets by hand).",
 };
 
 export const labs: Lab[] = [labA, labB, labC, connectFileLab];

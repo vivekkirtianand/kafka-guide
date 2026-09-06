@@ -447,6 +447,15 @@ describe("Module 8 — Kafka Connect and Kafka Streams (Phase 7a: Connect conten
     expect(changelog.detail).toMatch(/disable|disabl/i);
     expect(changelog.detail).toMatch(/materializ|from that topic/i);
   });
+
+  it("describes source-offset storage as mode-dependent and delivery as at-least-once", () => {
+    const conn = detail("Kafka Connect: source and sink connectors");
+    const owns = conn.points.find((p) => /own(s)? the offsets/i.test(p.term))!;
+    // not "always an internal topic" — standalone uses a local file
+    expect(owns.detail).toMatch(/local file/i);
+    expect(owns.detail).toMatch(/internal topic/i);
+    expect(owns.detail).toMatch(/at-least-once/i);
+  });
 });
 
 describe("Module 9 — broker and topic configuration (Phase 6d advanced-topic prefaces)", () => {

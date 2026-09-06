@@ -418,16 +418,20 @@ describe("lab data", () => {
       expect(note).toMatch(/down -v/);
     });
 
-    it("is deterministically rerunnable — every place a learner meets leftover state points at down -v", () => {
+    it("is deterministically rerunnable — leftover state is named, and down -v is the simplest reset (not the only one)", () => {
       // connector delete leaves offsets + the sink group behind: cleanup observe says so
-      expect(step("cleanup-connectors").observe).toMatch(/_connect-offsets|consumer group keeps|resume past/i);
-      expect(step("cleanup-connectors").observe).toMatch(/down -v/);
+      const cleanup = step("cleanup-connectors").observe;
+      expect(cleanup).toMatch(/_connect-offsets|consumer group keeps|resume past/i);
+      expect(cleanup).toMatch(/down -v/);
       // the first step where that bites (source resumed past EOF) has a recovery
       const consume = step("consume-topic");
       expect(consume.commonError?.cause).toMatch(/_connect-offsets|resumes past|previous run/i);
       expect(consume.commonError?.recovery).toMatch(/down -v/);
-      // teardown warning: DELETE alone is not a clean reset
-      expect(labD.teardownWarning).toMatch(/only way|only.*clean slate|not its stored offsets/i);
+      // down -v is framed as simplest, and a by-hand reset is offered — not "the only way"
+      for (const s of [cleanup, labD.teardownWarning, consume.commonError!.recovery]) {
+        expect(s).not.toMatch(/only (way|clean reset|option)/i);
+      }
+      expect(`${cleanup} ${labD.teardownWarning}`).toMatch(/by hand|by-hand|alternative|DELETE \/connectors\/file-source\/offsets/i);
     });
 
     it("does not let the sink consumer-group check race the 60s offset flush", () => {
@@ -436,6 +440,24 @@ describe("lab data", () => {
       expect(text).toMatch(/offset\.flush\.interval\.ms|60[\s-]?second|a minute/i);
       // the file being right is the real signal; the committed offset just lags
       expect(text).toMatch(/file .*already|already complete|file being correct/i);
+    });
+
+    it("bounds both consume steps with --timeout-ms so the 'no records' symptom is real, not an infinite hang", () => {
+      for (const id of ["consume-topic", "append-tail"]) {
+        const cmd = step(id).command;
+        const m = cmd.match(/--timeout-ms (\d+)/);
+        expect(m, id).not.toBeNull();
+        expect(Number(m![1]), id).toBeGreaterThanOrEqual(20000);
+      }
+      // the leftover-state symptom now cites the flag that produces it
+      expect(step("consume-topic").commonError?.symptom).toMatch(/--timeout-ms|20s|would (just )?hang/i);
+    });
+
+    it("doesn't overclaim source-offset storage or restart semantics", () => {
+      // standalone keeps the position in a local file, not always a topic
+      expect(step("source-offsets").intro).toMatch(/standalone.*local file|local file.*standalone/i);
+      // a restart can replay from the last flushed offset — at-least-once
+      expect(step("append-tail").observe).toMatch(/flush|at-least-once|re-produced|last committed/i);
     });
 
     it("is carried by the connect-and-streams module", () => {
