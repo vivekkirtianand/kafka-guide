@@ -303,7 +303,7 @@ export const glossary: GlossaryTerm[] = [
     slug: "kafka-connect",
     term: "Kafka Connect",
     definition:
-      "A worker service that runs pre-built connector plugins to move data between Kafka and other systems — a source connector pulls data in, a sink connector pushes it out. Configured through a REST API, not written; tracks its own position in internal topics.",
+      "A worker service that runs pre-built connector plugins to move data between Kafka and other systems — a source connector pulls data in, a sink connector pushes it out. Configured through a REST API, not written; tracks each connector's position itself (in internal Kafka topics on a distributed worker, a local file in standalone).",
     seeAlso: ["connector", "kafka-streams"],
     modules: ["connect-and-streams"],
   },

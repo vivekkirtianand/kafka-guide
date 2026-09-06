@@ -460,16 +460,21 @@ describe("lab data", () => {
       // and the exactly-once source option is named
       const appendObserve = step("append-tail").observe;
       expect(appendObserve).toMatch(/flush|at-least-once|re-produced|last committed/i);
-      expect(appendObserve).toMatch(/exactly-once source|default at-least-once/i);
+      expect(appendObserve).toMatch(/exactly-once source/i);
+      // EOS needs a connector built for it, not just the worker setting — FileStream isn't
+      expect(appendObserve).toMatch(/connector built for it|FileStream connector isn't|both the worker/i);
     });
 
-    it("gets the by-hand source-offset reset right: clear it before deleting the connector, or the endpoint 404s", () => {
+    it("gets the by-hand source-offset reset right: stop (async) → wait for STOPPED → DELETE offsets, before deleting the connector", () => {
       const cleanup = step("cleanup-connectors").observe;
       const both = `${cleanup} ${labD.teardownWarning}`;
       // the /offsets endpoint is gone once the connector is deleted
       expect(both).toMatch(/404|before you delete|while the connector still exists/i);
       // the correct sequence stops the connector first
       expect(both).toMatch(/\/connectors\/file-source\/stop|stopping the connector/i);
+      // the stop is asynchronous — must wait for STOPPED before DELETE offsets
+      expect(cleanup).toMatch(/asynchronous|poll .*status|until .*STOPPED/i);
+      expect(both).toMatch(/STOPPED/);
     });
 
     it("verify note owns its blind spot — a stale source offset in _connect-offsets is invisible to the checks", () => {

@@ -1120,6 +1120,18 @@ text render.
 Re-verified: `typecheck` / `lint` / `build` clean; suite 390 → 392; browser-checked the
 reworded offsets/append-tail/verify text and the two new further-reading links render.
 
+**Review findings addressed (round 4)** (3 more findings, all P2; EOS-needs-connector-support
+confirmed against the Connect developer guide):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | `PUT /connectors/…/stop` is asynchronous — must wait for the connector to reach `STOPPED` before `DELETE …/offsets`. | `cleanup-connectors` observe + `teardownWarning`: `PUT …/stop`, then poll `GET …/status` until the connector state is `STOPPED` (the stop is asynchronous), *then* `DELETE …/offsets`. |
+| P2 | Exactly-once source delivery needs connector support too, not just the worker setting. | `modules.ts` "Connect owns the offsets": EOS "needs both sides — `exactly.once.source.support` enabled on a distributed worker *and* a connector that implements the transaction hooks (FileStream doesn't)". Lab D `append-tail` observe: "it needs both the worker setting and a connector built for it — the FileStream connector isn't, so at-least-once is the only option here". |
+| P2 | The Kafka Connect glossary term still said offsets always live in internal topics. | `glossary.ts` `kafka-connect`: "tracks each connector's position itself (in internal Kafka topics on a distributed worker, a local file in standalone)". New `glossary.test.ts` guard. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite 392 → 393; browser-checked the
+glossary term and the reworded module/lab text render.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
