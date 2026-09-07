@@ -397,6 +397,8 @@ export const configs: ConfigEntry[] = [
     goal: "Rebalance behavior",
     controls: "Which consumer group protocol the client uses: classic (client-side assignment) or consumer (broker-side assignment). The consumer protocol was early access in Kafka 3.7–3.9 and became production-ready in 4.0.",
     defaultValue: "classic",
+    // KIP-848: early access from 3.7, production-ready in 4.0. 3.7 predates every selectable
+    // version, so the entry shows on all of them — flagged early access below 4.0.
     availableFromVersion: "3.7",
     earlyAccessUntilVersion: "4.0",
     changeMechanism: "recreate-client",

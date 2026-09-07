@@ -51,7 +51,7 @@ unless noted.
 | 5 | Schemas & serialization ✅ | **5a ✅** "Schemas and data contracts" module (new, `index: 4`) — Topic-explorer content: bytes/serializers, JSON/Avro/Protobuf, Schema Registry, subjects & naming, compatibility modes, safe evolution, deserialization poison records; reference config modules renumbered 4–8 → 5–9; **5b ✅** Lab C — evolve a JSON Schema on the Lab B stack's Schema Registry while a consumer runs; compatible change flows through, incompatible one gets a 409, same change registers once the subject is FORWARD | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
-| 8 | Version & deployment awareness | 8a add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, mark archived releases, bump lab image; 8b `applicableVersions` on lessons/configs/runbooks + selected version affects content + "Reviewed against Kafka X on DATE"; 8c rename "version + deployment aware" → "configuration context", "Every setting" → "Curated configurations" (do first, cheap) | 1a | M3 |
+| 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ⭕** `applicableVersions` on lessons/configs/runbooks + selected version affects content + "Reviewed against Kafka X on DATE" | 1a | M3 |
 | 9 | Expand config explorer | 9a ~15 beginner client configs (`bootstrap.servers`, serializers/deserializers, `compression.type`, fetch tuning, …); 9b add `ConfigEntry` fields — example config, safe baseline, verification, rollback, version applicability, managed caveat, official doc link — and backfill | 8b | M3 |
 | 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; 10c capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
@@ -1261,6 +1261,77 @@ and the `--max-messages 16` re-read both confirmed against a real broker.
 | P3 | The root `README.md` still described the Streams app / Lab E as folding the `orders` topic. | Both mentions updated: Lab E "folds a dedicated `lab-e-orders` topic", and the `examples/` description says "an order-events topic — `lab-e-orders` in Lab E". |
 
 Re-verified: `typecheck` / `lint` / `test` (still 412) / `build` clean.
+
+## Phase 8 — version & deployment awareness
+
+Makes the version selector tell the truth about the Kafka release landscape, and reconciles
+the guide's content with it. Three PRs; 8c (cheap renames) folded into 8a.
+
+**AskUserQuestion decisions:** the lab Docker image **stays at `apache/kafka:4.0.2`** — it is
+the latest 4.0.x patch, clears CVE-2026-35554, and matches the 4.0-reviewed content; bumping
+it would mean re-verifying all five labs against a fresh broker for no learner-visible gain.
+PR split is **8a plumbing, then 8b content**.
+
+| PR | Scope | Status |
+|---|---|---|
+| 8a | Expand `KAFKA_VERSIONS` (add 4.1/4.2/4.3, drop long-EOL 3.5/3.7, keep 3.9 as the last 3.x / ZooKeeper reference); `KAFKA_VERSION_INFO` lifecycle table + `versionIsArchived` / `SUPPORTED_KAFKA_VERSIONS`; version picker shows "· archived" and an EOL note; `availableDeployments` gates ZooKeeper by `versionAtLeast(v, "4.0")` not `=== "4.0"`; `getDefaultValue` walks back to the nearest older per-version key; default selected version → `4.3`; 8c renames ("version + deployment aware" → "configuration context", "Every setting" → "Curated configurations") | ✅ Done |
+| 8b | Populate `applicableVersions` across modules/configs/runbooks; selected version annotates content; "Reviewed against Kafka X · DATE" made coherent with the selector | ⭕ Planned |
+
+### PR 8a — version model + lifecycle + renames
+
+- **`src/lib/types.ts`**
+  - `KAFKA_VERSIONS` → `["4.3", "4.2", "4.1", "4.0", "3.9"]` (newest-first). Dropped 3.7 and
+    3.5 — both 2+ years past EOL and only noise on the selector. 3.9 kept: the last 3.x line,
+    the only one with ZooKeeper mode, and the "before KIP-848 GA" case.
+  - `KAFKA_VERSION_INFO: Record<KafkaVersion, { released; latestPatch; support; note? }>` —
+    `support` is `"current"` (Apache still ships bugfix releases: 4.1–4.3) or `"archived"`
+    (4.0, 3.9). Dates (x.y.0 release, from the kafka.apache.org downloads page) and latest
+    patch, Sept 2026: 4.3.0 2026-05-22 / 4.3.1, 4.2.0 2026-02-17 / 4.2.1, 4.1.0 2025-09-02 /
+    4.1.2, 4.0.0 2025-03-18 / 4.0.2, 3.9.0 2024-11-06 / 3.9.2.
+  - New `KafkaRelease = \`${number}.${number}\`` — an "x.y" line **not** constrained to
+    `KAFKA_VERSIONS`. `versionAtLeast` compares two `KafkaRelease`s **numerically**
+    (`releaseRank` = major·1000 + minor), never by position in `KAFKA_VERSIONS`. So a
+    threshold in content data can name a line the picker no longer shows.
+    `ConfigEntry.availableFromVersion` / `earlyAccessUntilVersion` / `defaultValueByVersion`
+    keys are now `KafkaRelease` — `group.protocol.availableFromVersion` stays its true `"3.7"`.
+  - `versionIsArchived(v)`, `SUPPORTED_KAFKA_VERSIONS` (the `"current"` lines).
+  - `availableDeployments` now `versionAtLeast(version, "4.0")` → `["kraft", "managed"]` (was
+    `version === "4.0"`, which would have offered ZooKeeper on the new 4.1–4.3).
+  - `getDefaultValue` picks the value at the newest `defaultValueByVersion` key the selected
+    version has reached (numeric), so `{ "4.0": "5" }` on `linger.ms` resolves to `5` on
+    4.0–4.3 and falls through to `0` on 3.9 — independent of `KAFKA_VERSIONS` membership.
+- **`src/lib/context/ClusterContext.tsx`** — default `version` `"4.0"` → `"4.3"` (newest
+  supported line; nothing a beginner touches differs from 4.0). 8b reconciles the per-module
+  "Reviewed against Kafka 4.0" lines with the selector.
+- **`src/components/TopBar.tsx`** — version `<option>`s show `· archived`; when an archived
+  version is selected, a wrap-friendly note line ("Kafka X is end of life — latest patch …,
+  no further releases. Apache supports 4.3, 4.2, 4.1.").
+- **`src/components/ConfigExplorer.tsx`** — an archived-version banner above the managed
+  banner ("defaults below are for that line; Apache still ships fixes for …").
+- **`src/app/page.tsx`** — Configuration explorer card: badge "version + deployment aware" →
+  "configuration context"; description "Every setting filterable by …" → "Curated
+  configurations, each filterable by …".
+- **Tests** — new `src/lib/types.test.ts` (version list + info table shape, archived flags,
+  ZooKeeper gating by version, `versionAtLeast` numeric compare incl. dropped lines,
+  `getDefaultValue` incl. a boundary the picker no longer offers). `configs.test.ts` version
+  cases updated (3.9 / 4.0 / 4.3; `group.protocol` records its true `3.7` introduction).
+  Suite 412 → 421.
+
+Verified: `typecheck` / `lint` / `test` (421) / `build` clean; browser — default 4.3 opens
+with no EOL banners; selecting 4.0 or 3.9 shows the archived note in the top bar and the
+Config Explorer banner; 3.9 re-enables the ZooKeeper deployment option; `linger.ms` default
+reads `5` on 4.3 and `0` on 3.9; `group.protocol` flags early access on 3.9 only; home card
+reads "configuration context". Mobile viewport — the top-bar note wraps below the selects.
+
+**Review findings addressed (round 1)** (3 findings on PR #36):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The 4.1 `KAFKA_VERSION_INFO` note said 4.1.0 cleared CVE-2026-35554 — 4.1.0 and 4.1.1 are both affected; 4.1.2 fixes the line and 4.2.0 is the first clean `.0`. | 4.1 note rewritten ("4.1.0 and 4.1.1 carry CVE-2026-35554 — 4.1 users need 4.1.2, the patch shown here"); a CVE note added to 4.2 ("first .0 release clear of …"). |
+| P2 | Version comparison used `KAFKA_VERSIONS.indexOf`, so every threshold had to be a currently-selectable version — dropping 3.7 had forced `group.protocol.availableFromVersion` off its true value. | New `KafkaRelease` type (any "x.y", not the selectable union); `versionAtLeast` and `getDefaultValue` compare numerically via `releaseRank`; `ConfigEntry` version fields retyped to `KafkaRelease`; `group.protocol.availableFromVersion` restored to `"3.7"`. `KAFKA_VERSIONS` is now *only* the picker list. |
+| P3 | `KAFKA_VERSION_INFO["4.1"].released` was `2025-09-04` (the blog date); the field is documented as the x.y.0 release date, which the downloads page gives as 2025-09-02. | `4.1` → `2025-09-02`. Other dates re-checked against the downloads page (4.3.0 2026-05-22, 4.2.0 2026-02-17, 4.0.0 2025-03-18, 3.9.0 2024-11-06) — all already correct. |
+
+Re-verified: `typecheck` / `lint` / `test` (421) / `build` clean; browser re-checked `linger.ms` (5 on 4.3, 0 on 3.9) and `group.protocol` early access on 3.9 through the new numeric path.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:

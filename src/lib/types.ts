@@ -1,11 +1,90 @@
 export type DeploymentType = "kraft" | "zookeeper" | "managed";
 
-export const KAFKA_VERSIONS = ["4.0", "3.9", "3.7", "3.5"] as const;
+// Newest first. Apache actively supports the three most recent minor lines (4.1–4.3);
+// 4.0 and 3.9 are kept as selectable reference points — 4.0 is what the course content and
+// labs are written against, and 3.9 is the last 3.x line (the "before KRaft-only" case).
+export const KAFKA_VERSIONS = ["4.3", "4.2", "4.1", "4.0", "3.9"] as const;
 export type KafkaVersion = (typeof KAFKA_VERSIONS)[number];
 
-// Kafka 4.0 removed ZooKeeper mode (KIP-833) — only KRaft and managed services remain valid.
+// An "x.y" Kafka release line. NOT constrained to KAFKA_VERSIONS: content data records real
+// release boundaries (the version a config was introduced, a version a default changed at),
+// and those can be lines the picker no longer offers. Every KafkaVersion is a KafkaRelease.
+// Compared numerically by `versionAtLeast` — never by position in KAFKA_VERSIONS.
+export type KafkaRelease = `${number}.${number}`;
+
+// Sortable integer for an "x.y" line: 4.0 → 4000, 4.1 → 4001, 3.9 → 3009. Minor stays well
+// under 1000, so this orders correctly and is not lexicographic (4.10 > 4.9).
+function releaseRank(release: KafkaRelease): number {
+  const [major, minor] = release.split(".").map(Number);
+  return major * 1000 + minor;
+}
+
+// True when `version` is the same release line as `min` or a newer one. Both are compared as
+// numbers, so `min` may be any historical boundary — it does not need to be selectable.
+export function versionAtLeast(version: KafkaRelease, min: KafkaRelease): boolean {
+  return releaseRank(version) >= releaseRank(min);
+}
+
+// "current" = Apache still ships bugfix releases for this line; "archived" = end of life,
+// no further patches (Apache supports only the three most recent minor lines).
+export type VersionSupport = "current" | "archived";
+
+export interface KafkaVersionInfo {
+  // Date of the x.y.0 release.
+  released: string;
+  // Newest patch in the line.
+  latestPatch: string;
+  support: VersionSupport;
+  // One line of context — why it is archived, or what is notable about the line.
+  note?: string;
+}
+
+export const KAFKA_VERSION_INFO: Record<KafkaVersion, KafkaVersionInfo> = {
+  "4.3": {
+    released: "2026-05-22",
+    latestPatch: "4.3.1",
+    support: "current",
+    note: "Latest release line.",
+  },
+  "4.2": {
+    released: "2026-02-17",
+    latestPatch: "4.2.1",
+    support: "current",
+    note: "First .0 release clear of CVE-2026-35554 (the producer buffer-pool race).",
+  },
+  "4.1": {
+    released: "2025-09-02",
+    latestPatch: "4.1.2",
+    support: "current",
+    note: "4.1.0 and 4.1.1 carry CVE-2026-35554 (producer buffer-pool race) — 4.1 users need 4.1.2, the patch shown here.",
+  },
+  "4.0": {
+    released: "2025-03-18",
+    latestPatch: "4.0.2",
+    support: "archived",
+    note: "First ZooKeeper-free release (KIP-833). No longer receives bugfix releases. The course content and every lab are written and verified against 4.0.2 — run 4.0.0 or 4.0.1 and you are exposed to CVE-2026-35554.",
+  },
+  "3.9": {
+    released: "2024-11-06",
+    latestPatch: "3.9.2",
+    support: "archived",
+    note: "Final Kafka 3.x line and the last that supports ZooKeeper mode. Archived by Apache in 2026 — stay on it only while a KRaft migration is still pending.",
+  },
+};
+
+export function versionIsArchived(version: KafkaVersion): boolean {
+  return KAFKA_VERSION_INFO[version].support === "archived";
+}
+
+// The lines Apache still ships bugfix releases for, newest first.
+export const SUPPORTED_KAFKA_VERSIONS = KAFKA_VERSIONS.filter(
+  (v) => KAFKA_VERSION_INFO[v].support === "current",
+);
+
+// ZooKeeper mode was removed in Kafka 4.0 (KIP-833) — from 4.0 on, only KRaft and managed
+// services remain valid.
 export function availableDeployments(version: KafkaVersion): DeploymentType[] {
-  if (version === "4.0") return ["kraft", "managed"];
+  if (versionAtLeast(version, "4.0")) return ["kraft", "managed"];
   return ["kraft", "zookeeper", "managed"];
 }
 
@@ -227,15 +306,19 @@ export interface ConfigEntry {
   goal: string;
   controls: string;
   defaultValue: string;
-  // Only set when the default differs for that version; falls back to defaultValue otherwise.
-  defaultValueByVersion?: Partial<Record<KafkaVersion, string>>;
-  // Set when the config did not exist before a given release — the entry is hidden in the
-  // Config Explorer for older selected versions.
-  availableFromVersion?: KafkaVersion;
+  // Keyed at the release where the default CHANGED to that value; it holds for every newer
+  // release. `getDefaultValue` picks the newest key the selected version has reached and
+  // falls through to `defaultValue` below every key. Keys are real release boundaries and
+  // need not be selectable versions (e.g. "3.6").
+  defaultValueByVersion?: Partial<Record<KafkaRelease, string>>;
+  // The release the config was introduced in — its true historical boundary, not clamped to
+  // the selectable list. The entry is hidden in the Config Explorer for older selected
+  // versions.
+  availableFromVersion?: KafkaRelease;
   // Set when the config existed but only as an early-access/preview feature before a given
   // release — the Config Explorer flags it as early access for versions below this one
   // (and at or above availableFromVersion).
-  earlyAccessUntilVersion?: KafkaVersion;
+  earlyAccessUntilVersion?: KafkaRelease;
   changeMechanism: ChangeMechanism;
   riskOfChange: RiskLevel;
   managedAvailability: "full" | "limited" | "unavailable";
@@ -247,12 +330,19 @@ export interface ConfigEntry {
 }
 
 export function getDefaultValue(entry: ConfigEntry, version: KafkaVersion): string {
-  return entry.defaultValueByVersion?.[version] ?? entry.defaultValue;
-}
-
-// KAFKA_VERSIONS is ordered newest-first, so a lower index means a newer release.
-export function versionAtLeast(version: KafkaVersion, min: KafkaVersion): boolean {
-  return KAFKA_VERSIONS.indexOf(version) <= KAFKA_VERSIONS.indexOf(min);
+  const byVersion = entry.defaultValueByVersion;
+  if (!byVersion) return entry.defaultValue;
+  // Take the value keyed at the newest boundary the selected version has reached. Keys are
+  // compared numerically, so a boundary older than any selectable version still resolves.
+  let value = entry.defaultValue;
+  let rank = -1;
+  for (const [release, v] of Object.entries(byVersion) as [KafkaRelease, string][]) {
+    if (versionAtLeast(version, release) && releaseRank(release) > rank) {
+      value = v;
+      rank = releaseRank(release);
+    }
+  }
+  return value;
 }
 
 export function configAvailable(entry: ConfigEntry, version: KafkaVersion): boolean {

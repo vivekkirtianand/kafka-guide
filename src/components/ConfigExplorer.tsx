@@ -8,9 +8,11 @@ import {
   DeploymentType,
   KafkaVersion,
   RiskLevel,
+  SUPPORTED_KAFKA_VERSIONS,
   configAvailable,
   configIsEarlyAccess,
   getDefaultValue,
+  versionIsArchived,
 } from "@/lib/types";
 import { useCluster } from "@/lib/context/ClusterContext";
 import Badge from "./Badge";
@@ -82,6 +84,13 @@ export default function ConfigExplorer() {
           {filtered.length} of {configs.filter((c) => configAvailable(c, version)).length}
         </span>
       </div>
+
+      {versionIsArchived(version) && (
+        <div className="mb-4 rounded-md border border-border bg-bg-elevated px-3 py-2 font-mono text-[11px] text-text-faint">
+          Kafka {version} is end of life — defaults below are for that line. Apache still ships fixes for{" "}
+          {SUPPORTED_KAFKA_VERSIONS.join(", ")}.
+        </div>
+      )}
 
       {deployment === "managed" && (
         <div className="mb-4 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 font-mono text-[11px] text-accent">
