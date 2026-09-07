@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { modules, getModule } from "./modules";
+import { KAFKA_VERSIONS } from "@/lib/types";
 
 describe("module data", () => {
   it("has unique slugs and 0-based sequential indexes (Module 0 is 'Why Kafka?')", () => {
@@ -162,6 +163,19 @@ describe("course metadata", () => {
   it("every module lists at least three learning objectives", () => {
     for (const m of modules) {
       expect(m.objectives?.length ?? 0, m.slug).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("every module is marked accurate for the Kafka 4.x line (authored against 4.0)", () => {
+    for (const m of modules) {
+      expect(m.applicableVersions, m.slug).toBeDefined();
+      expect(m.applicableVersions!.length, m.slug).toBeGreaterThan(0);
+      for (const v of m.applicableVersions!) {
+        expect(KAFKA_VERSIONS, `${m.slug}: ${v}`).toContain(v);
+      }
+      expect(m.applicableVersions, m.slug).toContain("4.0");
+      expect(m.applicableVersions, m.slug).not.toContain("3.9");
+      expect(m.lastReviewed, m.slug).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
   });
 

@@ -27,7 +27,7 @@ export const modules: Module[] = [
       { label: "Apache Kafka 4.0 — Introduction", url: "https://kafka.apache.org/40/getting-started/introduction/" },
       { label: "Apache Kafka 4.0 — Use cases", url: "https://kafka.apache.org/40/getting-started/uses/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-01",
     topics: [
       "What an event is",
@@ -493,7 +493,7 @@ export const modules: Module[] = [
       { label: "Apache Kafka 4.0 — Introduction", url: "https://kafka.apache.org/40/getting-started/introduction/" },
       { label: "Apache Kafka 4.0 — Design", url: "https://kafka.apache.org/40/design/design/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-04",
     topics: [
       "Kafka's append-only log",
@@ -622,7 +622,7 @@ export const modules: Module[] = [
       { label: "Apache Kafka 4.0 — Quickstart", url: "https://kafka.apache.org/40/getting-started/quickstart/" },
       { label: "Apache Kafka 4.0 — Operations", url: "https://kafka.apache.org/40/operations/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-01",
     labs: [labA, labB],
     topics: [
@@ -837,7 +837,7 @@ export const modules: Module[] = [
         url: "https://kafka.apache.org/40/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html",
       },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-02",
     walkthrough: producerConsumerWalkthrough,
     topics: [
@@ -886,7 +886,7 @@ export const modules: Module[] = [
       { label: "Apache Kafka 4.0 — Design", url: "https://kafka.apache.org/40/design/design/" },
       { label: "Apache Kafka 4.0 — Producer configs", url: "https://kafka.apache.org/40/configuration/producer-configs/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-04",
     topics: [
       "Keys and the partitioner",
@@ -1059,7 +1059,7 @@ export const modules: Module[] = [
         url: "https://kafka.apache.org/40/javadoc/org/apache/kafka/common/serialization/Serializer.html",
       },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-03",
     labs: [labC],
     topics: [
@@ -1376,7 +1376,7 @@ export const modules: Module[] = [
     furtherReading: [
       { label: "Apache Kafka 4.0 — Producer configs", url: "https://kafka.apache.org/40/configuration/producer-configs/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-01",
     topics: [
       "Prevent acknowledged data loss (acks, enable.idempotence, retries)",
@@ -1622,7 +1622,7 @@ export const modules: Module[] = [
     furtherReading: [
       { label: "Apache Kafka 4.0 — Consumer configs", url: "https://kafka.apache.org/40/configuration/consumer-configs/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-05",
     topics: [
       "Consumer groups and partition assignment",
@@ -1893,7 +1893,7 @@ export const modules: Module[] = [
       { label: "Apache Kafka 4.0 — Kafka Streams", url: "https://kafka.apache.org/40/streams/" },
       { label: "Apache Kafka 4.0 — Streams: testing a topology", url: "https://kafka.apache.org/40/streams/developer-guide/testing/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-07",
     labs: [connectFileLab, orderTotalsLab],
     topics: [
@@ -2112,7 +2112,7 @@ export const modules: Module[] = [
       { label: "Apache Kafka 4.0 — Broker configs", url: "https://kafka.apache.org/40/configuration/broker-configs/" },
       { label: "Apache Kafka 4.0 — Topic configs", url: "https://kafka.apache.org/40/configuration/topic-level-configs/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-01",
     topics: [
       "Replication and durability",
@@ -2458,7 +2458,7 @@ export const modules: Module[] = [
     furtherReading: [
       { label: "Apache Kafka 4.0 — Monitoring", url: "https://kafka.apache.org/40/operations/monitoring/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-01",
     topics: [
       "Consumer lag and lag growth rate",
@@ -2769,7 +2769,7 @@ export const modules: Module[] = [
     furtherReading: [
       { label: "Apache Kafka 4.0 — Operations", url: "https://kafka.apache.org/40/operations/" },
     ],
-    applicableVersions: ["4.0"],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
     lastReviewed: "2026-09-01",
     topics: [
       "Consumer lag",

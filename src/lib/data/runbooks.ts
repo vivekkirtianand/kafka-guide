@@ -16,6 +16,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Vet a new topic's partition count, replication, durability floor, retention, and cleanup policy before it exists — several of these are painful or lossy to change later.",
     when: "A team requests a new topic, or you are auditing topics that were auto-created or created with defaults.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Confirm the topic does not already exist and that auto.create.topics.enable is false in production.",
@@ -52,6 +54,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Add partitions to raise consumer parallelism, accepting that the key-to-partition mapping changes and per-key ordering is not preserved across the change.",
     when: "Every partition already has a consumer and each consumer is at its ceiling, so you cannot gain throughput by adding consumers.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Confirm partition count is really the bottleneck — see the consumer-lag and hot-partitions troubleshooting entries first.",
@@ -85,6 +89,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Grow or shrink the broker set. The real work is moving partition replicas on or off the broker — the process start or stop is the easy part.",
     when: "Scaling for capacity, replacing hardware, or migrating to new instance types.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Adding: provision the broker with a unique node.id, the correct cluster ID, the right controller quorum configuration, listeners, and rack.",
@@ -118,6 +124,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Move partition replicas between brokers — to rebalance, decommission, or fix placement — with a bandwidth throttle so catch-up traffic does not starve live clients.",
     when: "After adding or before removing a broker, to fix an imbalance, or to correct rack placement.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Save the current assignment (from --describe or the --generate output) as your rollback plan.",
@@ -151,6 +159,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Deploy a new version of a consumer or producer service without a rebalance storm or a lasting lag spike.",
     when: "Any routine deploy of a service in a consumer group, especially one with many instances.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Confirm consumers set group.instance.id (static membership) so a quick restart does not trigger a rebalance.",
@@ -185,6 +195,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Restart every broker for a config change or OS patch, one at a time, keeping all partitions online and durable throughout.",
     when: "A static broker config change, a JVM or OS update, or a certificate reload that needs a restart.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Cluster healthy: UnderReplicatedPartitions and OfflinePartitionsCount both 0, every ISR full.",
@@ -219,6 +231,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Roll TLS certificates and SASL credentials ahead of expiry without dropping existing connections, by keeping old and new material valid at the same time.",
     when: "Scheduled rotation, a CA change, or a compromised credential. Not for an already-expired certificate — that is the tls-certificate-expiration incident.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Inventory expiry dates for broker keystores, client certificates, and the CA. Rotate with weeks of lead time.",
@@ -252,6 +266,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Size brokers, disk, partitions, and network from measured throughput and retention, with headroom for a zone failure and for growth.",
     when: "Standing up a cluster, onboarding a large workload, or a periodic (quarterly) review against actuals.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Gather inputs: peak sustained write rate (BytesInPerSec), read fan-out (number of consumer groups), and per-topic retention targets.",
@@ -283,6 +299,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Be able to recover the cluster's data and metadata after a catastrophic loss, with a known and tested RPO and RTO.",
     when: "Designing resilience for a new cluster, or reviewing an existing one after a near-miss.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Define RPO (acceptable data loss) and RTO (acceptable downtime) — they drive the whole design.",
@@ -313,6 +331,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Move workloads to a new cluster — new hardware, new region, KRaft, or a managed service — with a controlled cutover and a fallback.",
     when: "Hardware refresh, region move, a ZooKeeper-to-KRaft migration handled as a new cluster, or adopting a managed service.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Stand up the target cluster and replicate topic configs, partition counts, ACLs, and quotas.",
@@ -347,6 +367,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Upgrade the broker version across the cluster by rolling restart, then bump the metadata feature level once every broker is on the new binary.",
     when: "Adopting a new Kafka release for features or security fixes.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Read the release notes for the target version: breaking changes, removed configs, changed defaults.",
@@ -381,6 +403,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "Move a consumer group back to a correct position after it committed a wrong offset, lost its offsets, or needs to replay a range.",
     when: "A bad deploy committed past unprocessed records, an offsets outage, or a deliberate reprocessing request.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Decide the target position: earliest, latest, a timestamp, a specific offset, or a relative shift.",
@@ -413,6 +437,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "A broker log directory has filled, or is about to, and gone offline — buy back capacity without losing data or silently skipping consumers past deleted records.",
     when: "A disk-free alert on a broker, or OfflineLogDirectoryCount going non-zero.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Identify the broker and log directory and whether it is already offline (OfflineLogDirectoryCount, broker logs).",
@@ -445,6 +471,8 @@ const seeds: RunbookSeed[] = [
     summary:
       "One or more brokers, or a whole availability zone, are down — keep the cluster serving, avoid a reflexive data-loss decision, and bring capacity back safely.",
     when: "A broker or AZ outage: brokers unreachable, UnderReplicatedPartitions climbing, or partitions offline.",
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-08-31",
     steps: {
       prechecks: [
         "Scope it: one broker, or a correlated whole-AZ failure? Check per-broker status, UnderReplicatedPartitions, and OfflinePartitionsCount.",

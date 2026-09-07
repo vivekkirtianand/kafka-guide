@@ -25,6 +25,24 @@ export function versionAtLeast(version: KafkaRelease, min: KafkaRelease): boolea
   return releaseRank(version) >= releaseRank(min);
 }
 
+// Compact label for a set of selectable Kafka versions: a run that is contiguous in
+// KAFKA_VERSIONS collapses to "4.0–4.3" — including across the major boundary ("3.9–4.0"),
+// since Kafka's minor numbering restarts per major and only the release list knows what
+// follows what. A gap stays listed ("4.0, 4.2–4.3"). Input order does not matter.
+export function versionRangeLabel(versions: readonly KafkaVersion[]): string {
+  const present = new Set<string>(versions);
+  const oldestFirst = [...KAFKA_VERSIONS].reverse().filter((v) => present.has(v));
+  if (oldestFirst.length === 0) return "";
+  const runs: [KafkaVersion, KafkaVersion][] = [];
+  for (const v of oldestFirst) {
+    const run = runs[runs.length - 1];
+    // adjacent in KAFKA_VERSIONS (which is newest-first, so the next-older line is index + 1)
+    if (run && KAFKA_VERSIONS.indexOf(v) === KAFKA_VERSIONS.indexOf(run[1]) - 1) run[1] = v;
+    else runs.push([v, v]);
+  }
+  return runs.map(([lo, hi]) => (lo === hi ? lo : `${lo}–${hi}`)).join(", ");
+}
+
 // "current" = Apache still ships bugfix releases for this line; "archived" = end of life,
 // no further patches (Apache supports only the three most recent minor lines).
 export type VersionSupport = "current" | "archived";
@@ -270,8 +288,9 @@ export interface Module {
   completionCriteria?: string[];
   // External links for going deeper, typically official Apache Kafka docs.
   furtherReading?: { label: string; url: string }[];
-  // Kafka versions this module's content has been checked against. Full version-gating is a
-  // later phase; the field lands here so metadata has one home.
+  // The selectable Kafka versions this module's content is accurate for, rendered as a range
+  // (`versionRangeLabel`). When the reader has a version outside this set selected, the
+  // module page shows a caveat.
   applicableVersions?: KafkaVersion[];
   // ISO date (YYYY-MM-DD) the content was last checked against real Kafka behavior.
   lastReviewed?: string;
@@ -435,6 +454,11 @@ export interface Runbook {
   summary: string;
   // When this runbook applies — the trigger or the decision that leads you here.
   when: string;
+  // The selectable Kafka versions these steps apply to, rendered as a range on the detail
+  // page with a caveat when the reader has something else selected.
+  applicableVersions?: KafkaVersion[];
+  // ISO date (YYYY-MM-DD) the procedure was last checked against real Kafka behavior.
+  lastReviewed?: string;
   steps: {
     prechecks: string[];
     execution: string[];

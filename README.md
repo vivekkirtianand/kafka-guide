@@ -86,9 +86,11 @@ examples/
 ```
 
 `ModuleMeta.tsx` renders the per-module header (difficulty, estimated time, prerequisites,
-objectives, last-reviewed date). The home page and sidebar split modules into a linear
-**Beginner path** and lookup-as-needed **Reference** material; the course-length estimate is
-computed from each module's `estimatedMinutes`, not hardcoded.
+objectives, last-reviewed date). `VersionApplicability.tsx` shows the Kafka version range a
+module or runbook is accurate for and warns when the top-bar version selector is set outside
+it. The home page and sidebar split modules into a linear **Beginner path** and
+lookup-as-needed **Reference** material; the course-length estimate is computed from each
+module's `estimatedMinutes`, not hardcoded.
 
 **Progress tracking** (`ProgressContext`) records which modules a learner has completed and
 last visited, in `localStorage` (`kafka-guide:progress`). It drives the completion toggle at
