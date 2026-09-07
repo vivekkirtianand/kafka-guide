@@ -320,7 +320,7 @@ export const glossary: GlossaryTerm[] = [
     term: "Kafka Streams",
     definition:
       "A Java library (not a cluster) for computing over Kafka topics: a topology of operations — map, filter, join, aggregate, window — that reads topics and writes results back. Scales by running more copies of the app under one application.id.",
-    seeAlso: ["ktable", "kafka-connect"],
+    seeAlso: ["ktable", "topology", "state-store", "kafka-connect"],
     modules: ["connect-and-streams"],
   },
   {
@@ -328,7 +328,23 @@ export const glossary: GlossaryTerm[] = [
     term: "KStream / KTable",
     definition:
       "The two views of a topic in Kafka Streams. A KStream is a stream of independent events; a KTable is the latest value per key, built from a stream of updates — the compacted-topic idea as a first-class type. A KStream aggregates into a KTable; a KTable's changes read back as a KStream.",
-    seeAlso: ["kafka-streams", "log-compaction"],
+    seeAlso: ["kafka-streams", "state-store", "log-compaction"],
+    modules: ["connect-and-streams"],
+  },
+  {
+    slug: "topology",
+    term: "Topology",
+    definition:
+      "The graph of processing steps a Kafka Streams app runs: source nodes read topics, processor nodes transform (map, filter, join, aggregate, window), sink nodes write topics. builder.build() returns it as a plain object — the same one a TopologyTestDriver can run in memory with no broker.",
+    seeAlso: ["kafka-streams", "state-store"],
+    modules: ["connect-and-streams"],
+  },
+  {
+    slug: "state-store",
+    term: "State store",
+    definition:
+      "The local key/value store (RocksDB on disk by default) a stateful Streams operation keeps on the instance that owns a key's partition — a running count, a join's other side. By default it is mirrored to a compacted changelog topic, which is the source of truth: a new instance replays the changelog to rebuild the store before taking over.",
+    seeAlso: ["kafka-streams", "ktable", "log-compaction"],
     modules: ["connect-and-streams"],
   },
 ];

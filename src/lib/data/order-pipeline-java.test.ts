@@ -25,6 +25,36 @@ describe("order-pipeline-java scaffold", () => {
     expect(build).toMatch(/junit-bom/);
   });
 
+  it("wires Kafka Streams (Module 8) — the library, the test-utils, and a run task", () => {
+    const build = read("build.gradle.kts");
+    expect(build).toMatch(/org\.apache\.kafka:kafka-streams:\$kafkaVersion/);
+    expect(build).toMatch(/org\.apache\.kafka:kafka-streams-test-utils:\$kafkaVersion/);
+    expect(build).toMatch(/register<JavaExec>\("runStreams"\)/);
+    expect(build).toMatch(/streams\.OrderTotalsApp/);
+
+    for (const f of [
+      "src/main/java/com/example/orderpipeline/streams/OrderTotalsTopology.java",
+      "src/main/java/com/example/orderpipeline/streams/OrderTotalsApp.java",
+      "src/test/java/com/example/orderpipeline/streams/OrderTotalsTopologyTest.java",
+    ]) {
+      expect(read(f).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("the topology reads orders, folds amountCents per customer, writes order-totals", () => {
+    const topo = read("src/main/java/com/example/orderpipeline/streams/OrderTotalsTopology.java");
+    expect(topo).toMatch(/DEFAULT_ORDERS_TOPIC = "orders"/);
+    expect(topo).toMatch(/DEFAULT_TOTALS_TOPIC = "order-totals"/);
+    expect(topo).toMatch(/\.aggregate\(/);
+    expect(topo).toMatch(/runningTotal \+ amountCents/);
+    // a value that won't parse is dropped, not fatal
+    expect(topo).toMatch(/catch \(RuntimeException/);
+
+    const test = read("src/test/java/com/example/orderpipeline/streams/OrderTotalsTopologyTest.java");
+    expect(test).toMatch(/TopologyTestDriver/);
+    expect(test).toMatch(/TestInputTopic|TestOutputTopic/);
+  });
+
   it("ships the producer, consumer, shared and test sources", () => {
     for (const f of [
       "src/main/java/com/example/orderpipeline/shared/OrderEvent.java",

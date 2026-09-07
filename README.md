@@ -72,13 +72,13 @@ src/
     types.ts                        Shared content types (incl. per-module course metadata)
     course.ts                       Computed course length + beginner/reference/advanced splits
     data/                           Seed content for modules, labs, configs, incidents, troubleshooting, runbooks
-    data/labs.ts                    In-app hands-on lab walkthroughs (Lab A single-broker, Lab B three-broker, Lab C schema evolution, Lab D Connect file pipeline)
+    data/labs.ts                    In-app hands-on lab walkthroughs (Lab A single-broker, Lab B three-broker, Lab C schema evolution, Lab D Connect file pipeline, Lab E Streams order totals)
     data/walkthroughs.ts            Module 3 code walkthrough — 16 lessons (build it / break it), each a verbatim snippet of an order-pipeline-java file
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
     context/ProgressContext.tsx     Per-module completion + resume state + lab/walkthrough step checkboxes, persisted to localStorage
 
 examples/
-  order-pipeline-java/              Java producer/consumer for Module 3 — own Gradle build + CI job
+  order-pipeline-java/              Java producer/consumer for Module 3 + Streams app for Module 8 — own Gradle build + CI job
     src/main/java/…/shared/         OrderEvent record + JSON serialization
     src/main/java/…/producer/       OrderProducer (keyed by customerId, acks=all) + ProducerApp
     src/main/java/…/consumer/       OrderConsumer (manual commit, at-least-once) + ConsumerApp
@@ -161,12 +161,16 @@ topics in the broker/topic module have one (Phase 6d).
   commits, crashing before/after a commit, offset reset and replay, and poison-message
   handling with retry and dead-letter topics. Retitled and moved onto the beginner path in
   Phase 6c (same slug and content as the old "Consumer configuration").
-- **Module 8 (Kafka Connect and Kafka Streams)** — the Connect half is built (Phase 7a):
+- **Module 8 (Kafka Connect and Kafka Streams)** is built (Phase 7). The Connect half (7a):
   Topic explorer content for source/sink connectors and standalone-vs-distributed mode, plus
   **Lab D**, a code-free walkthrough that creates a file source and a file sink connector
   through the Connect REST API and watches records flow through a topic. The Streams half
-  (topologies / KStream / KTable, and stateful joins-aggregations-windows) has conceptual
-  Topic explorer content now; its hands-on lab lands in Phase 7b.
+  (7b): five topics — topologies / KStream / KTable (with serdes and GlobalKTable), stateful
+  joins-aggregations-windows (with cache/commit-interval dedup and co-partitioning), and
+  "running, testing, and operating a Streams app" — plus **Lab E**, which runs a real Kafka
+  Streams app from `examples/order-pipeline-java/` against the Lab B stack: it folds the
+  `orders` topic into a per-customer running total, then restarts to rebuild that state from
+  its changelog topic and scales to a second instance to split the work.
 - **Module 9 (Broker and topic configuration)** is built: scannable Topic explorer content
   for all 11 topics plus 4 interactive demos (ISR floor vs. min.insync.replicas, delete vs.
   compact cleanup, rack placement and rack failure, client quota throttling). Its 7
@@ -227,16 +231,26 @@ topics in the broker/topic module have one (Phase 6d).
     Needs a 6 GB Docker limit (Connect is a second heavy JVM); the compose file adds
     `/usr/share/filestream-connectors` to `CONNECT_PLUGIN_PATH` so the FileStream connectors
     load.
+  - **Lab E** (Module 8) — Kafka Streams on Lab B's stack (brokers only, no `--profile
+    extras`), 10 steps: create `orders` + a compacted `order-totals` → `./gradlew build`
+    (the `TopologyTestDriver` test, no broker) → `./gradlew runStreams` (watch `CREATED →
+    REBALANCING → RUNNING`) → produce orders → read `order-totals` with `LongDeserializer`
+    (a running total per customer) → find the `-order-totals-store-changelog` topic →
+    **restart the app and watch the totals resume from the changelog rather than reset** →
+    add a second instance and watch the partitions split → `kafka-streams-application-reset.sh`.
+    Runs the real Streams app in `examples/order-pipeline-java/` — no console tool aggregates.
 - The **local cluster lab** at [`local-cluster-lab/`](local-cluster-lab/) is the Docker
   Compose project Lab B drives — its own `docker-compose.yml`, a `verify-lab.sh` health
   check, and a README with the service inventory, per-OS setup, and troubleshooting. CI
   (`verify-local-cluster-lab`) validates the compose graphs, the dashboard JSON, and
   `verify-lab.sh` (`bash -n` + `shellcheck`).
-- The code Module 3 walks through lives at
+- The code Modules 3 and 8 walk through lives at
   [`examples/order-pipeline-java/`](examples/order-pipeline-java/): a plain-Java Kafka
   producer and consumer (`OrderEvent` → JSON → `orders` topic, keyed by customer id,
   `acks=all` + idempotence on the producer, manual at-least-once commit on the consumer,
   a rebalance-logging listener, and a `PoisonPolicy` — propagate / skip / dead-letter —
-  for records that won't parse), with `MockProducer` / `MockConsumer` unit tests that need
+  for records that won't parse), plus a Kafka Streams app for Module 8 (`OrderTotalsTopology`
+  folds `orders` into a per-customer running total on `order-totals`, backed by a changelog
+  topic), with `MockProducer` / `MockConsumer` and `TopologyTestDriver` unit tests that need
   no broker. Its own Gradle build (wrapper pinned by SHA-256, Java 21 toolchain, Kafka 4.0
-  clients) runs in a dedicated CI job (`verify-order-pipeline-java`).
+  clients + streams) runs in a dedicated CI job (`verify-order-pipeline-java`).

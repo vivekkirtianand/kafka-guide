@@ -491,9 +491,91 @@ describe("lab data", () => {
       expect(note).toMatch(/down -v/);
     });
 
-    it("is carried by the connect-and-streams module", () => {
+    it("is carried by the connect-and-streams module, first of its two labs", () => {
       const mod = modules.find((m) => m.slug === "connect-and-streams")!;
-      expect(mod.labs?.map((l) => l.slug)).toEqual([labD.slug]);
+      expect(mod.labs?.map((l) => l.slug)).toEqual([labD.slug, "lab-e-streams-order-totals"]);
+    });
+  });
+
+  describe("Lab E — Streams order totals", () => {
+    const labE = labs.find((l) => l.slug === "lab-e-streams-order-totals")!;
+    const step = (id: string) => labE.steps.find((s) => s.id === id)!;
+
+    it("reuses Lab B's stack (no extras profile) and runs the Java Streams example", () => {
+      expect(labE.setup.some((c) => /docker compose up -d/.test(c.command))).toBe(true);
+      expect(labE.setup.some((c) => /--profile extras/.test(c.command))).toBe(false);
+      expect(labE.setup.some((c) => /examples\/order-pipeline-java/.test(c.command))).toBe(true);
+      expect(labE.prerequisites.join(" ")).toMatch(/finished Lab B/i);
+      expect(labE.prerequisites.join(" ")).toMatch(/JDK|Java 21/);
+    });
+
+    it("creates the output topic itself — Streams won't auto-create a .to() topic", () => {
+      const create = step("create-topics");
+      expect(create.command).toMatch(/--create .*--topic order-totals/);
+      expect(`${create.intro} ${create.observe}`).toMatch(/auto-create|never the topic|\.to\(/i);
+    });
+
+    it("runs the topology test with no broker, then the app against the broker", () => {
+      expect(step("build-app").command).toMatch(/\.\/gradlew build/);
+      expect(step("build-app").observe).toMatch(/TopologyTestDriver/);
+      expect(step("start-streams").command).toMatch(/\.\/gradlew runStreams/);
+      expect(step("start-streams").expected).toMatch(/REBALANCING|RUNNING/);
+    });
+
+    it("reads order-totals with a Long deserializer and shows per-customer running totals", () => {
+      const read = step("read-totals");
+      expect(read.command).toMatch(/kafka-console-consumer\.sh/);
+      expect(read.command).toMatch(/LongDeserializer/);
+      expect(read.command).toMatch(/--max-messages \d+/);
+      const t = read.command.match(/--timeout-ms (\d+)/);
+      expect(t).not.toBeNull();
+      expect(Number(t![1])).toBeGreaterThanOrEqual(20000);
+    });
+
+    it("shows the changelog topic and frames the local store as a cache of it", () => {
+      const cl = step("changelog-topic");
+      expect(cl.command).toMatch(/order-totals-app-order-totals-store-changelog/);
+      expect(cl.observe).toMatch(/compact/i);
+      expect(cl.observe).toMatch(/cache|source of truth/i);
+    });
+
+    it("the restart step is the point of the lab — state rebuilds from the changelog, totals don't reset", () => {
+      const r = step("restart-restore");
+      expect(r.observe).toMatch(/replay/i);
+      expect(r.observe).toMatch(/changelog/);
+      expect(r.observe).toMatch(/did not reset|continued|not reset/i);
+      expect(r.observe).toMatch(/num\.standby\.replicas/);
+    });
+
+    it("scales out to a second instance with its own state dir and shows the split", () => {
+      const s = step("scale-out");
+      expect(s.command).toMatch(/STREAMS_STATE_DIR=/);
+      expect(s.command).toMatch(/\.\/gradlew runStreams/);
+      expect(s.expected).toMatch(/kafka-consumer-groups\.sh .*--group order-totals-app/);
+      expect(s.observe).toMatch(/consumer group/i);
+      expect(s.commonError?.symptom).toMatch(/lock/i);
+    });
+
+    it("resets honestly: reset tool needs the group stopped and doesn't clear local state", () => {
+      const reset = step("reset-app");
+      expect(reset.command).toMatch(/kafka-streams-application-reset\.sh/);
+      expect(reset.command).toMatch(/--input-topics orders/);
+      expect(reset.observe).toMatch(/does NOT delete the local|not delete the local|cleanUp\(\)/i);
+      expect(reset.commonError?.symptom).toMatch(/still active/i);
+      expect(reset.commonError?.cause).toMatch(/session timeout|45 second|hasn't expired/i);
+    });
+
+    it("teardown warning names both halves of Streams state — cluster topics and the local RocksDB dir", () => {
+      expect(labE.teardownWarning).toMatch(/order-totals-app-/);
+      expect(labE.teardownWarning).toMatch(/changelog/);
+      expect(labE.teardownWarning).toMatch(/state\.dir|RocksDB|local (directory|dir)/i);
+      expect(labE.teardownWarning).toMatch(/down -v/);
+      expect(labE.teardown.some((c) => /kafka-streams-application-reset\.sh/.test(c.command))).toBe(true);
+    });
+
+    it("is carried by the connect-and-streams module as its second lab", () => {
+      const mod = modules.find((m) => m.slug === "connect-and-streams")!;
+      expect(mod.labs?.map((l) => l.slug)).toEqual(["lab-d-connect-file-pipeline", labE.slug]);
     });
   });
 

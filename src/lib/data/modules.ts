@@ -1,5 +1,5 @@
 import { Module } from "@/lib/types";
-import { labA, labB, labC, connectFileLab } from "./labs";
+import { labA, labB, labC, connectFileLab, orderTotalsLab } from "./labs";
 import { producerConsumerWalkthrough } from "./walkthroughs";
 
 export const modules: Module[] = [
@@ -1872,32 +1872,36 @@ export const modules: Module[] = [
     summary:
       "Move data in and out of Kafka without hand-writing a producer or consumer (Connect), and compute continuously over topics — joins, aggregations, windows — without standing up a separate processing cluster (Streams).",
     difficulty: "intermediate",
-    estimatedMinutes: 100,
+    estimatedMinutes: 115,
     prerequisites: ["build-a-producer-and-consumer", "consumer-configuration"],
     track: "beginner-path",
     objectives: [
       "Explain what a Connect source and sink connector do, and why you'd reach for Connect instead of a hand-written client",
       "Describe how Connect tracks each connector's offsets and config, and where that state lives",
       "Distinguish a KStream from a KTable and say when each is the right shape",
-      "Name the state a Streams aggregation or windowed join needs, and where it's stored",
+      "Name the state a Streams aggregation or windowed join needs, where it's stored, and how a new instance rebuilds it",
+      "Run and re-run a Streams app: start it, scale it, test its topology without a broker, and reprocess from the start",
     ],
     completionCriteria: [
       "Given a data-movement problem, you can decide between Connect, a hand-written client, or neither",
       "You have run Lab D — created a file source and a file sink connector through the REST API and watched records flow through a topic",
-      "You can sketch a Streams topology for a simple aggregation and name the state store it needs",
+      "You have run Lab E — an order-total aggregation as a Streams app: watched it build a KTable, restart and restore its state from the changelog, and split its work across two instances",
+      "You can sketch a Streams topology for a simple aggregation and name the state store and changelog topic it needs",
     ],
     furtherReading: [
       { label: "Apache Kafka 4.0 — Kafka Connect", url: "https://kafka.apache.org/40/kafka-connect/" },
       { label: "Apache Kafka 4.0 — Kafka Streams", url: "https://kafka.apache.org/40/streams/" },
+      { label: "Apache Kafka 4.0 — Streams: testing a topology", url: "https://kafka.apache.org/40/streams/developer-guide/testing/" },
     ],
     applicableVersions: ["4.0"],
-    lastReviewed: "2026-09-05",
-    labs: [connectFileLab],
+    lastReviewed: "2026-09-07",
+    labs: [connectFileLab, orderTotalsLab],
     topics: [
       "Kafka Connect: source and sink connectors",
       "Connect standalone vs. distributed mode",
       "Kafka Streams: topologies, KStream, and KTable",
       "Stateful processing: joins, aggregations, and windows",
+      "Running, testing, and operating a Streams app",
     ],
     topicDetail: {
       "Kafka Connect: source and sink connectors": {
@@ -1969,7 +1973,7 @@ export const modules: Module[] = [
         level: "intermediate",
         summary:
           "A Java library — not a cluster — that reads topics, runs each record through a topology of operations, and writes the results back to topics.",
-        configs: ["application.id", "num.stream.threads", "processing.guarantee"],
+        configs: ["application.id", "num.stream.threads", "processing.guarantee", "default.key.serde", "default.value.serde"],
         points: [
           {
             term: "A library, not a service",
@@ -1979,7 +1983,7 @@ export const modules: Module[] = [
           {
             term: "A topology is a graph of steps",
             detail:
-              "Source (read a topic) → operations (map, filter, join, aggregate) → sink (write a topic). The DSL builds that graph; Streams runs it record by record.",
+              "Source (read a topic) → operations (map, filter, join, aggregate) → sink (write a topic). The DSL builds that [[topology|graph]]; Streams runs it record by record. builder.build() hands you the Topology object — the same one a unit test can run with no broker (see \"Running, testing, and operating a Streams app\").",
           },
           {
             term: "KStream — a stream of events",
@@ -1989,12 +1993,17 @@ export const modules: Module[] = [
           {
             term: "KTable — the latest value per key",
             detail:
-              "A KTable is the current state built from a stream of updates: keyed by customer id, it holds each customer's latest record, and a new record for that key replaces the old one. It is the [[log-compaction|compacted-topic]] idea as a first-class type.",
+              "A KTable is the current state built from a stream of updates: keyed by customer id, it holds each customer's latest record, and a new record for that key replaces the old one. It is the [[log-compaction|compacted-topic]] idea as a first-class type. A GlobalKTable is the variant every instance holds a full copy of — small reference data you join against without co-partitioning it.",
           },
           {
             term: "The stream/table duality",
             detail:
               "A KStream can be aggregated into a KTable (fold the events into a running total); a KTable's changes can be read back as a KStream (each update is an event). Choosing the right one is most of Streams design.",
+          },
+          {
+            term: "Every edge needs a serde",
+            detail:
+              "A serde is a serializer+deserializer pair — Streams has to turn bytes into typed keys and values at every topic it reads, and back to bytes at every topic it writes, repartition, or state store. Set defaults with default.key.serde / default.value.serde, or pass one inline (Consumed.with, Produced.with, Grouped.with, Materialized.with) where a step's type differs. A missing or wrong serde is the most common first-run failure.",
           },
         ],
         watchOut:
@@ -2004,12 +2013,12 @@ export const modules: Module[] = [
         level: "intermediate",
         summary:
           "The operations that have to remember something — a running count, the other side of a join, the events in the last five minutes — and where Streams keeps that memory.",
-        configs: ["state.dir", "commit.interval.ms"],
+        configs: ["state.dir", "commit.interval.ms", "statestore.cache.max.bytes", "num.standby.replicas"],
         points: [
           {
             term: "State stores",
             detail:
-              "A stateful operation keeps a local key/value store (RocksDB on disk by default) on the instance that owns that key's partition. count() by customer keeps each customer's running total there.",
+              "A stateful operation keeps a local key/value [[state-store|store]] (RocksDB on disk by default) on the instance that owns that key's partition. count() by customer keeps each customer's running total there.",
           },
           {
             term: "Backed by a changelog topic",
@@ -2019,7 +2028,12 @@ export const modules: Module[] = [
           {
             term: "Aggregations",
             detail:
-              "groupByKey().count() / .reduce() / .aggregate() fold a stream into a KTable. Each input record updates the stored value and emits the new result downstream.",
+              "groupByKey().count() / .reduce() / .aggregate() fold a stream into a KTable. Each input record updates the stored value; the new result is emitted downstream — though not necessarily once per input (see the next point).",
+          },
+          {
+            term: "Downstream output is deduplicated by default",
+            detail:
+              "A record cache (statestore.cache.max.bytes, ~10 MB by default) plus the commit interval (commit.interval.ms, 30s) mean many updates to one key collapse into a single emitted record — Streams forwards the latest value per key when the cache fills or the interval elapses, not on every input. Set the cache to 0 to see every intermediate result (useful in a lab; wasteful in production).",
           },
           {
             term: "Windows",
@@ -2029,11 +2043,46 @@ export const modules: Module[] = [
           {
             term: "Joins",
             detail:
-              "A stream–table join enriches each event with the current value from a KTable (an order plus the customer's details). A stream–stream join matches events from two streams that arrive within a time window (a click and the purchase it led to).",
+              "A stream–table join enriches each event with the current value from a KTable (an order plus the customer's details). A stream–stream join matches events from two streams that arrive within a time window (a click and the purchase it led to). Both sides must be co-partitioned — same key, same partition count — so the matching keys land on the same instance; Streams checks this and fails fast if it doesn't hold. (A GlobalKTable join is the exception — the table is copied everywhere, so no co-partitioning.)",
           },
         ],
         watchOut:
           "A windowed store grows with distinct keys times live windows. A high-cardinality key (a UUID per event) with hour-long windows kept for a day is millions of entries per instance — window on something bounded, or keep the retention short.",
+      },
+      "Running, testing, and operating a Streams app": {
+        level: "intermediate",
+        summary:
+          "A Streams app is just a program you run — no cluster to deploy. This is the operational side: starting and scaling the process, failing over its state, testing a topology with no broker, and reprocessing input from the beginning when the logic changes.",
+        configs: ["num.stream.threads", "num.standby.replicas", "processing.guarantee", "state.dir"],
+        points: [
+          {
+            term: "You run it; there is no cluster",
+            detail:
+              "Package the app as an ordinary JAR and run one or more copies. new KafkaStreams(topology, config).start() kicks off a state machine — CREATED → REBALANCING → RUNNING — and a StateListener lets you watch it. Add a shutdown hook that calls close() so a stopped instance leaves its consumer group cleanly.",
+          },
+          {
+            term: "Scale and fail over through the consumer group",
+            detail:
+              "More copies with the same application.id, or a higher num.stream.threads, spread the partitions wider — same rebalance mechanics as any consumer group. When an instance dies, another picks up its partitions and rebuilds its state stores from the changelog first. num.standby.replicas (0 by default) keeps warm copies of each store on other instances so that takeover is near-instant instead of a full changelog replay.",
+          },
+          {
+            term: "Test the topology with no broker",
+            detail:
+              "TopologyTestDriver (the kafka-streams-test-utils artifact) runs a Topology entirely in memory: pipe records into a TestInputTopic, read them from a TestOutputTopic, and query the state stores directly. No Kafka, millisecond tests, deterministic — the topology builder should be a pure function of its topic names so a test can construct it. This is the harness Lab E's OrderTotalsTopologyTest uses.",
+          },
+          {
+            term: "Reprocessing: the application reset tool",
+            detail:
+              "Change the aggregation logic and you often want to recompute from the start. kafka-streams-application-reset.sh (all instances stopped first) rewinds the group's offsets on the input topics and deletes the internal repartition and changelog topics. It does not touch the local state directories — the app must also call KafkaStreams.cleanUp() before start(), or you delete state.dir by hand.",
+          },
+          {
+            term: "Interactive queries",
+            detail:
+              "The state store is queryable from inside the app — KafkaStreams.store(...) reads the running total for a key without a round trip through the output topic. Combined with the metadata API (which instance owns which key) it lets a Streams app serve its own aggregates over HTTP. The output topic is still the way to hand results to other systems.",
+          },
+        ],
+        watchOut:
+          "The reset tool clears the cluster-side state but not the local state.dir, and two instances on one machine share that directory — give each its own state.dir or the second fails to take the RocksDB lock. A \"reset\" that skips cleanUp() / the local directory silently resumes from stale local state.",
       },
     },
     activities: [],
