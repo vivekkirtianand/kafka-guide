@@ -2073,7 +2073,7 @@ export const modules: Module[] = [
           {
             term: "Reprocessing: the application reset tool",
             detail:
-              "Change the aggregation logic and you often want to recompute from the start. kafka-streams-application-reset.sh (all instances stopped first) rewinds the group's offsets on the input topics and deletes the internal repartition and changelog topics. It does not touch the local state directories — the app must also call KafkaStreams.cleanUp() before start(), or you delete state.dir by hand.",
+              "Change the aggregation logic and you often want to recompute from the start. kafka-streams-application-reset.sh (all instances stopped first) rewinds the group's committed offsets on the input topics and deletes the internal repartition and changelog topics. Two things it does not do: it leaves the consumer group itself (just seeked to the start), and it does not touch the local state directories — the app must also call KafkaStreams.cleanUp() before start(), or you delete state.dir by hand.",
           },
           {
             term: "Interactive queries",

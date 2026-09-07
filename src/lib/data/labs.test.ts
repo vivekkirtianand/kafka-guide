@@ -509,9 +509,24 @@ describe("lab data", () => {
       expect(labE.prerequisites.join(" ")).toMatch(/JDK|Java 21/);
     });
 
+    it("uses a dedicated input topic so shared-topic records can't skew the fixed totals", () => {
+      const create = step("create-topics");
+      // lab-e-orders, not the shared `orders` topic
+      expect(create.command).toMatch(/--create --topic lab-e-orders/);
+      // no --if-not-exists on the input topic — a leftover must fail loudly
+      expect(create.command).not.toMatch(/lab-e-orders --partitions.*--if-not-exists|--if-not-exists --topic lab-e-orders/);
+      expect(create.command).not.toMatch(/--if-not-exists/);
+      // the streams app and producer both target lab-e-orders
+      expect(step("start-streams").command).toMatch(/runStreams --args="localhost:29092 lab-e-orders"/);
+      expect(step("produce-orders").command).toMatch(/run --args="localhost:29092 12 lab-e-orders"/);
+      // verify checks the lab's own topics, not the shared one
+      expect(labE.verify!.command).toMatch(/lab-e-orders/);
+      expect(labE.verify!.command).not.toMatch(/grep -E 'order-totals\|orders'/);
+    });
+
     it("creates the output topic itself — Streams won't auto-create a .to() topic", () => {
       const create = step("create-topics");
-      expect(create.command).toMatch(/--create .*--topic order-totals/);
+      expect(create.command).toMatch(/--create --topic order-totals/);
       expect(`${create.intro} ${create.observe}`).toMatch(/auto-create|never the topic|\.to\(/i);
     });
 
@@ -530,6 +545,8 @@ describe("lab data", () => {
       const t = read.command.match(/--timeout-ms (\d+)/);
       expect(t).not.toBeNull();
       expect(Number(t![1])).toBeGreaterThanOrEqual(20000);
+      // the totals are exact because the input topic is dedicated
+      expect(read.observe).toMatch(/exact|lab-e-orders/i);
     });
 
     it("shows the changelog topic and frames the local store as a cache of it", () => {
@@ -539,10 +556,13 @@ describe("lab data", () => {
       expect(cl.observe).toMatch(/cache|source of truth/i);
     });
 
-    it("the restart step is the point of the lab — state rebuilds from the changelog, totals don't reset", () => {
+    it("the restart step actually proves changelog reconstruction — it deletes the local RocksDB dir first", () => {
       const r = step("restart-restore");
-      expect(r.observe).toMatch(/replay/i);
+      // without wiping the local state dir the restart would just read local disk, proving nothing
+      expect(r.command).toMatch(/rm -rf "\$\{TMPDIR:-\/tmp\}\/kafka-streams\/order-totals-app"/);
+      expect(r.command).toMatch(/&& \.\/gradlew runStreams/);
       expect(r.observe).toMatch(/changelog/);
+      expect(r.observe).toMatch(/does NOT reprocess|not reprocess|committed past/i);
       expect(r.observe).toMatch(/did not reset|continued|not reset/i);
       expect(r.observe).toMatch(/num\.standby\.replicas/);
     });
@@ -556,13 +576,19 @@ describe("lab data", () => {
       expect(s.commonError?.symptom).toMatch(/lock/i);
     });
 
-    it("resets honestly: reset tool needs the group stopped and doesn't clear local state", () => {
+    it("resets honestly: the tool needs the group stopped, leaves the group itself, and doesn't clear local state", () => {
       const reset = step("reset-app");
       expect(reset.command).toMatch(/kafka-streams-application-reset\.sh/);
-      expect(reset.command).toMatch(/--input-topics orders/);
-      expect(reset.observe).toMatch(/does NOT delete the local|not delete the local|cleanUp\(\)/i);
+      expect(reset.command).toMatch(/--input-topics lab-e-orders/);
+      // it does NOT delete the consumer group — the observe must say so
+      expect(reset.observe).toMatch(/leaves the .*consumer group|still listed|never deletes the (consumer )?group/i);
+      // and it does NOT clear local RocksDB
+      expect(reset.observe).toMatch(/cleanUp\(\)|not touch the local|does not touch/i);
       expect(reset.commonError?.symptom).toMatch(/still active/i);
       expect(reset.commonError?.cause).toMatch(/session timeout|45 second|hasn't expired/i);
+      // the verify note must not require the group's absence (the reset can't deliver that)
+      expect(labE.verify!.note).not.toMatch(/no `order-totals-app` consumer group/);
+      expect(labE.verify!.note).toMatch(/leaves the `order-totals-app` consumer group/i);
     });
 
     it("teardown warning names both halves of Streams state — cluster topics and the local RocksDB dir", () => {

@@ -122,23 +122,25 @@ SLOW_MS=200 ./gradlew runConsumer             # 200 ms per record
 
 ## The Streams app (Module 8, Lab E)
 
-`OrderTotalsApp` reads `orders` and keeps a running total of cents per customer, writing each
-new total to `order-totals` (String key, **Long** value). It needs both topics to exist —
-Streams auto-creates its internal changelog/repartition topics but never the one in `.to()`:
+`OrderTotalsApp` reads an input topic and keeps a running total of cents per customer,
+writing each new total to `order-totals` (String key, **Long** value). Lab E points it at a
+dedicated `lab-e-orders` topic (the 2nd arg) so a shared `orders` topic full of other labs'
+records can't skew the totals. Both topics must exist first — Streams auto-creates its
+internal changelog/repartition topics but never the one in `.to()`:
 
 ```bash
 docker exec kafka-lab-a /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
-  --create --if-not-exists --topic orders       --partitions 3 --replication-factor 1
+  --create --topic lab-e-orders --partitions 3 --replication-factor 1
 docker exec kafka-lab-a /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
   --create --topic order-totals --partitions 3 --replication-factor 1 --config cleanup.policy=compact
 ```
 
 ```bash
 # terminal 1 — the Streams app (watch CREATED -> REBALANCING -> RUNNING)
-./gradlew runStreams
+./gradlew runStreams --args="localhost:9092 lab-e-orders"
 
 # terminal 2 — send some orders, then read the totals
-./gradlew run --args="localhost:9092 12"
+./gradlew run --args="localhost:9092 12 lab-e-orders"
 docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
   --topic order-totals --from-beginning --property print.key=true \
   --value-deserializer org.apache.kafka.common.serialization.LongDeserializer \
@@ -147,21 +149,22 @@ docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-ser
 
 The app sets its record cache to 0 and `commit.interval.ms` to 1s so you see **every**
 running total — production leaves the cache on and only the collapsed latest-per-key updates
-are emitted. Stop the app and start it again: it replays
-`order-totals-app-order-totals-store-changelog` to rebuild the totals before it resumes —
-they don't reset. Run a second copy with `STREAMS_STATE_DIR=/tmp/streams-2 ./gradlew
-runStreams` and the two split the partitions.
+are emitted. Stop the app, **delete its local state dir**, and start it again: with the local
+RocksDB gone it replays `order-totals-app-order-totals-store-changelog` to rebuild the totals
+before it resumes — they don't reset. Run a second copy with `STREAMS_STATE_DIR=/tmp/streams-2
+./gradlew runStreams --args="localhost:9092 lab-e-orders"` and the two split the partitions.
 
 To reprocess from scratch: stop every instance, wait ~45s for the group to empty, then
 
 ```bash
 docker exec kafka-lab-a /opt/kafka/bin/kafka-streams-application-reset.sh \
-  --bootstrap-server localhost:9092 --application-id order-totals-app --input-topics orders
+  --bootstrap-server localhost:9092 --application-id order-totals-app --input-topics lab-e-orders
 rm -rf "${TMPDIR:-/tmp}/kafka-streams/order-totals-app" /tmp/streams-2/order-totals-app
 ```
 
-The reset tool clears the cluster side (offsets + internal topics); the `rm -rf` clears the
-local RocksDB state it leaves behind.
+The reset tool clears the cluster side (offsets + internal topics) but **leaves the consumer
+group** (just seeked to 0) and never touches the local RocksDB state — the `rm -rf` handles
+that.
 
 ## Design choices (and where they change later)
 

@@ -517,11 +517,13 @@ describe("Module 8 — deeper Streams content + Lab E (Phase 7b)", () => {
     expect(text).toMatch(/co-partition/i);
   });
 
-  it("the reset guidance is honest: the tool leaves local state behind", () => {
+  it("the reset guidance is honest: the tool leaves the group and local state behind", () => {
     const ops = detail("Running, testing, and operating a Streams app");
     const resetPoint = ops.points.find((p) => /reprocess|reset/i.test(p.term))!;
     expect(resetPoint.detail).toMatch(/does not touch|not touch the local|cleanUp\(\)/i);
     expect(resetPoint.detail).toMatch(/instances stopped|all instances/i);
+    // it rewinds but does not delete the consumer group
+    expect(resetPoint.detail).toMatch(/leaves the consumer group|does not.*delete.*group/i);
   });
 });
 

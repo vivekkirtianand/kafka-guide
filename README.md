@@ -232,13 +232,15 @@ topics in the broker/topic module have one (Phase 6d).
     `/usr/share/filestream-connectors` to `CONNECT_PLUGIN_PATH` so the FileStream connectors
     load.
   - **Lab E** (Module 8) — Kafka Streams on Lab B's stack (brokers only, no `--profile
-    extras`), 10 steps: create `orders` + a compacted `order-totals` → `./gradlew build`
-    (the `TopologyTestDriver` test, no broker) → `./gradlew runStreams` (watch `CREATED →
-    REBALANCING → RUNNING`) → produce orders → read `order-totals` with `LongDeserializer`
-    (a running total per customer) → find the `-order-totals-store-changelog` topic →
-    **restart the app and watch the totals resume from the changelog rather than reset** →
-    add a second instance and watch the partitions split → `kafka-streams-application-reset.sh`.
-    Runs the real Streams app in `examples/order-pipeline-java/` — no console tool aggregates.
+    extras`), 10 steps: create a dedicated `lab-e-orders` + a compacted `order-totals` →
+    `./gradlew build` (the `TopologyTestDriver` test, no broker) → `./gradlew runStreams`
+    (watch `CREATED → REBALANCING → RUNNING`) → produce 12 orders → read `order-totals` with
+    `LongDeserializer` (an exact running total per customer) → find the
+    `-order-totals-store-changelog` topic → **delete the app's local RocksDB dir, restart,
+    and watch the totals rebuild from the changelog rather than reset** → add a second
+    instance and watch the partitions split → `kafka-streams-application-reset.sh`. Uses a
+    dedicated input topic so other labs' records can't skew the totals; runs the real Streams
+    app in `examples/order-pipeline-java/` — no console tool aggregates.
 - The **local cluster lab** at [`local-cluster-lab/`](local-cluster-lab/) is the Docker
   Compose project Lab B drives — its own `docker-compose.yml`, a `verify-lab.sh` health
   check, and a README with the service inventory, per-OS setup, and troubleshooting. CI

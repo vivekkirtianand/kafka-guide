@@ -850,17 +850,19 @@ export const connectFileLab: Lab = {
 
 // Lab E — Kafka Streams. Reuses Lab B's three-broker stack (no extras profile — Streams
 // needs only the brokers) and runs the `examples/order-pipeline-java/` Streams app from the
-// host with Gradle. It folds the `orders` topic into a per-customer running total, then makes
-// the two things that define Streams concrete: the state store is backed by a changelog topic
-// (kill the app, restart it, watch the totals resume rather than reset), and scaling is a
-// consumer group (start a second instance, watch the partitions split). Every command here is
-// verified: `./gradlew` from the example dir, `docker exec kafka-lab-kafka-1` for topics and
-// the console consumer.
+// host with Gradle. It folds a DEDICATED `lab-e-orders` topic into a per-customer running
+// total — dedicated so the fixed expected numbers can't be thrown off by records Lab A/B or
+// Module 3 wrote to the shared `orders` topic. Then it makes the two things that define
+// Streams concrete: the state store is backed by a changelog topic (stop the app, DELETE the
+// local RocksDB dir, restart — the totals rebuild from the changelog rather than reset), and
+// scaling is a consumer group (start a second instance, watch the partitions split). Every
+// command here is verified against a real apache/kafka:4.0.2 broker: `./gradlew` from the
+// example dir, `docker exec kafka-lab-kafka-1` for topics and the console consumer.
 export const orderTotalsLab: Lab = {
   slug: "lab-e-streams-order-totals",
   title: "Lab E — a running total per customer with Kafka Streams",
   summary:
-    "Run a Kafka Streams app that aggregates the orders topic into a per-customer total, watch it build a KTable and emit running totals, then restart it to see the state rebuild from its changelog topic and add a second instance to see the work split. The app is examples/order-pipeline-java/ — no console tool does aggregation, so this lab runs real code.",
+    "Run a Kafka Streams app that aggregates a dedicated lab-e-orders topic into a per-customer total, watch it build a KTable and emit running totals, then delete its local state and restart to prove the state rebuilds from its changelog topic, and add a second instance to see the work split. The app is examples/order-pipeline-java/ — no console tool does aggregation, so this lab runs real code.",
   resourceFloor:
     "Lab B's stack (three broker JVMs, kafka-ui, Prometheus, Grafana) at the Lab B 4 GB floor — Lab E adds no containers. The Streams app and the producer run on your host with Gradle, not in Docker: budget ~500 MB of host RAM per Streams instance (the scale-out step runs two).",
   prerequisites: [
@@ -882,26 +884,25 @@ export const orderTotalsLab: Lab = {
   ],
   verify: {
     command:
-      "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --list | grep -E 'order-totals|orders' ; echo '---' ; docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka-1:19092 --list | grep order-totals-app",
-    note: "Two checks for leftover state from a previous run. CLEAN SLATE: the first block is empty or lists only `orders` (Lab A/B may have created it — that's fine, this lab appends), and the second block is empty (no `order-totals-app` consumer group). LEFTOVER STATE: `order-totals` already exists, or the `order-totals-app` group is listed — the running-total numbers in steps 4–8 assume a clean start. Reset it: stop every `./gradlew runStreams` process, then `docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics orders`, delete the `order-totals` topic, and remove the local state directory (see the reset step and the teardown warning). ANYTHING ELSE — `No such container`, a connection error — means the Lab B stack isn't up; go back to setup.",
+      "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --list | grep -E 'lab-e-orders|order-totals'",
+    note: "One check: none of this lab's topics exist yet. CLEAN SLATE: the command prints nothing — no `lab-e-orders`, no `order-totals`, and no `order-totals-app-order-totals-store-changelog`. LEFTOVER STATE: any of those three is listed. The fixed running totals in steps 4–7 assume the input topic holds exactly the 12 orders you produce, so a leftover input topic or a populated changelog will skew them. Reset: stop every `./gradlew runStreams`, then from the lab directory `docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics lab-e-orders`, then `--delete --topic lab-e-orders` and `--delete --topic order-totals`, then `rm -rf \"${TMPDIR:-/tmp}/kafka-streams/order-totals-app\" /tmp/streams-2/order-totals-app` on your host. (The reset tool leaves the `order-totals-app` consumer group behind — that's expected and harmless; recreating `lab-e-orders` makes its stale offsets irrelevant.) ANYTHING ELSE — `No such container`, a connection error — means the Lab B stack isn't up; go back to setup.",
   },
   steps: [
     {
       id: "create-topics",
       title: "Create the input and output topics",
       intro:
-        "The app reads `orders` and writes `order-totals`. Streams auto-creates its own internal topics (changelog, repartition) but never the topic named in `.to(...)` — you create that one yourself.",
+        "The app reads `lab-e-orders` and writes `order-totals`. `lab-e-orders` is this lab's own input topic — separate from the shared `orders` topic Lab A/B and Module 3 write to — so the fixed totals below can't be thrown off by records those left behind. Streams auto-creates its own internal topics (changelog, repartition) but never the topic named in `.to(...)`, so you create `order-totals` yourself.",
       command:
-        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --create --if-not-exists --topic orders --partitions 3 --replication-factor 3 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --create --topic order-totals --partitions 3 --replication-factor 3 --config cleanup.policy=compact",
-      expected:
-        "Created topic order-totals.\n(the `orders` create prints nothing new if Lab A/B already made it — `--if-not-exists` keeps that from being an error)",
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --create --topic lab-e-orders --partitions 3 --replication-factor 3 && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --create --topic order-totals --partitions 3 --replication-factor 3 --config cleanup.policy=compact",
+      expected: "Created topic lab-e-orders.\nCreated topic order-totals.",
       observe:
-        "`order-totals` is compacted on purpose: it carries the latest running total per customer, so a downstream reader that only wants the current figure can treat it as a table and let compaction drop the superseded updates. Leave compaction off and you keep every intermediate total instead.",
+        "No `--if-not-exists` on either — if a previous run left them, you want the loud `TopicExistsException` here, not silently reused topics carrying old records. `order-totals` is compacted on purpose: it carries the latest running total per customer, so a downstream reader that only wants the current figure can treat it as a table and let compaction drop superseded updates.",
       commonError: {
-        symptom: "`TopicExistsException: Topic 'order-totals' already exists.`",
+        symptom: "`TopicExistsException: Topic 'lab-e-orders' already exists.` (or `order-totals`).",
         cause: "A previous run of this lab left the topic. Its old records would mix into the counts you're about to check.",
         recovery:
-          "`docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --delete --topic order-totals`, then re-run this step. If you also ran the app before, do the full reset from the `reset-app` step first.",
+          "Do the full reset: stop every `./gradlew runStreams`, then `docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics lab-e-orders`, then `--delete --topic lab-e-orders` and `--delete --topic order-totals`, then `rm -rf \"${TMPDIR:-/tmp}/kafka-streams/order-totals-app\" /tmp/streams-2/order-totals-app`. Re-run this step.",
       },
     },
     {
@@ -924,12 +925,12 @@ export const orderTotalsLab: Lab = {
       id: "start-streams",
       title: "Start the Streams app",
       intro:
-        "In the FIRST terminal, run the app against Lab B's host-facing broker listener. Leave it running — you'll restart it and add a second copy later.",
-      command: './gradlew runStreams --args="localhost:29092"',
+        "In the FIRST terminal, run the app against Lab B's host-facing broker listener, pointed at `lab-e-orders`. Leave it running — you'll restart it and add a second copy later.",
+      command: './gradlew runStreams --args="localhost:29092 lab-e-orders"',
       expected:
-        "Aggregating 'orders' into per-customer totals on 'order-totals' via localhost:29092 (application.id=order-totals-app) - Ctrl-C to stop\nstate: CREATED -> REBALANCING\nstate: REBALANCING -> RUNNING",
+        "Aggregating 'lab-e-orders' into per-customer totals on 'order-totals' via localhost:29092 (application.id=order-totals-app) - Ctrl-C to stop\nstate: CREATED -> REBALANCING\nstate: REBALANCING -> RUNNING",
       observe:
-        "There is no cluster here — this is one JVM process. `KafkaStreams.start()` drives a state machine and the `StateListener` prints each transition: `CREATED → REBALANCING` (join the group, get partitions, restore any state) `→ RUNNING`. The app connects to `localhost:29092` from your host; the `docker exec` CLI commands use the in-network `kafka-1:19092`.",
+        "There is no cluster here — this is one JVM process. `KafkaStreams.start()` drives a state machine and the `StateListener` prints each transition: `CREATED → REBALANCING` (join the group, get partitions, restore any state) `→ RUNNING`. The app connects to `localhost:29092` from your host; the `docker exec` CLI commands use the in-network `kafka-1:19092`. The first arg is the broker, the second is the input topic (default `orders`).",
       commonError: {
         symptom: "The app sits at `REBALANCING` and never reaches `RUNNING`, or logs `Connection to node -1 could not be established`.",
         cause: "No broker is reachable at `localhost:29092` — the Lab B stack isn't up, or you passed the wrong address.",
@@ -940,12 +941,12 @@ export const orderTotalsLab: Lab = {
       id: "produce-orders",
       title: "Send a batch of orders",
       intro:
-        "In the SECOND terminal, use Module 3's producer to send 12 demo orders. They cycle through a few customers, two of them repeat, so the totals climb.",
-      command: './gradlew run --args="localhost:29092 12"',
+        "In the SECOND terminal, use Module 3's producer to send 12 demo orders to `lab-e-orders` (the third arg is the topic). They cycle through three customers — alice and bob and carol — so the totals climb predictably.",
+      command: './gradlew run --args="localhost:29092 12 lab-e-orders"',
       expected:
-        "Sent 12/12 orders to localhost:29092\n(the first terminal stays on `RUNNING`; it's now aggregating)",
+        "Sent 12/12 orders to localhost:29092 on lab-e-orders\n(the first terminal stays on `RUNNING`; it's now aggregating)",
       observe:
-        "The producer keys each order by `customerId`, so every order for one customer lands on the same partition — which is what lets the Streams app keep a correct per-customer total without any repartitioning.",
+        "The producer keys each order by `customerId`, so every order for one customer lands on the same partition — which is what lets the Streams app keep a correct per-customer total without any repartitioning. Twelve orders = three full cycles of the demo templates: alice buys twice per cycle (2400 + 1800 = 4200), bob once (9000), carol once (1500). After three cycles: alice 12600, bob 27000, carol 4500.",
     },
     {
       id: "read-totals",
@@ -955,15 +956,15 @@ export const orderTotalsLab: Lab = {
       command:
         "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka-1:19092 --topic order-totals --from-beginning --property print.key=true --value-deserializer org.apache.kafka.common.serialization.LongDeserializer --max-messages 12 --timeout-ms 20000",
       expected:
-        "alice\t2400\nbob\t9000\nalice\t4200\ncarol\t1500\n... \nalice\t12600\nbob\t27000\ncarol\t4500\nProcessed a total of 12 messages\n(one output record per input order — the last value for each customer is their total: alice 12600, bob 27000, carol 4500)",
+        "carol\t1500\ncarol\t3000\ncarol\t4500\nalice\t2400\nbob\t9000\nalice\t4200\n...\nbob\t27000\nalice\t12600\nProcessed a total of 12 messages\n(one output record per input order; the cross-customer order depends on which partitions were processed first. The reliable part: the LAST value for each customer is their total — alice 12600, bob 27000, carol 4500 — and they sum from the amounts above.)",
       observe:
-        "One output record per input order, not one per customer — the app runs with its record cache set to 0 so you can watch every running total. Production leaves the cache on (~10 MB) and the 30-second commit interval in place, and only the collapsed latest-per-key updates are emitted. Drop `--value-deserializer` and each value prints as mojibake: the bytes are a Long, not a UTF-8 string.",
+        "One output record per input order, not one per customer — the app runs with its record cache set to 0 so you can watch every running total. Production leaves the cache on (~10 MB) and the 30-second commit interval in place, and only the collapsed latest-per-key updates are emitted. Drop `--value-deserializer` and each value prints as mojibake: the bytes are a Long, not a UTF-8 string. Because the input topic is this lab's own `lab-e-orders`, holding exactly the 12 orders you produced, these totals are exact.",
       commonError: {
         symptom: "`Processed a total of 0 messages` after 20 seconds, though the app shows `RUNNING`.",
         cause:
-          "Either `order-totals` was never created (Streams doesn't auto-create it), or a previous run's `order-totals-app` state means the app resumed past these orders. ",
+          "`order-totals` was never created (Streams doesn't auto-create it), or the app is pointed at the wrong input topic (missing the `lab-e-orders` arg on `runStreams`), or a previous run's `order-totals-app` group resumed past these orders.",
         recovery:
-          "Confirm the topic exists (`kafka-topics.sh --list`). If it does and it's still empty, run the full reset in the `reset-app` step, then start again from `create-topics`.",
+          "Confirm `order-totals` exists and `runStreams` was started with `--args=\"localhost:29092 lab-e-orders\"`. If it's still empty, run the full reset in the `reset-app` step, then start again from `create-topics`.",
       },
     },
     {
@@ -980,19 +981,20 @@ export const orderTotalsLab: Lab = {
     },
     {
       id: "restart-restore",
-      title: "Restart the app — the state rebuilds from the changelog",
+      title: "Delete the local state, restart — the store rebuilds from the changelog",
       intro:
-        "Stop the app in the first terminal (Ctrl-C), wait for it to exit, then start it again with the same command. Watch what it does before it reaches RUNNING.",
-      command: './gradlew runStreams --args="localhost:29092"',
+        "Stop the app in the first terminal (Ctrl-C) and wait for it to exit. Then DELETE its local RocksDB directory before restarting — a real failover lands on a machine that never had this state, so this is what proves the changelog, not the local disk, is the source of truth.",
+      command:
+        'rm -rf "${TMPDIR:-/tmp}/kafka-streams/order-totals-app" && ./gradlew runStreams --args="localhost:29092 lab-e-orders"',
       expected:
-        "state: CREATED -> REBALANCING\nstate: REBALANCING -> RUNNING\n(a short pause on REBALANCING while it replays the changelog into a fresh local store)",
+        "state: CREATED -> REBALANCING\nstate: REBALANCING -> RUNNING\n(a pause on REBALANCING while it replays the changelog into a brand-new local store — with the directory deleted there is nothing else it could be doing)",
       observe:
-        "The local RocksDB directory may be gone (a real failover lands on a different machine), so on rejoining the group the instance replays `order-totals-app-order-totals-store-changelog` to rebuild every customer's total before it starts processing. Send another 4 orders (`./gradlew run --args=\"localhost:29092 4\"` in terminal 2) and re-read `order-totals`: alice is 16800, not 4200 — the totals continued from where they were, they did not reset. That is the whole point of the changelog. With `num.standby.replicas` above 0, another instance would already hold a warm copy and skip the replay.",
+        "The local store is gone, and the `order-totals-app` group is committed past all 12 input records — so the app does NOT reprocess `lab-e-orders`. The only place alice's 12600 can come from is `order-totals-app-order-totals-store-changelog`. Confirm it: send 4 more orders (`./gradlew run --args=\"localhost:29092 4 lab-e-orders\"` in terminal 2 — one more cycle) and re-read `order-totals`. alice is 16800 (12600 + 4200), not 4200 — the totals continued from the restored state. That is the whole point of the changelog. With `num.standby.replicas` above 0, another instance would already hold a warm copy and skip the replay.",
       commonError: {
         symptom: "On restart the totals start again from the first order (alice back at 2400).",
-        cause: "The `order-totals-app` group or its changelog was reset between runs — or you deleted `order-totals` and the console consumer is only showing records from after the restart.",
+        cause: "You ran the `reset-app` step (which deletes the changelog) before this one, or deleted and recreated `lab-e-orders`.",
         recovery:
-          "That's expected only right after the `reset-app` step. Otherwise re-read `order-totals` `--from-beginning` and check the last value per key; the running total is cumulative across restarts.",
+          "Start over from `create-topics` — `restart-restore` only demonstrates the point on a changelog that still has the history. Deleting the local dir is safe; deleting the changelog is what resets the totals.",
       },
     },
     {
@@ -1000,9 +1002,9 @@ export const orderTotalsLab: Lab = {
       title: "Add a second instance and watch the work split",
       intro:
         "In the THIRD terminal, start another copy of the app. It needs its own local state directory, so set STREAMS_STATE_DIR — two instances on one machine can't share one RocksDB directory.",
-      command: 'STREAMS_STATE_DIR=/tmp/streams-2 ./gradlew runStreams --args="localhost:29092"',
+      command: 'STREAMS_STATE_DIR=/tmp/streams-2 ./gradlew runStreams --args="localhost:29092 lab-e-orders"',
       expected:
-        "Both terminals log `state: RUNNING -> REBALANCING -> RUNNING` as the group rebalances. Then:\ndocker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka-1:19092 --describe --group order-totals-app\nshows the 3 partitions of `orders` split between two CONSUMER-IDs.",
+        "Both terminals log `state: RUNNING -> REBALANCING -> RUNNING` as the group rebalances. Then:\ndocker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka-1:19092 --describe --group order-totals-app\nshows the 3 partitions of `lab-e-orders` split between two CONSUMER-IDs (e.g. partitions 0 and 2 on one, 1 on the other).",
       observe:
         "Scaling Streams is just a consumer group. The two instances share `application.id=order-totals-app`, so they join one group and each takes a subset of the partitions — and with it, the state for the customers on those partitions. Produce more orders and each instance updates only the customers it owns. Stop one (Ctrl-C) and the other replays that instance's changelog partitions and takes over.",
       commonError: {
@@ -1017,11 +1019,11 @@ export const orderTotalsLab: Lab = {
       intro:
         "Say you changed the aggregation and want to recompute from order one. Stop every instance (Ctrl-C in all three terminals), wait for the group to go empty, then run the application reset tool.",
       command:
-        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics orders",
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics lab-e-orders",
       expected:
-        "Reset-offsets for input topics [orders]\n... Offset: 0 (for each partition)\nDeleting inferred internal topics [order-totals-app-order-totals-store-changelog]\nDone.",
+        "Reset-offsets for input topics [lab-e-orders]\n... Offset: 0 (for each partition)\nDeleting inferred internal topics [order-totals-app-order-totals-store-changelog]\nDone.",
       observe:
-        "The tool rewinds the group's offsets on `orders` to 0 and deletes the internal changelog topic. It does NOT delete the local state directories — restart with a stale one and the app resumes from it. So also remove the local state (`rm -rf \"${TMPDIR:-/tmp}/kafka-streams/order-totals-app\" /tmp/streams-2/order-totals-app`) or have the app call `KafkaStreams.cleanUp()` before `start()`. Then restart the app and the totals rebuild from the first order.",
+        "The tool rewinds the group's committed offsets on `lab-e-orders` to 0 and deletes the internal changelog topic. Two things it does NOT do: (1) it leaves the `order-totals-app` consumer group itself — it's still listed by `--list`, just seeked to the start; (2) it does not touch the local state directories. So for a genuine from-scratch run also `rm -rf \"${TMPDIR:-/tmp}/kafka-streams/order-totals-app\" /tmp/streams-2/order-totals-app` (or call `KafkaStreams.cleanUp()` before `start()`). Then restart the app and the totals rebuild from the first order.",
       commonError: {
         symptom: "`Consumer group 'order-totals-app' is still active` and the reset refuses to run.",
         cause:
@@ -1034,18 +1036,18 @@ export const orderTotalsLab: Lab = {
       title: "Stop the app and clean up",
       intro: "Stop any running instances, then remove this lab's topics and internal state.",
       command:
-        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --delete --topic order-totals && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics orders",
-      expected: "The `order-totals` topic is gone and the reset tool reports `Done.` (deleting the changelog, rewinding offsets).",
+        "docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics lab-e-orders && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --delete --topic lab-e-orders && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --delete --topic order-totals",
+      expected: "The reset tool reports `Done.`, then both `lab-e-orders` and `order-totals` are deleted.",
       observe:
-        "`orders` is left in place — Lab A/B and Module 3's example use it too. The reset tool clears the consumer group and the changelog; also `rm -rf` the local state directories from the previous step. Or skip all of this and `docker compose down -v` from the lab directory, which wipes the whole cluster (see the warning below).",
+        "`orders` (the shared topic) is untouched — this lab never used it. Finish the local side too: `rm -rf \"${TMPDIR:-/tmp}/kafka-streams/order-totals-app\" /tmp/streams-2/order-totals-app`. The `order-totals-app` consumer group is still listed after all this (the reset tool doesn't remove it) — `kafka-consumer-groups.sh --delete --group order-totals-app` clears it, or `docker compose down -v` from the lab directory wipes the whole cluster (see the warning below).",
     },
   ],
   troubleshooting: [
     {
       symptom: "The app logs `RUNNING` but `order-totals` stays empty.",
       cause:
-        "The output topic doesn't exist. Streams auto-creates its internal topics but never the one in `.to(...)`.",
-      fix: "Create it: `kafka-topics.sh --create --topic order-totals --partitions 3 --replication-factor 3`. Records produced to `orders` while the topic was missing are still there — the app reprocesses them once it can write.",
+        "`order-totals` doesn't exist (Streams auto-creates its internal topics but never the one in `.to(...)`), or the app is reading the wrong topic — `runStreams` needs `--args=\"localhost:29092 lab-e-orders\"`, and without the second arg it defaults to `orders`.",
+      fix: "Create `order-totals` (`kafka-topics.sh --create --topic order-totals --partitions 3 --replication-factor 3 --config cleanup.policy=compact`) and restart the app with the `lab-e-orders` arg.",
     },
     {
       symptom: "Every value on `order-totals` prints as unreadable bytes.",
@@ -1058,10 +1060,15 @@ export const orderTotalsLab: Lab = {
       fix: "Start the second with `STREAMS_STATE_DIR=/tmp/streams-2` (or any unused path).",
     },
     {
-      symptom: "After a reset the totals don't start from zero.",
+      symptom: "After the reset tool, the totals don't start from zero on the next run.",
       cause:
         "`kafka-streams-application-reset.sh` clears the cluster-side state but not the local RocksDB directory, and the app doesn't call `cleanUp()`.",
       fix: "Delete the local state dir: `rm -rf \"${TMPDIR:-/tmp}/kafka-streams/order-totals-app\" /tmp/streams-2/order-totals-app`, then restart.",
+    },
+    {
+      symptom: "`kafka-consumer-groups.sh --list` still shows `order-totals-app` after a reset.",
+      cause: "Expected. The reset tool rewinds the group's offsets but never deletes the group.",
+      fix: "Harmless — recreating `lab-e-orders` makes the stale offsets moot. To remove the group entirely: `kafka-consumer-groups.sh --bootstrap-server kafka-1:19092 --delete --group order-totals-app` (with no instances running).",
     },
   ],
   teardown: [
@@ -1071,16 +1078,16 @@ export const orderTotalsLab: Lab = {
     },
     {
       command:
-        'docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics orders && rm -rf "${TMPDIR:-/tmp}/kafka-streams/order-totals-app" /tmp/streams-2/order-totals-app',
-      note: "Clears both halves of the app's state — the internal changelog topic and offsets in the cluster, and the local RocksDB directories on your machine.",
+        'docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-streams-application-reset.sh --bootstrap-server kafka-1:19092 --application-id order-totals-app --input-topics lab-e-orders && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --delete --topic lab-e-orders && docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:19092 --delete --topic order-totals && rm -rf "${TMPDIR:-/tmp}/kafka-streams/order-totals-app" /tmp/streams-2/order-totals-app',
+      note: "Clears both halves of the app's state — the changelog topic and group offsets in the cluster, this lab's two topics, and the local RocksDB directories on your machine. Leaves the empty `order-totals-app` consumer group; `kafka-consumer-groups.sh --delete --group order-totals-app` removes that too.",
     },
     {
       command: 'cd "$(git rev-parse --show-toplevel)/local-cluster-lab" && docker compose down',
-      note: "Stops Lab B's containers but keeps the volumes, so `orders` and the cluster survive the next `up`. Add `-v` to wipe the cluster entirely (see the warning).",
+      note: "Stops Lab B's containers but keeps the volumes, so the cluster survives the next `up`. Add `-v` to wipe the cluster entirely (see the warning).",
     },
   ],
   teardownWarning:
-    "A Kafka Streams app keeps state in TWO places. In the cluster: the internal topics prefixed `order-totals-app-` (the compacted changelog, plus repartition topics for a topology that needs them) and the `order-totals-app` consumer group's offsets. On your machine: a local RocksDB directory under `state.dir` — for this app, `${java.io.tmpdir}/kafka-streams/order-totals-app` by default, or whatever you set `STREAMS_STATE_DIR` to. `docker compose down -v` from the lab directory clears the cluster side (along with every topic and all Lab B data — there is no undo). It does NOT touch the local directory. A clean re-run needs both: `kafka-streams-application-reset.sh` (or `down -v`) for the cluster, and `rm -rf` of the local state dir. Skip the local dir and the app silently resumes from stale on-disk state.",
+    "A Kafka Streams app keeps state in TWO places. In the cluster: the internal topics prefixed `order-totals-app-` (the compacted changelog, plus repartition topics for a topology that needs them) and the `order-totals-app` consumer group's committed offsets. On your machine: a local RocksDB directory under `state.dir` — for this app, `${java.io.tmpdir}/kafka-streams/order-totals-app` by default, or whatever you set `STREAMS_STATE_DIR` to. `kafka-streams-application-reset.sh` handles the cluster side EXCEPT it never deletes the consumer group (it just rewinds it) and never touches the local directory. `docker compose down -v` from the lab directory clears everything cluster-side (along with every topic and all Lab B data — there is no undo) but still not the local directory. A genuinely clean re-run needs all three: the reset tool (or `down -v`), `rm -rf` of the local state dir, and — if you care about a pristine group list — `kafka-consumer-groups.sh --delete --group order-totals-app`. Skip the local dir and the app silently resumes from stale on-disk state.",
 };
 
 export const labs: Lab[] = [labA, labB, labC, connectFileLab, orderTotalsLab];

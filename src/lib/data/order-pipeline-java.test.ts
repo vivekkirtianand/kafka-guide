@@ -55,6 +55,16 @@ describe("order-pipeline-java scaffold", () => {
     expect(test).toMatch(/TestInputTopic|TestOutputTopic/);
   });
 
+  it("OrderTotalsApp fails loudly — a fatal ERROR state exits non-zero, not 0", () => {
+    const app = read("src/main/java/com/example/orderpipeline/streams/OrderTotalsApp.java");
+    // the state listener records the crash and main exits non-zero on that path
+    expect(app).toMatch(/State\.ERROR/);
+    expect(app).toMatch(/crashed\.set\(true\)/);
+    expect(app).toMatch(/crashed\.get\(\)[\s\S]{0,120}System\.exit\(1\)/);
+    // an unhandled stream-thread exception shuts the client down rather than limping on
+    expect(app).toMatch(/setUncaughtExceptionHandler/);
+  });
+
   it("ships the producer, consumer, shared and test sources", () => {
     for (const f of [
       "src/main/java/com/example/orderpipeline/shared/OrderEvent.java",
@@ -76,9 +86,13 @@ describe("order-pipeline-java scaffold", () => {
 
   it("keys records by customerId and commits offsets manually", () => {
     const producer = read("src/main/java/com/example/orderpipeline/producer/OrderProducer.java");
-    expect(producer).toMatch(/new ProducerRecord<>\(TOPIC, event\.customerId\(\)/);
+    expect(producer).toMatch(/new ProducerRecord<>\(topic, event\.customerId\(\)/);
     expect(producer).toMatch(/ACKS_CONFIG, "all"/);
     expect(producer).toMatch(/ENABLE_IDEMPOTENCE_CONFIG, true/);
+    // an explicit topic can be passed (Lab E points the producer at a scratch topic)
+    expect(producer).toMatch(/OrderProducer\(String bootstrapServers, String topic\)/);
+    expect(read("src/main/java/com/example/orderpipeline/producer/ProducerApp.java"))
+      .toMatch(/args\.length > 2 \? args\[2\] : OrderProducer\.TOPIC/);
 
     const consumer = read("src/main/java/com/example/orderpipeline/consumer/OrderConsumer.java");
     expect(consumer).toMatch(/ENABLE_AUTO_COMMIT_CONFIG, false/);

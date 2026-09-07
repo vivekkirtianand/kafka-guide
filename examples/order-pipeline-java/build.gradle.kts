@@ -53,7 +53,7 @@ application {
 }
 
 tasks.named<JavaExec>("run") {
-    description = "Send a batch of demo order events. Override the broker with --args=\"host:port\"."
+    description = "Send a batch of demo order events. Override with --args=\"host:port [count] [topic]\"."
 }
 
 tasks.register<JavaExec>("runConsumer") {

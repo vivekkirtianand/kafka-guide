@@ -13,9 +13,10 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  * Sends demo orders and exits. Point it at whichever lab broker is running:
  *
  * <pre>
- *   ./gradlew run                              # 4 orders to localhost:9092 (Lab A)
- *   ./gradlew run --args="localhost:29092"     # 4 orders to Lab B's kafka-1 listener
- *   ./gradlew run --args="localhost:9092 500"  # 500 orders — enough to interrupt a consumer mid-stream
+ *   ./gradlew run                                       # 4 orders to localhost:9092 (Lab A)
+ *   ./gradlew run --args="localhost:29092"              # 4 orders to Lab B's kafka-1 listener
+ *   ./gradlew run --args="localhost:9092 500"           # 500 orders — enough to interrupt a consumer mid-stream
+ *   ./gradlew run --args="localhost:29092 12 lab-e-orders"  # 12 orders to a scratch topic (Lab E)
  * </pre>
  *
  * The orders cycle through four customers; two of the first four share a customer ("alice")
@@ -39,6 +40,7 @@ public final class ProducerApp {
     public static void main(String[] args) throws InterruptedException {
         String bootstrapServers = args.length > 0 ? args[0] : "localhost:9092";
         int count = args.length > 1 ? Integer.parseInt(args[1]) : 4;
+        String topic = args.length > 2 ? args[2] : OrderProducer.TOPIC;
 
         List<OrderEvent> orders = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
@@ -47,7 +49,7 @@ public final class ProducerApp {
         }
 
         int sent = 0;
-        try (OrderProducer producer = new OrderProducer(bootstrapServers)) {
+        try (OrderProducer producer = new OrderProducer(bootstrapServers, topic)) {
             List<Future<RecordMetadata>> acks = new ArrayList<>();
             for (OrderEvent event : orders) {
                 acks.add(producer.send(event));
@@ -64,7 +66,7 @@ public final class ProducerApp {
             }
         }
 
-        System.out.printf("Sent %d/%d orders to %s%n", sent, count, bootstrapServers);
+        System.out.printf("Sent %d/%d orders to %s on %s%n", sent, count, bootstrapServers, topic);
         if (sent != count) {
             System.exit(1);
         }

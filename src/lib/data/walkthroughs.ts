@@ -130,7 +130,7 @@ export const producerConsumerWalkthrough: Walkthrough = {
         "One method turns an OrderEvent into a ProducerRecord and hands it to the client. Note what it returns — and what it does not wait for.",
       file: "src/main/java/com/example/orderpipeline/producer/OrderProducer.java",
       code: `        ProducerRecord<String, String> record =
-                new ProducerRecord<>(TOPIC, event.customerId(), OrderEventJson.toJson(event));
+                new ProducerRecord<>(topic, event.customerId(), OrderEventJson.toJson(event));
         return producer.send(record, (metadata, exception) -> {
             if (exception != null) {
                 log.error("send failed for order {}", event.orderId(), exception);

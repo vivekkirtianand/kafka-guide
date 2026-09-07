@@ -1223,6 +1223,22 @@ Re-verified: `typecheck` / `lint` / `test` (410) / `build` clean; `./gradlew bui
 Temurin 21; browser-checked the Module 8 page — 5 topics, both labs, the 3 further-reading
 links, and the new glossary anchors.
 
+**Review findings addressed (round 1)** (4 findings from a review of PR #35; all about Lab E
+determinism plus one about the Streams app's exit code — re-verified against a real
+`apache/kafka:4.0.2` broker):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The reset tool leaves the `order-totals-app` consumer group, but the verifier required that group to be absent. | Confirmed against the broker: `kafka-streams-application-reset.sh` rewinds the group's offsets to 0 and deletes the changelog topic, but the group is still listed by `--list`. `verify` no longer checks the group at all — it checks that the lab's three topics don't exist — and its note plus `reset-app`'s observe and the module's "Reprocessing" point now say plainly the tool leaves the group behind (a `kafka-consumer-groups.sh --delete` removes it, or `down -v`). |
+| P1 | Existing records in `orders` were allowed by verification yet would invalidate the lab's fixed expected totals. | Lab E now uses its own dedicated `lab-e-orders` input topic, created without `--if-not-exists` (a leftover fails loudly). `ProducerApp` / `OrderProducer` gained an optional topic arg (`./gradlew run --args="… 12 lab-e-orders"`) and `OrderTotalsApp` already took one. `read-totals`' totals are now exact because the topic holds only this lab's 12 orders. |
+| P1 | The restart reused the same local RocksDB state, so it didn't prove reconstruction from the changelog. | `restart-restore` now runs `rm -rf "${TMPDIR:-/tmp}/kafka-streams/order-totals-app" && ./gradlew runStreams …` — with the local store gone and the group committed past all 12 input records, the totals it comes back with (alice 12600, then +4200 = 16800 after one more cycle) can only have come from the changelog. Verified end to end. |
+| P2 | A fatal Kafka Streams `ERROR` state let `OrderTotalsApp` exit with status 0. | The state listener sets an `AtomicBoolean crashed` on `State.ERROR`; after the latch, `if (crashed.get()) System.exit(1)`. Also added an explicit `setUncaughtExceptionHandler(… SHUTDOWN_CLIENT)`. Verified a clean SIGINT/SIGTERM shutdown still exits 0. |
+
+Re-verified: `typecheck` / `lint` / `test` (**410 → 412**) / `build` clean; `./gradlew build`
+clean (26 Java tests); every Lab E command re-run verbatim against a real broker — dedicated
+topic, the `rm -rf`+restart changelog replay, the two-instance split (partitions 0,2 / 1),
+and the reset tool leaving the group.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

@@ -3,10 +3,12 @@ package com.example.orderpipeline.streams;
 import java.time.Duration;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler;
 
 /**
  * Runs {@link OrderTotalsTopology} against a real broker:
@@ -36,9 +38,16 @@ public final class OrderTotalsApp {
         KafkaStreams streams = new KafkaStreams(topology, config(bootstrapServers));
 
         CountDownLatch stopped = new CountDownLatch(1);
+        AtomicBoolean crashed = new AtomicBoolean(false);
+
+        // An unhandled exception on a stream thread shuts the whole client down (rather than
+        // limping on with fewer threads), which surfaces as the ERROR state below.
+        streams.setUncaughtExceptionHandler(
+                exception -> StreamsUncaughtExceptionHandler.StreamThreadExceptionResponse.SHUTDOWN_CLIENT);
         streams.setStateListener((next, previous) -> {
             System.out.printf("state: %s -> %s%n", previous, next);
             if (next == KafkaStreams.State.ERROR) {
+                crashed.set(true);
                 stopped.countDown();
             }
         });
@@ -57,6 +66,12 @@ public final class OrderTotalsApp {
             stopped.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+
+        // A crashed Streams client must not look like a clean shutdown to whatever ran this.
+        if (crashed.get()) {
+            System.err.println("Kafka Streams entered the ERROR state - see the stack trace above");
+            System.exit(1);
         }
     }
 
