@@ -28,8 +28,8 @@ export const configs: ConfigEntry[] = [
     scope: "client",
     goal: "Connect to the cluster",
     controls:
-      "A free-form identifier the client sends with every request. It shows up in broker request logs, client-side metrics, and — together with the authenticated principal — in client quota matching.",
-    defaultValue: '""',
+      "A free-form identifier the client sends with every request. It shows up in broker request logs, client-side metrics, and — together with the authenticated principal — in client quota matching. Left unset, the client generates one (producers use producer-<n>, consumers consumer-<group>-<n>), so it is never truly absent, just unstable and uninformative.",
+    defaultValue: '"" (client generates producer-<n> / consumer-<group>-<n>)',
     changeMechanism: "recreate-client",
     riskOfChange: "safe",
     managedAvailability: "full",
@@ -37,10 +37,10 @@ export const configs: ConfigEntry[] = [
       "Always set a stable, descriptive value per application (not per instance) so a noisy or misbehaving client is identifiable in broker logs and metrics without packet captures.",
     performanceImpact: "None.",
     reliabilityImpact:
-      "No functional effect on its own, but an unset client.id makes it much harder to attribute load, lag, or throttling to a specific application during an incident.",
+      "No functional effect on its own. But the generated ids change on every restart and carry no application name, so attributing load, lag, or throttling to a specific service during an incident means correlating by host or principal instead.",
     relatedConfigs: ["bootstrap.servers", "group.id"],
     failureModes: [
-      "Left empty across a fleet, so broker logs show anonymous connections and per-client quotas cannot target one application",
+      "Left unset across a fleet, so each instance reports a different auto-generated id and a client-id quota cannot be scoped to one application",
     ],
   },
   {
@@ -163,10 +163,10 @@ export const configs: ConfigEntry[] = [
     performanceImpact:
       "Each refresh is one lightweight metadata request; even a 30s interval is negligible traffic for a normal client count.",
     reliabilityImpact:
-      "Error-driven refreshes usually mask a stale cache, but a client idle on a partition can hold a stale leader for up to this long before it notices a move.",
+      "Rarely the thing that catches a stale leader — the first request to a moved partition returns a leadership error that forces an immediate refresh anyway. Its real job is discovering brokers and partitions that were added while the client saw no error at all.",
     relatedConfigs: ["bootstrap.servers", "connections.max.idle.ms"],
     failureModes: [
-      "Set very high on a cluster that reassigns partitions often — idle clients keep trying a former leader until the next forced refresh",
+      "Set very high on a cluster that scales out often — a client with no traffic to the new partitions never learns they exist until something forces a refresh",
     ],
   },
   {
@@ -738,10 +738,11 @@ export const configs: ConfigEntry[] = [
       "Raise it when records are large and one partition should be able to return more per round trip; lower it to bound per-partition memory when a consumer subscribes to many partitions at once.",
     performanceImpact:
       "Larger values mean fewer fetch round trips per partition and more client memory held between polls. It is a soft limit: if the first batch on a partition is larger than this, the broker returns it anyway so the consumer can make progress.",
-    reliabilityImpact: "Because it is a soft limit, an oversized record never wedges a consumer — it is delivered on its own even if it exceeds the cap.",
+    reliabilityImpact:
+      "Because it is a soft limit, an oversized record batch never wedges a consumer — the broker returns that first batch whole even though it exceeds the cap.",
     relatedConfigs: ["fetch.max.bytes", "max.poll.records"],
     failureModes: [
-      "Set very low with large records, so nearly every fetch returns a single over-limit batch and throughput collapses to one record per round trip",
+      "Set well below the topic's record-batch size, so each partition contributes only its first batch per fetch — the consumer still makes progress but needs more fetch round trips to drain a backlog",
     ],
   },
   {
@@ -776,13 +777,13 @@ export const configs: ConfigEntry[] = [
     riskOfChange: "caution",
     managedAvailability: "limited",
     whenToChange:
-      "Set it to false in production so a typo in a topic name fails loudly instead of silently creating a 1-partition, default-replication topic that then accumulates data no one reads correctly.",
+      "Set it to false in production so a typo in a topic name does not silently create a 1-partition, default-replication topic that then accumulates data no one reads correctly. It does not make the typo fail loudly on its own — the broker returns UNKNOWN_TOPIC_OR_PARTITION and the consumer just keeps polling and refreshing metadata — so pair it with startup topic-existence validation or a lag/assignment alert.",
     performanceImpact: "None.",
     reliabilityImpact:
       "An accidentally auto-created topic is created with broker defaults (often replication factor 1), so data written to it before anyone notices has no fault tolerance. Many managed services disable broker-side auto-create, making this setting moot.",
     relatedConfigs: ["auto.offset.reset", "group.id"],
     failureModes: [
-      "A misspelled topic name auto-creates an empty topic; the consumer sits at 0 lag on it forever while the real topic goes unread",
+      "With it left true, a misspelled topic name auto-creates an empty topic; with it false, the same typo leaves the consumer polling a topic that does not exist — either way it looks like an idle consumer unless monitoring catches it",
     ],
   },
   {
@@ -790,19 +791,19 @@ export const configs: ConfigEntry[] = [
     scope: "consumer",
     goal: "Bound request latency",
     controls:
-      "The timeout for blocking consumer calls that do not take an explicit timeout argument — commitSync(), partitionsFor(), listTopics(), position(), committed(). request.timeout.ms bounds one network round trip inside that window.",
+      "The overall deadline for blocking consumer calls that do not take an explicit timeout argument — commitSync(), partitionsFor(), listTopics(), position(), committed(). request.timeout.ms bounds each individual request the call makes inside that deadline.",
     defaultValue: "60000",
     changeMechanism: "recreate-client",
     riskOfChange: "safe",
     managedAvailability: "full",
     whenToChange:
-      "Lower it to make a stuck coordinator surface as an exception faster in an application that can react to it; raise it only if legitimate operations against a busy cluster routinely need more than a minute.",
-    performanceImpact: "No happy-path effect — it only sets how long a call keeps retrying before giving up.",
+      "Lower it to shrink the total time an application will block on one of these calls before it gives up and can react; raise it only if legitimate operations against a busy cluster routinely need more than a minute.",
+    performanceImpact: "No happy-path effect — a call that completes quickly still returns quickly. It only sets how long a call keeps retrying failed requests before giving up.",
     reliabilityImpact:
-      "Must stay above request.timeout.ms so at least one full round trip can complete. Too low a value turns a brief coordinator blip into a thrown exception from commitSync().",
+      "This is the retry/time budget for the whole operation. Setting it below request.timeout.ms is allowed but means a single slow request can consume the entire budget, leaving no room for a retry.",
     relatedConfigs: ["request.timeout.ms", "max.poll.interval.ms"],
     failureModes: [
-      "Set below request.timeout.ms, so operations can never complete a single retry and always throw",
+      "Set very low, a routine commitSync() against a briefly slow coordinator throws TimeoutException before its retries can land",
     ],
   },
   {

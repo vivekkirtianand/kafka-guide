@@ -1438,6 +1438,20 @@ Verified: `typecheck` / `lint` / `test` (435) / `build` clean; browser — `/con
 shows 51 of 51, the scope filter has `client`, the goal filter has the 6 new goals,
 `bootstrap.servers` expands with all fields populated.
 
+**Review findings addressed (round 1)** (5 findings on PR #38, all P2 — Kafka-behaviour
+precision in the new prose):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | `client.id` — an unset value is not anonymous: the client generates `producer-<n>` / `consumer-<group>-<n>`, so broker logs are not blank. | `controls` / `defaultValue` note the generated ids; impact reframed to "unstable, application-name-free per-instance ids → attribution by host/principal, client-id quotas cannot target one app". |
+| P2 | `metadata.max.age.ms` — contradicted its own `controls`: the first request to a moved partition returns a leadership error that forces an immediate refresh; the client does not keep hitting the old leader until this timer expires. | `reliabilityImpact` / failure mode rewritten around its real job — discovering brokers/partitions added while the client saw *no* error. |
+| P2 | `allow.auto.create.topics=false` does not "fail loudly" — the broker returns `UNKNOWN_TOPIC_OR_PARTITION` and the consumer keeps polling and refreshing metadata. | `whenToChange` now says it prevents unwanted creation but needs startup topic-existence validation or a lag/assignment alert to be loud; failure mode covers both true and false looking like an idle consumer. |
+| P2 | `default.api.timeout.ms` — a value below `request.timeout.ms` is valid, and a fast request still succeeds; operations do not invariably throw. | Reframed as the overall retry/time budget for the call; `controls` distinguishes overall deadline vs. per-request `request.timeout.ms`; "must stay above" softened to "a value below means one slow request can consume the whole budget". |
+| P2 | `max.partition.fetch.bytes` soft limit returns the first oversized **record batch** (many records), and a fetch spans multiple partitions — throughput does not collapse to one record per round trip. | `reliabilityImpact` and the failure mode restated in batches + extra fetch round trips; "delivered on its own" → "returns that first batch whole". |
+
+Re-verified: `typecheck` / `lint` / `test` (435) / `build` clean; browser — the reworded
+entries render with every field populated.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
