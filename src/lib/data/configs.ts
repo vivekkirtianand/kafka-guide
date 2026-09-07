@@ -2,6 +2,174 @@ import { ConfigEntry } from "@/lib/types";
 
 export const configs: ConfigEntry[] = [
   {
+    key: "bootstrap.servers",
+    scope: "client",
+    goal: "Connect to the cluster",
+    controls:
+      "The initial list of host:port broker addresses a client contacts on startup to discover the rest of the cluster. It does not need every broker — one reachable broker is enough to learn the full set.",
+    defaultValue: '"" (required — a client will not start without it)',
+    changeMechanism: "recreate-client",
+    riskOfChange: "caution",
+    managedAvailability: "full",
+    whenToChange:
+      "Set it once from the bootstrap string your platform or cluster gives you. List two or three brokers (or a load-balanced endpoint) so a single down broker at startup does not stop a client from bootstrapping.",
+    performanceImpact:
+      "No steady-state effect — it is used for the first metadata fetch and to re-bootstrap if every known broker becomes unreachable.",
+    reliabilityImpact:
+      "If every address here is unreachable when the client starts, it never connects. Once running, the client uses the complete broker list it discovered, so a listed broker failing later is harmless.",
+    relatedConfigs: ["security.protocol", "metadata.max.age.ms", "advertised.listeners"],
+    failureModes: [
+      "Only one broker listed and it is the one that is down at startup — the client fails to bootstrap even though the cluster is healthy",
+      "Addresses reachable from a developer laptop but not from production, so it works locally and times out once deployed",
+    ],
+  },
+  {
+    key: "client.id",
+    scope: "client",
+    goal: "Connect to the cluster",
+    controls:
+      "A free-form identifier the client sends with every request. It shows up in broker request logs, client-side metrics, and — together with the authenticated principal — in client quota matching. Left unset, the client generates one (producers use producer-<n>, consumers consumer-<group>-<n>), so it is never truly absent, just unstable and uninformative.",
+    defaultValue: '"" (client generates producer-<n> / consumer-<group>-<n>)',
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Always set a stable, descriptive value per application (not per instance) so a noisy or misbehaving client is identifiable in broker logs and metrics without packet captures.",
+    performanceImpact: "None.",
+    reliabilityImpact:
+      "No functional effect on its own. But the generated ids change on every restart and carry no application name, so attributing load, lag, or throttling to a specific service during an incident means correlating by host or principal instead.",
+    relatedConfigs: ["bootstrap.servers", "group.id"],
+    failureModes: [
+      "Left unset across a fleet, so each instance reports a different auto-generated id and a client-id quota cannot be scoped to one application",
+    ],
+  },
+  {
+    key: "security.protocol",
+    scope: "client",
+    goal: "Authenticate and encrypt",
+    controls:
+      "Which transport the client uses to reach brokers: PLAINTEXT (no auth, no encryption), SSL (TLS, optional mutual auth), SASL_PLAINTEXT (SASL auth, no encryption), or SASL_SSL (SASL auth over TLS).",
+    defaultValue: "PLAINTEXT",
+    changeMechanism: "recreate-client",
+    riskOfChange: "high-risk",
+    managedAvailability: "full",
+    whenToChange:
+      "Set it to match the listener you are connecting to. Managed services and most production clusters expose SASL_SSL; PLAINTEXT is only appropriate for a local single-broker lab.",
+    performanceImpact:
+      "TLS adds a handshake per connection and a few percent CPU for encryption; negligible for steady-state throughput on modern hardware.",
+    reliabilityImpact:
+      "A value that does not match the broker listener fails every connection immediately — there is no partial or degraded mode.",
+    relatedConfigs: ["sasl.mechanism", "bootstrap.servers", "advertised.listeners"],
+    failureModes: [
+      "Client set to PLAINTEXT against a SASL_SSL listener (or vice versa) — connections are refused or hang with an opaque handshake error",
+      "Connecting to the wrong advertised port for the chosen protocol",
+    ],
+  },
+  {
+    key: "sasl.mechanism",
+    scope: "client",
+    goal: "Authenticate and encrypt",
+    controls:
+      "Which SASL mechanism the client authenticates with when security.protocol is SASL_PLAINTEXT or SASL_SSL: commonly PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, or OAUTHBEARER (GSSAPI for Kerberos).",
+    defaultValue: "GSSAPI",
+    changeMechanism: "recreate-client",
+    riskOfChange: "high-risk",
+    managedAvailability: "full",
+    whenToChange:
+      "Set it to the mechanism your cluster enables — SCRAM-SHA-256 or PLAIN for most managed services, OAUTHBEARER where token auth is in place. Only relevant alongside a SASL security.protocol.",
+    performanceImpact: "None beyond the one-time authentication exchange when a connection is established.",
+    reliabilityImpact:
+      "A mechanism the broker has not enabled fails authentication on every connection. PLAIN over SASL_PLAINTEXT sends the password in cleartext — pair it only with SASL_SSL.",
+    relatedConfigs: ["security.protocol"],
+    failureModes: [
+      "Choosing a mechanism the broker's sasl.enabled.mechanisms does not include — every client fails to authenticate",
+      "PLAIN over SASL_PLAINTEXT, leaking credentials on the wire",
+    ],
+  },
+  {
+    key: "connections.max.idle.ms",
+    scope: "client",
+    goal: "Connect to the cluster",
+    controls: "How long an idle connection to a broker is kept open before the client closes it.",
+    defaultValue: "540000",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Lower it when a firewall or load balancer between the client and the brokers silently drops idle connections sooner than 9 minutes, so the client re-establishes them on its own schedule instead of discovering the drop mid-request.",
+    performanceImpact:
+      "Very short values cause needless reconnect churn; the reconnect itself costs a TCP and (with TLS/SASL) an auth round trip.",
+    reliabilityImpact:
+      "A middlebox idle timeout shorter than this value leads to periodic 'Connection reset' errors on the first request after a quiet period, usually retried transparently but noisy in logs.",
+    relatedConfigs: ["metadata.max.age.ms", "reconnect.backoff.max.ms"],
+    failureModes: [
+      "Left at the default behind a load balancer with a 60s idle timeout — the first request after any lull fails with a connection reset",
+    ],
+  },
+  {
+    key: "reconnect.backoff.max.ms",
+    scope: "client",
+    goal: "Connect to the cluster",
+    controls:
+      "The ceiling on the wait between reconnection attempts to a broker that keeps refusing connections. The wait starts at reconnect.backoff.ms (50 ms), grows exponentially with jitter, and is capped here.",
+    defaultValue: "1000",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Rarely — raise it only if a large fleet reconnecting to a broker that just restarted produces a noticeable connection storm, to spread the retries out further.",
+    performanceImpact:
+      "Higher values reduce reconnect attempt rate against a down broker; they also lengthen the worst-case time to notice that broker has come back.",
+    reliabilityImpact:
+      "Does not affect a healthy connection. Only shapes how aggressively the client retries a broker it cannot currently reach.",
+    relatedConfigs: ["retry.backoff.ms", "connections.max.idle.ms"],
+    failureModes: [
+      "Set very high, a client is slow to reconnect to a broker that recovered quickly, extending an outage that was already over",
+    ],
+  },
+  {
+    key: "retry.backoff.ms",
+    scope: "client",
+    goal: "Connect to the cluster",
+    controls:
+      "The initial wait before retrying a failed request to a specific topic-partition (a failed produce, a failed fetch). Since Kafka 3.7 it grows exponentially with jitter up to retry.backoff.max.ms (1000 ms).",
+    defaultValue: "100",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Leave it alone in almost every case. Raising it slightly can help when retries are hammering a partition whose leader is mid-election.",
+    performanceImpact:
+      "Too low a value wastes the retry budget on tight-loop retries against a partition that needs a moment to settle; the default is already tuned for this.",
+    reliabilityImpact:
+      "Interacts with delivery.timeout.ms on the producer — every retry consumes part of that budget, so an aggressively low backoff can exhaust the retries before the partition recovers.",
+    relatedConfigs: ["reconnect.backoff.max.ms", "retries", "delivery.timeout.ms"],
+    failureModes: [
+      "Lowered to a few milliseconds, a client generates a retry storm against a partition whose leader is briefly unavailable",
+    ],
+  },
+  {
+    key: "metadata.max.age.ms",
+    scope: "client",
+    goal: "Connect to the cluster",
+    controls:
+      "How often the client proactively refreshes cluster metadata (which brokers exist, which broker leads each partition) even when nothing has visibly gone wrong. A leadership change or a request error also triggers an immediate refresh.",
+    defaultValue: "300000",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Lower it when the broker set changes often (aggressive autoscaling, frequent rolling restarts) so clients pick up new brokers without waiting on an error to force the refresh.",
+    performanceImpact:
+      "Each refresh is one lightweight metadata request; even a 30s interval is negligible traffic for a normal client count.",
+    reliabilityImpact:
+      "Rarely the thing that catches a stale leader — the first request to a moved partition returns a leadership error that forces an immediate refresh anyway. Its real job is discovering brokers and partitions that were added while the client saw no error at all.",
+    relatedConfigs: ["bootstrap.servers", "connections.max.idle.ms"],
+    failureModes: [
+      "Set very high on a cluster that scales out often — a client with no traffic to the new partitions never learns they exist until something forces a refresh",
+    ],
+  },
+  {
     key: "acks",
     scope: "producer",
     goal: "Prevent acknowledged data loss",
@@ -201,6 +369,93 @@ export const configs: ConfigEntry[] = [
     failureModes: ["Silent record reordering on retry when this is >1 and idempotence is disabled"],
   },
   {
+    key: "key.serializer",
+    scope: "producer",
+    goal: "Serialize records",
+    controls:
+      "The class that turns a record key object into the bytes stored on the topic. Must implement org.apache.kafka.common.serialization.Serializer.",
+    defaultValue: "unset (required)",
+    changeMechanism: "recreate-client",
+    riskOfChange: "high-risk",
+    managedAvailability: "full",
+    whenToChange:
+      "Pick it to match the key type you produce: StringSerializer for string keys, ByteArraySerializer for raw bytes, or a schema-aware serializer (Avro/Protobuf/JSON Schema) when the key is registered in a schema registry.",
+    performanceImpact:
+      "Schema-aware serializers add a registry lookup on the first record per schema (then cached) and a few bytes of wire header; primitive serializers are effectively free.",
+    reliabilityImpact:
+      "Consumers must deserialize keys with the matching type. Changing this on a live topic splits it into a before/after that no single consumer deserializer reads cleanly.",
+    relatedConfigs: ["value.serializer", "partitioner.class"],
+    failureModes: [
+      "Key serializer and the consumer's key deserializer disagree — the consumer throws SerializationException out of poll() and the partition stalls",
+      "Producing a key object the configured serializer cannot handle — send() throws synchronously",
+    ],
+  },
+  {
+    key: "value.serializer",
+    scope: "producer",
+    goal: "Serialize records",
+    controls:
+      "The class that turns a record value object into the bytes stored on the topic. Must implement org.apache.kafka.common.serialization.Serializer.",
+    defaultValue: "unset (required)",
+    changeMechanism: "recreate-client",
+    riskOfChange: "high-risk",
+    managedAvailability: "full",
+    whenToChange:
+      "Match it to the value type and your data-contract strategy: StringSerializer for JSON-as-text, ByteArraySerializer for pre-encoded bytes, or a schema-registry serializer when you want the registry to enforce compatibility.",
+    performanceImpact:
+      "The dominant serialization cost for most workloads, since values are larger than keys; schema-aware serializers cache the schema after the first record.",
+    reliabilityImpact:
+      "The value encoding is the topic's data contract. A schema-registry serializer rejects an incompatible change at produce time; a plain serializer lets it through and breaks consumers instead.",
+    relatedConfigs: ["key.serializer", "compression.type"],
+    failureModes: [
+      "Value serializer does not match the consumer's deserializer — every record fails to decode",
+      "Switching value encodings without a registry gate, so old consumers hit undecodable records with no warning",
+    ],
+  },
+  {
+    key: "compression.type",
+    scope: "producer",
+    goal: "Reduce bandwidth and storage cost",
+    controls:
+      "Whether the producer compresses each record batch before sending, and with which codec: none, gzip, snappy, lz4, or zstd. Compression is applied per batch, so it pairs with linger.ms and batch.size.",
+    defaultValue: "none",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Turn it on (lz4 or zstd) for almost any real workload — it cuts network and disk use and usually raises throughput. zstd gives the best ratio; lz4 is the cheapest CPU. Larger linger.ms / batch.size make it more effective.",
+    performanceImpact:
+      "Producer CPU rises; network and broker disk use fall, and broker throughput usually improves because it stores and serves the batch already compressed. Consumers decompress transparently regardless of this setting.",
+    reliabilityImpact:
+      "No durability effect. If the topic's own compression.type is set to something other than 'producer', the broker recompresses on write, spending broker CPU.",
+    relatedConfigs: ["linger.ms", "batch.size"],
+    failureModes: [
+      "gzip chosen for its ratio on a high-throughput producer, making producer CPU the bottleneck — lz4 or zstd are far cheaper for a similar result",
+    ],
+  },
+  {
+    key: "partitioner.class",
+    scope: "producer",
+    goal: "Control partitioning",
+    controls:
+      "The class that decides which partition a record goes to. Unset (the default) uses Kafka's built-in logic; a custom class implements org.apache.kafka.clients.producer.Partitioner.",
+    defaultValue: "null (built-in partitioning)",
+    changeMechanism: "recreate-client",
+    riskOfChange: "caution",
+    managedAvailability: "full",
+    whenToChange:
+      "Leave it unset unless you have a concrete routing requirement the default cannot meet (e.g. co-locating records from different topics on matching partitions). Kafka 3.3 deprecated the named DefaultPartitioner / UniformStickyPartitioner classes in favour of the unset default.",
+    performanceImpact:
+      "With the default: an explicit partition on the record wins; otherwise a key is hashed (murmur2) to a partition; a record with no key is placed in a partition that only switches once the current batch fills or linger.ms elapses, which keeps batches full.",
+    reliabilityImpact:
+      "Same-key ordering depends on the partitioner being stable. Changing it (or the partition count) re-routes existing keys, so records for one key can be split across two partitions during the transition and lose their relative order.",
+    relatedConfigs: ["key.serializer", "linger.ms", "batch.size"],
+    failureModes: [
+      "A custom partitioner that ignores the key breaks the same-key-same-partition guarantee downstream consumers rely on",
+      "Assuming no-key records round-robin per record — they are assigned batch-wise, so a low-volume producer can appear to use only one partition",
+    ],
+  },
+  {
     key: "transactional.id",
     scope: "producer",
     goal: "Use transactions",
@@ -390,6 +645,166 @@ export const configs: ConfigEntry[] = [
     reliabilityImpact: "Does not affect durability; an undersized value on a busy topic just means more fetch round trips.",
     relatedConfigs: ["max.poll.records"],
     failureModes: ["Set very low with large record batches, the consumer spends most of its time on fetch overhead"],
+  },
+  {
+    key: "key.deserializer",
+    scope: "consumer",
+    goal: "Serialize records",
+    controls:
+      "The class that turns the stored key bytes back into an object. Must implement org.apache.kafka.common.serialization.Deserializer and match the type the producer serialized.",
+    defaultValue: "unset (required)",
+    changeMechanism: "recreate-client",
+    riskOfChange: "high-risk",
+    managedAvailability: "full",
+    whenToChange:
+      "Set it to the counterpart of the producer's key.serializer: StringDeserializer for string keys, ByteArrayDeserializer for raw bytes, the schema-aware deserializer when keys are registered.",
+    performanceImpact:
+      "Negligible for primitives; a schema-aware deserializer does a cached registry lookup per schema id it has not seen.",
+    reliabilityImpact:
+      "A mismatch with the produced bytes throws SerializationException from inside poll(), before the record reaches your code — the partition stops advancing until you fix the deserializer or skip the offset.",
+    relatedConfigs: ["value.deserializer", "key.serializer"],
+    failureModes: [
+      "Consumer configured for StringDeserializer against keys written as Avro — poll() throws and the group makes no progress on that partition",
+    ],
+  },
+  {
+    key: "value.deserializer",
+    scope: "consumer",
+    goal: "Serialize records",
+    controls:
+      "The class that turns the stored value bytes back into an object. Must implement org.apache.kafka.common.serialization.Deserializer and match the producer's value.serializer.",
+    defaultValue: "unset (required)",
+    changeMechanism: "recreate-client",
+    riskOfChange: "high-risk",
+    managedAvailability: "full",
+    whenToChange:
+      "Match it to the producer's value encoding. With a schema registry, the deserializer looks up each record's schema by the id in the wire header, so one consumer can read values written against several schema versions.",
+    performanceImpact:
+      "The main per-record CPU cost on the consumer; schema-aware deserializers cache each schema after first use.",
+    reliabilityImpact:
+      "A poison record (bytes this deserializer cannot parse) throws out of poll() and stalls the partition exactly like a business-logic failure would — handling it needs either a try/catch deserializer wrapper or an error-handling policy.",
+    relatedConfigs: ["key.deserializer", "value.serializer", "isolation.level"],
+    failureModes: [
+      "One malformed record on a partition stops all consumption of that partition until the offset is skipped",
+      "Deserializer type does not match what was produced — nothing on the topic decodes",
+    ],
+  },
+  {
+    key: "fetch.min.bytes",
+    scope: "consumer",
+    goal: "Tune consumer fetching",
+    controls:
+      "The minimum amount of data a broker waits to accumulate before answering a fetch request. The broker responds sooner if fetch.max.wait.ms elapses first.",
+    defaultValue: "1",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Raise it (to a few KB or more) on a high-message-rate topic to get fewer, fuller fetch responses — less CPU and network overhead on both sides — when an extra few hundred milliseconds of latency is acceptable.",
+    performanceImpact:
+      "Higher values improve throughput efficiency and reduce request rate; they add up to fetch.max.wait.ms of latency when the topic is quiet.",
+    reliabilityImpact: "No durability or delivery effect — purely a batching-versus-latency trade on the read path.",
+    relatedConfigs: ["fetch.max.wait.ms", "fetch.max.bytes", "max.partition.fetch.bytes"],
+    failureModes: [
+      "Raised high on a low-traffic topic without adjusting fetch.max.wait.ms — every poll waits the full 500 ms for data that never reaches the threshold",
+    ],
+  },
+  {
+    key: "fetch.max.wait.ms",
+    scope: "consumer",
+    goal: "Tune consumer fetching",
+    controls: "The longest a broker holds a fetch request open waiting for fetch.min.bytes of data before responding with whatever it has.",
+    defaultValue: "500",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Lower it when fetch.min.bytes is raised and the added tail latency on a quiet topic matters; leave it at the default when fetch.min.bytes is 1.",
+    performanceImpact: "Only takes effect when fetch.min.bytes is not yet met — it bounds the wait, so lower values cut worst-case poll latency on idle partitions.",
+    reliabilityImpact: "None.",
+    relatedConfigs: ["fetch.min.bytes", "fetch.max.bytes"],
+    failureModes: ["Confused with a poll timeout — this only caps the broker-side wait for a single fetch, not how long poll() blocks overall"],
+  },
+  {
+    key: "max.partition.fetch.bytes",
+    scope: "consumer",
+    goal: "Tune consumer fetching",
+    controls: "The maximum data the broker returns for any one partition in a fetch response. fetch.max.bytes caps the whole response across partitions.",
+    defaultValue: "1048576",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Raise it when records are large and one partition should be able to return more per round trip; lower it to bound per-partition memory when a consumer subscribes to many partitions at once.",
+    performanceImpact:
+      "Larger values mean fewer, fuller batches per partition and more client memory held between polls. It has a soft-limit escape: if the first record batch in the first non-empty partition of a fetch is larger than this, the broker returns that one batch anyway so the consumer can always make progress.",
+    reliabilityImpact:
+      "The soft-limit escape means an oversized record batch never wedges a consumer — it is guaranteed to come back whole in the first non-empty partition of a fetch, even though it exceeds the cap.",
+    relatedConfigs: ["fetch.max.bytes", "max.poll.records"],
+    failureModes: [
+      "Set well below the topic's record-batch size, so each partition returns fewer batches per fetch and the consumer needs more fetch round trips to drain a backlog",
+    ],
+  },
+  {
+    key: "client.rack",
+    scope: "consumer",
+    goal: "Tune consumer fetching",
+    controls:
+      "The rack or availability-zone id of this consumer. When brokers are configured with broker.rack and a rack-aware replica selector, the consumer fetches from the in-zone replica (often a follower) instead of always the partition leader.",
+    defaultValue: '""',
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "limited",
+    whenToChange:
+      "Set it to the consumer's zone in a multi-AZ deployment to cut cross-zone network transfer cost — but only if the brokers run replica.selector.class=RackAwareReplicaSelector; without that it is silently ignored.",
+    performanceImpact:
+      "Reduces cross-zone bandwidth and can lower fetch latency by reading a closer replica. A follower only serves up to the high watermark, so a consumer may sit a few milliseconds further behind the leader.",
+    reliabilityImpact:
+      "No correctness impact — followers never return uncommitted data. If the in-zone replica falls out of the ISR the consumer transparently falls back to the leader.",
+    relatedConfigs: ["fetch.min.bytes"],
+    failureModes: [
+      "Set on the consumer but the brokers have no rack-aware selector configured — nothing changes and the expected cost saving never appears",
+    ],
+  },
+  {
+    key: "allow.auto.create.topics",
+    scope: "consumer",
+    goal: "Control topic auto-creation",
+    controls:
+      "Whether this consumer may trigger creation of a topic it subscribes to but that does not exist yet. It only has an effect when the broker also has auto.create.topics.enable set.",
+    defaultValue: "true",
+    changeMechanism: "recreate-client",
+    riskOfChange: "caution",
+    managedAvailability: "limited",
+    whenToChange:
+      "Set it to false in production so a typo in a topic name does not silently create a 1-partition, default-replication topic that then accumulates data no one reads correctly. It does not make the typo fail loudly on its own — the broker returns UNKNOWN_TOPIC_OR_PARTITION and the consumer just keeps polling and refreshing metadata — so pair it with startup topic-existence validation or a lag/assignment alert.",
+    performanceImpact: "None.",
+    reliabilityImpact:
+      "An accidentally auto-created topic is created with broker defaults (often replication factor 1), so data written to it before anyone notices has no fault tolerance. Many managed services disable broker-side auto-create, making this setting moot.",
+    relatedConfigs: ["auto.offset.reset", "group.id"],
+    failureModes: [
+      "With it left true, a misspelled topic name auto-creates an empty topic; with it false, the same typo leaves the consumer polling a topic that does not exist — either way it looks like an idle consumer unless monitoring catches it",
+    ],
+  },
+  {
+    key: "default.api.timeout.ms",
+    scope: "consumer",
+    goal: "Bound request latency",
+    controls:
+      "The overall deadline for blocking consumer calls that do not take an explicit timeout argument — commitSync(), partitionsFor(), listTopics(), position(), committed(). request.timeout.ms bounds each individual request the call makes inside that deadline.",
+    defaultValue: "60000",
+    changeMechanism: "recreate-client",
+    riskOfChange: "safe",
+    managedAvailability: "full",
+    whenToChange:
+      "Lower it to shrink the total time an application will block on one of these calls before it gives up and can react; raise it only if legitimate operations against a busy cluster routinely need more than a minute.",
+    performanceImpact: "No happy-path effect — a call that completes quickly still returns quickly. It only sets how long a call keeps retrying failed requests before giving up.",
+    reliabilityImpact:
+      "This is the retry/time budget for the whole operation. Setting it below request.timeout.ms is allowed but means a single slow request can consume the entire budget, leaving no room for a retry.",
+    relatedConfigs: ["request.timeout.ms", "max.poll.interval.ms"],
+    failureModes: [
+      "Set very low, a routine commitSync() against a briefly slow coordinator throws TimeoutException before its retries can land",
+    ],
   },
   {
     key: "group.protocol",

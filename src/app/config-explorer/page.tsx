@@ -7,7 +7,7 @@ export default function ConfigExplorerPage() {
       <SectionHeading
         eyebrow="Reference"
         title="Configuration explorer"
-        description="Filter by scope and goal. Every entry documents what it controls, its default, when to change it, and what breaks if you get it wrong."
+        description="From the client settings you meet on your first connection to broker internals. Filter by scope and goal; every entry documents what it controls, its default, when to change it, and what breaks if you get it wrong."
       />
       <ConfigExplorer />
     </div>

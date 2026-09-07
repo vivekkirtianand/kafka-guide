@@ -321,7 +321,9 @@ export interface Module {
 
 export interface ConfigEntry {
   key: string;
-  scope: "broker" | "topic" | "producer" | "consumer";
+  // "client" = a common client property that behaves identically on a producer and a consumer
+  // (connection, security, timeouts). Producer- or consumer-only properties use those scopes.
+  scope: "broker" | "topic" | "producer" | "consumer" | "client";
   goal: string;
   controls: string;
   defaultValue: string;

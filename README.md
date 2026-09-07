@@ -189,8 +189,14 @@ topics in the broker/topic module have one (Phase 6d).
   compaction not reclaiming space, producer timeouts from an unavailable partition, and TLS
   certificate expiration. Each wrong answer explains what that cause's real signature would
   look like.
-- **Config explorer** ships with real settings across producer/consumer/broker/topic
-  scope, filterable by scope and goal, seeded from the plan's configuration priorities.
+- **Config explorer** ships with real settings across `client` (shared producer/consumer
+  connection, security, and timeout properties), `producer`, `consumer`, `broker`, and
+  `topic` scope, filterable by scope and goal. Phase 9a added ~20 beginner client
+  configs — `bootstrap.servers`, `client.id`, `security.protocol` / `sasl.mechanism`, the
+  key/value serializers and deserializers, `compression.type`, `partitioner.class`, and the
+  consumer fetch-tuning set (`fetch.min.bytes`, `fetch.max.wait.ms`,
+  `max.partition.fetch.bytes`, `client.rack`, `allow.auto.create.topics`,
+  `default.api.timeout.ms`).
 - **Module 11 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
   content: all 10 symptom entries, each with an overview, cause → evidence pairs (the
   specific metric/log/command that confirms or rules out each cause), a resolution flow,
