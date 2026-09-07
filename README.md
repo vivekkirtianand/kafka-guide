@@ -196,7 +196,11 @@ topics in the broker/topic module have one (Phase 6d).
   key/value serializers and deserializers, `compression.type`, `partitioner.class`, and the
   consumer fetch-tuning set (`fetch.min.bytes`, `fetch.max.wait.ms`,
   `max.partition.fetch.bytes`, `client.rack`, `allow.auto.create.topics`,
-  `default.api.timeout.ms`).
+  `default.api.timeout.ms`). Phase 9b added a **risk** filter and, on the beginner-facing
+  entries plus the highest-traffic operational ones (`acks`, `min.insync.replicas`,
+  `group.id`, `default.replication.factor`, …), optional `exampleValue` / `safeBaseline` /
+  `verification` / `rollback` / `managedCaveat` fields plus a derived version-pinned
+  `kafkaDocUrl` link on every entry.
 - **Module 11 (Troubleshooting scenarios)** and the **troubleshooting catalog** are the same
   content: all 10 symptom entries, each with an overview, cause → evidence pairs (the
   specific metric/log/command that confirms or rules out each cause), a resolution flow,

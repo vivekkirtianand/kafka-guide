@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { configs, configGoals, configScopes } from "./configs";
-import { configAvailable, configIsEarlyAccess } from "@/lib/types";
+import { configAvailable, configIsEarlyAccess, kafkaDocUrl } from "@/lib/types";
 
 function get(key: string) {
   const entry = configs.find((c) => c.key === key);
@@ -67,6 +67,70 @@ describe("config catalog shape", () => {
 
   it("exposes every goal used by an entry in the filter list", () => {
     for (const c of configs) expect(configGoals, c.key).toContain(c.goal);
+  });
+});
+
+describe("config enrichment (Phase 9b)", () => {
+  // The beginner-facing client configs and the highest-traffic operational ones carry a
+  // safe baseline and verification guidance.
+  const ENRICHED = [
+    "bootstrap.servers",
+    "security.protocol",
+    "key.serializer",
+    "value.serializer",
+    "compression.type",
+    "partitioner.class",
+    "key.deserializer",
+    "value.deserializer",
+    "max.partition.fetch.bytes",
+    "client.rack",
+    "allow.auto.create.topics",
+    "acks",
+    "min.insync.replicas",
+    "linger.ms",
+    "group.id",
+    "auto.offset.reset",
+    "enable.auto.commit",
+    "default.replication.factor",
+  ];
+
+  it("gives the beginner-facing and high-traffic configs a safe baseline and a way to verify", () => {
+    for (const key of ENRICHED) {
+      const c = get(key);
+      expect(c.safeBaseline?.trim(), `${key}: safeBaseline`).toBeTruthy();
+      expect(c.verification?.trim(), `${key}: verification`).toBeTruthy();
+    }
+  });
+
+  it("never leaves an optional enrichment field as an empty string", () => {
+    for (const c of configs) {
+      for (const f of ["exampleValue", "safeBaseline", "verification", "rollback", "managedCaveat"] as const) {
+        if (c[f] !== undefined) expect(c[f]!.trim().length, `${c.key}: ${f}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("builds a version-pinned Apache 4.0 doc URL with the right per-scope anchor", () => {
+    expect(kafkaDocUrl(get("acks"))).toBe("https://kafka.apache.org/40/configuration/producer-configs/#producerconfigs_acks");
+    expect(kafkaDocUrl(get("auto.offset.reset"))).toBe(
+      "https://kafka.apache.org/40/configuration/consumer-configs/#consumerconfigs_auto.offset.reset",
+    );
+    expect(kafkaDocUrl(get("default.replication.factor"))).toBe(
+      "https://kafka.apache.org/40/configuration/broker-configs/#brokerconfigs_default.replication.factor",
+    );
+    expect(kafkaDocUrl(get("min.insync.replicas"))).toBe(
+      "https://kafka.apache.org/40/configuration/topic-configs/#topicconfigs_min.insync.replicas",
+    );
+    // client-scope common properties are documented on the producer-configs page
+    expect(kafkaDocUrl(get("bootstrap.servers"))).toBe(
+      "https://kafka.apache.org/40/configuration/producer-configs/#producerconfigs_bootstrap.servers",
+    );
+  });
+
+  it("points every config at a version-pinned kafka.apache.org URL", () => {
+    for (const c of configs) {
+      expect(kafkaDocUrl(c), c.key).toMatch(/^https:\/\/kafka\.apache\.org\/40\/configuration\/[a-z-]+\/#[a-z]+configs_/);
+    }
   });
 });
 

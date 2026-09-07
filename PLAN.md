@@ -52,7 +52,7 @@ unless noted.
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
 | 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ✅** `applicableVersions` (Kafka 4.x range) on all 12 modules + 14 runbooks, shared `VersionApplicability` render + out-of-range caveat, `versionRangeLabel` | 1a | M3 |
-| 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); 9b add `ConfigEntry` fields — example value, safe baseline, verification, rollback, managed caveat, official doc link — populated on the new configs + high-traffic existing ones | 8b | M3 |
+| 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); **9b ✅** `ConfigEntry` gains optional `exampleValue` / `safeBaseline` / `verification` / `rollback` / `managedCaveat` + a derived `kafkaDocUrl`; populated on the 9a configs + ~11 high-traffic existing; explorer gains a risk filter and renders the new fields | 8b | M3 |
 | 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; 10c capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
 
@@ -1398,7 +1398,7 @@ entries**, not all 60+ (keeps the Kafka-accuracy review surface manageable); **t
 | PR | Scope | Status |
 |---|---|---|
 | 9a | New `client` scope + ~20 beginner client configs (connection, security, serialization, producer compression/partitioning, consumer fetch tuning); config-catalog structural test | ✅ Done |
-| 9b | New optional `ConfigEntry` fields (example value, safe baseline, verification step, rollback step, managed caveat, official doc link); populate on the 9a entries + high-traffic existing ones; explorer renders them | ⭕ Planned |
+| 9b | Optional `ConfigEntry` enrichment fields + derived doc URL; populated on the 9a entries + high-traffic existing; explorer risk filter + new field rendering | ✅ Done |
 
 ### PR 9a — beginner client configs + `client` scope
 
@@ -1459,6 +1459,43 @@ entries render with every field populated.
 | P2 | `max.partition.fetch.bytes` — round 1 still implied the soft-limit escape is per partition ("each partition contributes its first oversized batch"). Kafka only guarantees it for the first record batch in the **first non-empty partition** of the fetch. | `performanceImpact` / `reliabilityImpact` now scope the guarantee to the first non-empty partition; the failure mode is reworded to "fewer batches per partition per fetch → more round trips", dropping the per-partition-escape phrasing. |
 
 Re-verified: `typecheck` / `lint` / `test` (435) / `build` clean.
+
+### PR 9b — per-entry enrichment + risk filter
+
+Adds the practical fields a newcomer needs to act on a config safely, and closes the
+home-page card's overclaim ("filterable by … risk — with rollback and verification steps").
+
+- **`src/lib/types.ts`** — `ConfigEntry` gains five optional fields: `exampleValue`,
+  `safeBaseline`, `verification`, `rollback`, `managedCaveat`. Optional so an entry only
+  carries what actually adds something (no `rollback` on a two-value boolean). New exported
+  `kafkaDocUrl(entry)` — derives the version-pinned Apache 4.0 anchor from the scope
+  (`https://kafka.apache.org/40/configuration/<page>/#<scope>configs_<key>`), `client`-scope
+  common properties documented on the producer-configs page. No per-entry URL to drift.
+- **`src/lib/data/configs.ts`** — enrichment populated on 31 entries: all 20 from 9a plus the
+  11 highest-traffic operational ones (`acks`, `enable.idempotence`, `min.insync.replicas`,
+  `linger.ms`, `batch.size`, `group.id`, `auto.offset.reset`, `enable.auto.commit`,
+  `max.poll.records`, `max.poll.interval.ms`, `default.replication.factor`). Verification
+  steps are concrete (a metric that moves, a command, a kill-a-broker test); rollback notes
+  call out what a revert does *not* undo (records already written in the old encoding, offsets
+  already committed under a changed `group.id`).
+- **`src/components/ConfigExplorer.tsx`** — new `risk` `<select>` (`any risk` / safe /
+  caution / high-risk) with an `aria-label`. Expanded row renders `Safe baseline` /
+  `Example value` beside the default, `How to verify the change` / `How to roll back` /
+  `On a managed service` in the grid, and an `Apache Kafka 4.0 reference — <key> ↗` link
+  (`kafkaDocUrl`) at the foot.
+- **`src/app/config-explorer/page.tsx`** + **`src/app/page.tsx`** — descriptions updated to
+  "filter by scope, goal, and risk" and to mention the baseline / example / verify / rollback
+  detail on beginner-facing entries (the home card no longer claims a version/deployment
+  *filter*).
+- **Tests** — `configs.test.ts` gains a `config enrichment` block (the beginner + high-traffic
+  keys carry `safeBaseline` + `verification`; no optional field is an empty string;
+  `kafkaDocUrl` builds the right per-scope anchor for all five scopes; every config resolves
+  to a version-pinned URL). New `ConfigExplorer.test.tsx` (risk filter narrows the list to
+  high-risk only; an enriched entry shows the new fields + the doc link). Suite 435 → 441.
+
+Verified: `typecheck` / `lint` / `test` (441) / `build` clean; browser — the risk filter
+narrows to the 12 high-risk configs, `acks` expands with safe baseline / example / verify /
+rollback / managed caveat and a working `#producerconfigs_acks` doc link.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:

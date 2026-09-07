@@ -12,6 +12,7 @@ import {
   configAvailable,
   configIsEarlyAccess,
   getDefaultValue,
+  kafkaDocUrl,
   versionIsArchived,
 } from "@/lib/types";
 import { useCluster } from "@/lib/context/ClusterContext";
@@ -30,10 +31,13 @@ const MECHANISM_LABEL: Record<ChangeMechanism, string> = {
   "broker-restart": "broker restart",
 };
 
+const RISK_LEVELS: RiskLevel[] = ["safe", "caution", "high-risk"];
+
 export default function ConfigExplorer() {
   const { version, deployment } = useCluster();
   const [scope, setScope] = useState<string>("all");
   const [goal, setGoal] = useState<string>("all");
+  const [risk, setRisk] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -42,10 +46,11 @@ export default function ConfigExplorer() {
       if (!configAvailable(c, version)) return false;
       if (scope !== "all" && c.scope !== scope) return false;
       if (goal !== "all" && c.goal !== goal) return false;
+      if (risk !== "all" && c.riskOfChange !== risk) return false;
       if (query && !c.key.toLowerCase().includes(query.toLowerCase())) return false;
       return true;
     });
-  }, [scope, goal, query, version]);
+  }, [scope, goal, risk, query, version]);
 
   return (
     <div>
@@ -77,6 +82,19 @@ export default function ConfigExplorer() {
           {configGoals.map((g) => (
             <option key={g} value={g}>
               {g}
+            </option>
+          ))}
+        </select>
+        <select
+          value={risk}
+          onChange={(e) => setRisk(e.target.value)}
+          className="rounded border border-border bg-bg-elevated px-2.5 py-1.5 font-mono text-xs text-text outline-none"
+          aria-label="Filter by risk of changing"
+        >
+          <option value="all">any risk</option>
+          {RISK_LEVELS.map((r) => (
+            <option key={r} value={r}>
+              {r}
             </option>
           ))}
         </select>
@@ -166,6 +184,16 @@ function ConfigRow({
             <Field label={`Default (Kafka ${version})`}>
               <code className="font-mono text-xs text-text">{getDefaultValue(entry, version)}</code>
             </Field>
+            {entry.safeBaseline && (
+              <Field label="Safe baseline">
+                <code className="font-mono text-xs text-text">{entry.safeBaseline}</code>
+              </Field>
+            )}
+            {entry.exampleValue && (
+              <Field label="Example value">
+                <code className="font-mono text-xs text-text">{entry.exampleValue}</code>
+              </Field>
+            )}
             <Field label="Managed-service availability">
               <span className={limitedOnManaged ? "text-accent" : undefined}>{entry.managedAvailability}</span>
             </Field>
@@ -173,6 +201,13 @@ function ConfigRow({
             <Field label="Related configurations">{entry.relatedConfigs.join(", ")}</Field>
             <Field label="Performance impact">{entry.performanceImpact}</Field>
             <Field label="Reliability impact">{entry.reliabilityImpact}</Field>
+            {entry.verification && <Field label="How to verify the change">{entry.verification}</Field>}
+            {entry.rollback && <Field label="How to roll back">{entry.rollback}</Field>}
+            {entry.managedCaveat && (
+              <Field label="On a managed service">
+                <span className="text-accent">{entry.managedCaveat}</span>
+              </Field>
+            )}
           </dl>
 
           <div className="mt-4">
@@ -188,6 +223,15 @@ function ConfigRow({
               ))}
             </ul>
           </div>
+
+          <a
+            href={kafkaDocUrl(entry)}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-block font-mono text-[11px] text-accent underline decoration-dotted underline-offset-2"
+          >
+            Apache Kafka 4.0 reference — {entry.key} ↗
+          </a>
         </div>
       )}
     </div>

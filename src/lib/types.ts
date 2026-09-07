@@ -348,6 +348,40 @@ export interface ConfigEntry {
   reliabilityImpact: string;
   relatedConfigs: string[];
   failureModes: string[];
+  // The following are optional enrichment, populated for the configs a beginner meets first
+  // and the highest-traffic operational ones. Omitted where a field would only restate
+  // something above (e.g. rollback for a two-value boolean).
+  //
+  // A concrete value to copy, in the unit/format the setting expects.
+  exampleValue?: string;
+  // The value to set — or leave — when there is no specific reason to tune it: the
+  // known-good posture for a typical production workload.
+  safeBaseline?: string;
+  // How to confirm the change took effect and did what you wanted — a command, a metric,
+  // or an observable behaviour.
+  verification?: string;
+  // How to undo the change if it goes wrong, and what to expect while reverting.
+  rollback?: string;
+  // What is different about this setting on a managed service, beyond the coarse
+  // managedAvailability flag — typically "the provider sets it" or "raise a support request".
+  managedCaveat?: string;
+}
+
+// The version-pinned Apache Kafka 4.0 documentation anchor for a config. Derived from the
+// scope so there is no per-entry URL to drift: the generated config reference uses
+// `#<scope>configs_<key>` anchors, and `client`-scope common properties are documented on the
+// producer-configs page.
+export function kafkaDocUrl(entry: ConfigEntry): string {
+  const page =
+    entry.scope === "consumer"
+      ? "consumer-configs"
+      : entry.scope === "broker"
+        ? "broker-configs"
+        : entry.scope === "topic"
+          ? "topic-configs"
+          : "producer-configs";
+  const anchorScope = entry.scope === "client" ? "producer" : entry.scope;
+  return `https://kafka.apache.org/40/configuration/${page}/#${anchorScope}configs_${entry.key}`;
 }
 
 export function getDefaultValue(entry: ConfigEntry, version: KafkaVersion): string {

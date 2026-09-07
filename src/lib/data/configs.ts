@@ -3,6 +3,11 @@ import { ConfigEntry } from "@/lib/types";
 export const configs: ConfigEntry[] = [
   {
     key: "bootstrap.servers",
+    exampleValue: "broker1.example.com:9092,broker2.example.com:9092,broker3.example.com:9092",
+    safeBaseline: "Two or three brokers, or one load-balanced endpoint, taken verbatim from your platform's connection string.",
+    verification: "The client logs a cluster id and a full broker list at startup, and a metadata request in a debug log returns every broker rather than only the ones listed here.",
+    rollback: "Restore the previous list and recreate the client — there is no persisted state to clean up.",
+    managedCaveat: "The provider gives you the exact bootstrap string (often one hostname that load-balances across brokers); do not shorten or reorder it.",
     scope: "client",
     goal: "Connect to the cluster",
     controls:
@@ -25,6 +30,9 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "client.id",
+    exampleValue: "order-service",
+    safeBaseline: "A stable, human-readable application name — the same value on every instance of that application.",
+    verification: "Broker request logs and the client's own producer/consumer metric tags carry this exact string.",
     scope: "client",
     goal: "Connect to the cluster",
     controls:
@@ -45,6 +53,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "security.protocol",
+    exampleValue: "SASL_SSL",
+    safeBaseline: "SASL_SSL for any shared or production cluster; PLAINTEXT only for a local single-broker lab.",
+    verification: "The client completes its first connection and a metadata fetch; a mismatch fails immediately with an SSL or SASL handshake error.",
+    rollback: "Set it back to the previous value and recreate the client — a wrong value never partially connects, so nothing is half-applied.",
+    managedCaveat: "Almost always SASL_SSL — the provider does not expose a PLAINTEXT listener.",
     scope: "client",
     goal: "Authenticate and encrypt",
     controls:
@@ -67,6 +80,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "sasl.mechanism",
+    exampleValue: "SCRAM-SHA-256",
+    safeBaseline: "Whatever the cluster enables — commonly SCRAM-SHA-256 or PLAIN, and only over SASL_SSL.",
+    verification: "Authentication succeeds on the first connection; a wrong mechanism logs an unexpected-handshake or authentication-failed error.",
+    managedCaveat: "The provider's docs name the mechanism; PLAIN and SCRAM-SHA-256 are the usual choices.",
     scope: "client",
     goal: "Authenticate and encrypt",
     controls:
@@ -88,6 +105,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "connections.max.idle.ms",
+    exampleValue: "240000",
+    safeBaseline: "Leave at 540000 unless a firewall or load balancer between the client and the brokers closes idle connections sooner.",
+    verification: "\"Connection reset\" on the first request after a quiet period stops appearing in the client log.",
+    rollback: "Restore the default and recreate the client.",
     scope: "client",
     goal: "Connect to the cluster",
     controls: "How long an idle connection to a broker is kept open before the client closes it.",
@@ -108,6 +129,9 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "reconnect.backoff.max.ms",
+    safeBaseline: "Leave at 1000.",
+    verification: "During a broker outage, reconnect attempts in a debug log space out geometrically up to this ceiling instead of at a fixed rate.",
+    rollback: "Restore the default and recreate the client.",
     scope: "client",
     goal: "Connect to the cluster",
     controls:
@@ -129,6 +153,8 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "retry.backoff.ms",
+    safeBaseline: "Leave at 100 — the default already backs off exponentially.",
+    rollback: "Restore the default and recreate the client.",
     scope: "client",
     goal: "Connect to the cluster",
     controls:
@@ -150,6 +176,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "metadata.max.age.ms",
+    exampleValue: "60000",
+    safeBaseline: "Leave at 300000; lower to about 60000 only where brokers or partitions are added frequently.",
+    verification: "After a partition is added, an idle client picks it up within the new interval without needing a produce or fetch error to force the refresh.",
+    rollback: "Restore the default and recreate the client.",
     scope: "client",
     goal: "Connect to the cluster",
     controls:
@@ -171,6 +201,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "acks",
+    exampleValue: "all",
+    safeBaseline: "all, paired with min.insync.replicas=2 on a replication-factor-3 topic.",
+    verification: "Kill a broker mid-produce: with acks=all no acknowledged record is lost and the producer's record-error-rate stays flat.",
+    rollback: "Set it back to the prior value and recreate the producer. Records already acknowledged under the weaker setting cannot be made durable retroactively.",
+    managedCaveat: "Client-side; the provider enforces its own replication factor and often a minimum min.insync.replicas.",
     scope: "producer",
     goal: "Prevent acknowledged data loss",
     controls: "How many replicas must confirm a write before the producer considers it successful.",
@@ -186,6 +221,9 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "enable.idempotence",
+    safeBaseline: "true — the default; do not turn it off on a modern cluster.",
+    verification: "The producer's record-retry-rate can be non-zero while the topic shows no duplicated key/sequence at consumer offsets.",
+    rollback: "Re-enable it and recreate the producer; duplicates written while it was off remain on the topic.",
     scope: "producer",
     goal: "Prevent acknowledged data loss",
     controls: "Ensures retried sends are not duplicated on the broker.",
@@ -221,6 +259,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "min.insync.replicas",
+    exampleValue: "2",
+    safeBaseline: "2 on a replication-factor-3 topic.",
+    verification: "kafka-configs.sh --describe --topic <t> shows the override; stopping one of three brokers still allows acks=all writes, stopping two returns NOT_ENOUGH_REPLICAS.",
+    rollback: "kafka-configs.sh --alter --delete-config min.insync.replicas (or set it back to 1) — effective immediately, no restart; rejected writes start succeeding again at once.",
+    managedCaveat: "Some providers pin this and reject an override below their floor.",
     scope: "topic",
     goal: "Prevent acknowledged data loss",
     controls: "Minimum in-sync replicas required for a write with acks=all to succeed.",
@@ -236,6 +279,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "linger.ms",
+    exampleValue: "20",
+    safeBaseline: "5 (the Kafka 4.0 default); 10-100 on a high-throughput topic where a little added latency is acceptable.",
+    verification: "Producer batch-size-avg, records-per-request, and compression-rate-avg rise while request rate to the broker falls.",
+    rollback: "Set it back and recreate the producer — the change is immediate on the new client.",
     scope: "producer",
     goal: "Improve batching",
     controls: "How long the producer waits to fill a batch before sending it.",
@@ -253,6 +300,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "batch.size",
+    exampleValue: "65536",
+    safeBaseline: "16384 (the default); raise it alongside linger.ms for large-record, high-throughput topics.",
+    verification: "Producer batch-size-avg approaches the new value under load and buffer-available-bytes stays healthy.",
+    rollback: "Restore 16384 and recreate the producer.",
     scope: "producer",
     goal: "Improve batching",
     controls: "Maximum size in bytes of a single batch per partition.",
@@ -370,6 +421,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "key.serializer",
+    exampleValue: "org.apache.kafka.common.serialization.StringSerializer",
+    safeBaseline: "StringSerializer for string keys, ByteArraySerializer for pre-encoded keys, a schema-registry serializer when keys are registered.",
+    verification: "A consumer with the matching key deserializer reads keys back as the original type; a mismatch throws SerializationException from poll().",
+    rollback: "Revert the class and recreate the producer. Records already written keep the old encoding — a rollback does not rewrite them.",
+    managedCaveat: "Purely client-side. With the provider's Schema Registry, use its schema-aware serializer and endpoint.",
     scope: "producer",
     goal: "Serialize records",
     controls:
@@ -392,6 +448,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "value.serializer",
+    exampleValue: "org.apache.kafka.common.serialization.StringSerializer",
+    safeBaseline: "A schema-registry serializer when you want compatibility enforced at produce time; StringSerializer for JSON-as-text.",
+    verification: "Consumers decode values with no errors; with a registry, the subject gains a new schema version only on a compatible change.",
+    rollback: "Revert the class and recreate the producer; existing records keep their encoding.",
+    managedCaveat: "Uses the provider's Schema Registry endpoint and credentials when schema-aware.",
     scope: "producer",
     goal: "Serialize records",
     controls:
@@ -414,6 +475,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "compression.type",
+    exampleValue: "lz4",
+    safeBaseline: "lz4 or zstd on any real workload; none only for the smallest lab.",
+    verification: "The producer's request-size metric falls, broker bytes-in and topic disk usage drop, and consumers need no change.",
+    rollback: "Set it back to none or the prior codec and recreate the producer. Already-written batches stay in their original compression and remain readable.",
+    managedCaveat: "Fully client-controlled; where the provider bills on stored bytes, compression lowers that bill directly.",
     scope: "producer",
     goal: "Reduce bandwidth and storage cost",
     controls:
@@ -435,6 +501,9 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "partitioner.class",
+    safeBaseline: "Unset (null) — the built-in logic is what almost every workload wants.",
+    verification: "Records with the same key land on the same partition (kafka-console-consumer --property print.partition=true, or an admin describe); no-key records spread over partitions across batches.",
+    rollback: "Unset it and recreate the producer. Keys already written under the custom partitioner stay where they landed, so same-key ordering can be split until those records age out.",
     scope: "producer",
     goal: "Control partitioning",
     controls:
@@ -497,6 +566,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "max.poll.interval.ms",
+    exampleValue: "600000",
+    safeBaseline: "300000 (the default); raise it only if a batch legitimately needs longer, and lower max.poll.records first.",
+    verification: "Rebalances stop firing mid-processing and the consumer stays in the group through its normal batch time.",
+    rollback: "Restore 300000 and recreate the consumer.",
     scope: "consumer",
     goal: "Rebalance behavior",
     controls: "Maximum time allowed between polls before the consumer is considered dead and rebalanced out.",
@@ -527,6 +600,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "auto.offset.reset",
+    exampleValue: "earliest",
+    safeBaseline: "earliest for a consumer that must not skip records; latest for a live-only tail.",
+    verification: "A brand-new group with earliest reads the full backlog; with latest it starts at the next produced record.",
+    rollback: "Change it back and recreate the consumer. It only acts when there is no committed offset, so it does nothing for a group that has already committed.",
     scope: "consumer",
     goal: "Offset commits",
     controls: "What a consumer does when there is no committed offset for a partition.",
@@ -542,6 +619,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "group.id",
+    exampleValue: "order-fulfilment",
+    safeBaseline: "One stable id per logical application, reused by every instance of it.",
+    verification: "kafka-consumer-groups.sh --describe --group <id> lists exactly the instances you expect, sharing the partitions.",
+    rollback: "Point back to the old id and restart. The new id has committed its own offsets, so the old group resumes from wherever it last committed — which may now be behind.",
+    managedCaveat: "Provider ACLs are often granted per group.id prefix, so a new id can need an ACL change.",
     scope: "consumer",
     goal: "Consumer group scaling",
     controls: "The consumer group a consumer joins — the unit of partition assignment and offset tracking.",
@@ -616,6 +698,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "max.poll.records",
+    exampleValue: "100",
+    safeBaseline: "500 (the default); lower it when per-record processing is slow.",
+    verification: "poll() returns at most this many records and the loop's time away from poll() stays well under max.poll.interval.ms.",
+    rollback: "Restore 500 and recreate the consumer.",
     scope: "consumer",
     goal: "Rebalance behavior",
     controls: "The maximum number of records a single poll() call returns to the application.",
@@ -648,6 +734,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "key.deserializer",
+    exampleValue: "org.apache.kafka.common.serialization.StringDeserializer",
+    safeBaseline: "The counterpart of the producer's key.serializer.",
+    verification: "poll() returns records whose keys are the expected type, with no SerializationException.",
+    rollback: "Revert the class and recreate the consumer.",
     scope: "consumer",
     goal: "Serialize records",
     controls:
@@ -669,6 +759,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "value.deserializer",
+    exampleValue: "org.apache.kafka.common.serialization.StringDeserializer",
+    safeBaseline: "The counterpart of the producer's value.serializer; wrap it in an error-handling deserializer if poison records are a concern.",
+    verification: "poll() returns decoded values; a record it cannot parse throws from inside poll() and the partition stops advancing.",
+    rollback: "Revert the class and recreate the consumer.",
     scope: "consumer",
     goal: "Serialize records",
     controls:
@@ -691,6 +785,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "fetch.min.bytes",
+    exampleValue: "65536",
+    safeBaseline: "Leave at 1 unless a high-rate topic is generating an excessive fetch-request volume.",
+    verification: "Broker fetch-request rate drops and average fetch size rises; poll latency on a quiet topic rises by up to fetch.max.wait.ms.",
+    rollback: "Restore 1 and recreate the consumer.",
     scope: "consumer",
     goal: "Tune consumer fetching",
     controls:
@@ -711,6 +809,8 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "fetch.max.wait.ms",
+    safeBaseline: "Leave at 500; lower it only when fetch.min.bytes is raised and idle-topic latency matters.",
+    rollback: "Restore 500 and recreate the consumer.",
     scope: "consumer",
     goal: "Tune consumer fetching",
     controls: "The longest a broker holds a fetch request open waiting for fetch.min.bytes of data before responding with whatever it has.",
@@ -727,6 +827,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "max.partition.fetch.bytes",
+    exampleValue: "5242880",
+    safeBaseline: "Leave at 1 MiB; raise it for large records, lower it to bound memory when subscribed to many partitions.",
+    verification: "Fewer fetch round trips per partition to drain a backlog; consumer heap between polls scales with this value times the assigned partition count.",
+    rollback: "Restore 1048576 and recreate the consumer.",
     scope: "consumer",
     goal: "Tune consumer fetching",
     controls: "The maximum data the broker returns for any one partition in a fetch response. fetch.max.bytes caps the whole response across partitions.",
@@ -747,6 +851,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "client.rack",
+    exampleValue: "us-east-1a",
+    safeBaseline: "The consumer's zone in a multi-AZ deployment; empty otherwise.",
+    verification: "The consumer's cross-AZ data-transfer cost drops and broker request metrics show the in-zone follower serving its fetches.",
+    rollback: "Clear it and recreate the consumer — fetches revert to the partition leader immediately.",
+    managedCaveat: "Only takes effect if the provider runs a rack-aware replica selector and exposes zone ids; several do for this exact cost saving, some do not.",
     scope: "consumer",
     goal: "Tune consumer fetching",
     controls:
@@ -768,6 +877,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "allow.auto.create.topics",
+    safeBaseline: "false in production, paired with startup topic-existence validation; true is only a lab convenience.",
+    verification: "Subscribing to a missing topic no longer creates it — the consumer logs UNKNOWN_TOPIC_OR_PARTITION and takes no assignment.",
+    rollback: "Set it back to true and recreate the consumer; any junk topics already created must be deleted separately.",
+    managedCaveat: "Most providers disable broker-side auto-create, so this setting has no effect there regardless.",
     scope: "consumer",
     goal: "Control topic auto-creation",
     controls:
@@ -788,6 +901,10 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "default.api.timeout.ms",
+    exampleValue: "30000",
+    safeBaseline: "Leave at 60000, and keep it at least as large as request.timeout.ms.",
+    verification: "A blocking call such as commitSync() against a slow coordinator returns or throws within the new budget instead of the old one.",
+    rollback: "Restore 60000 and recreate the consumer.",
     scope: "consumer",
     goal: "Bound request latency",
     controls:
@@ -833,6 +950,9 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "enable.auto.commit",
+    safeBaseline: "false for any consumer whose processing must not be lost — commit after the work, not on a timer.",
+    verification: "Crash the consumer mid-batch: with false the uncommitted records are redelivered on restart; with true some can be silently skipped.",
+    rollback: "Set it back to true and recreate the consumer, accepting the weaker delivery guarantee.",
     scope: "consumer",
     goal: "Offset commits",
     controls: "Whether the consumer commits offsets automatically during poll(), or leaves committing to the application.",
@@ -886,6 +1006,11 @@ export const configs: ConfigEntry[] = [
   },
   {
     key: "default.replication.factor",
+    exampleValue: "3",
+    safeBaseline: "3 in any cluster you cannot afford to lose data from.",
+    verification: "A newly auto-created topic shows replication factor 3 in kafka-topics.sh --describe.",
+    rollback: "Set it back (broker restart). Existing topics keep the replication factor they were created with; only newly auto-created topics change.",
+    managedCaveat: "The provider fixes the replication factor (usually 3) and does not expose this.",
     scope: "broker",
     goal: "Replication and durability",
     controls: "Replication factor applied to auto-created topics.",
