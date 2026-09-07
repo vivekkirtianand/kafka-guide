@@ -25,6 +25,20 @@ export function versionAtLeast(version: KafkaRelease, min: KafkaRelease): boolea
   return releaseRank(version) >= releaseRank(min);
 }
 
+// Compact label for a set of "x.y" lines: a contiguous run collapses to "4.0–4.3"; a gap
+// stays listed ("4.0, 4.2–4.3"). Input order does not matter.
+export function versionRangeLabel(versions: readonly KafkaRelease[]): string {
+  const ranked = [...new Set(versions)].sort((a, b) => releaseRank(a) - releaseRank(b));
+  if (ranked.length === 0) return "";
+  const runs: [KafkaRelease, KafkaRelease][] = [];
+  for (const v of ranked) {
+    const run = runs[runs.length - 1];
+    if (run && releaseRank(v) === releaseRank(run[1]) + 1) run[1] = v;
+    else runs.push([v, v]);
+  }
+  return runs.map(([lo, hi]) => (lo === hi ? lo : `${lo}–${hi}`)).join(", ");
+}
+
 // "current" = Apache still ships bugfix releases for this line; "archived" = end of life,
 // no further patches (Apache supports only the three most recent minor lines).
 export type VersionSupport = "current" | "archived";
@@ -270,8 +284,9 @@ export interface Module {
   completionCriteria?: string[];
   // External links for going deeper, typically official Apache Kafka docs.
   furtherReading?: { label: string; url: string }[];
-  // Kafka versions this module's content has been checked against. Full version-gating is a
-  // later phase; the field lands here so metadata has one home.
+  // The selectable Kafka versions this module's content is accurate for, rendered as a range
+  // (`versionRangeLabel`). When the reader has a version outside this set selected, the
+  // module page shows a caveat.
   applicableVersions?: KafkaVersion[];
   // ISO date (YYYY-MM-DD) the content was last checked against real Kafka behavior.
   lastReviewed?: string;
@@ -435,6 +450,9 @@ export interface Runbook {
   summary: string;
   // When this runbook applies — the trigger or the decision that leads you here.
   when: string;
+  // The selectable Kafka versions these steps apply to, rendered as a range on the detail
+  // page with a caveat when the reader has something else selected.
+  applicableVersions?: KafkaVersion[];
   steps: {
     prechecks: string[];
     execution: string[];

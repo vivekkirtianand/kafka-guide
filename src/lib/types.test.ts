@@ -6,6 +6,7 @@ import {
   getDefaultValue,
   versionAtLeast,
   versionIsArchived,
+  versionRangeLabel,
   type ConfigEntry,
 } from "./types";
 
@@ -32,6 +33,14 @@ describe("Kafka version model", () => {
       expect(availableDeployments(v)).toEqual(["kraft", "managed"]);
     }
     expect(availableDeployments("3.9")).toContain("zookeeper");
+  });
+
+  it("versionRangeLabel collapses a contiguous run and lists gaps", () => {
+    expect(versionRangeLabel(["4.3", "4.2", "4.1", "4.0"])).toBe("4.0–4.3");
+    expect(versionRangeLabel(["4.0"])).toBe("4.0");
+    expect(versionRangeLabel(["4.3", "4.2"])).toBe("4.2–4.3");
+    expect(versionRangeLabel(["4.0", "4.2", "4.3"])).toBe("4.0, 4.2–4.3");
+    expect(versionRangeLabel([])).toBe("");
   });
 
   it("versionAtLeast compares release lines numerically, not by picker position", () => {

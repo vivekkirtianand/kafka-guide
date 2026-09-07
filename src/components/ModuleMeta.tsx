@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Module } from "@/lib/types";
 import { getModule } from "@/lib/data/modules";
 import Badge from "./Badge";
+import VersionApplicability from "./VersionApplicability";
 
 const DIFFICULTY_TONE = {
   beginner: "success",
@@ -69,12 +70,10 @@ export default function ModuleMeta({ module }: { module: Module }) {
       )}
 
       {(module.applicableVersions?.length || module.lastReviewed) && (
-        <p className="font-mono text-[11px] text-text-faint">
-          {module.applicableVersions?.length
-            ? `Reviewed against Kafka ${module.applicableVersions.join(", ")}`
-            : "Reviewed"}
-          {module.lastReviewed ? ` · ${module.lastReviewed}` : ""}
-        </p>
+        <VersionApplicability
+          versions={module.applicableVersions ?? []}
+          reviewed={module.lastReviewed}
+        />
       )}
     </div>
   );

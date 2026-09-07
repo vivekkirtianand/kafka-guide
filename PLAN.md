@@ -51,7 +51,7 @@ unless noted.
 | 5 | Schemas & serialization ✅ | **5a ✅** "Schemas and data contracts" module (new, `index: 4`) — Topic-explorer content: bytes/serializers, JSON/Avro/Protobuf, Schema Registry, subjects & naming, compatibility modes, safe evolution, deserialization poison records; reference config modules renumbered 4–8 → 5–9; **5b ✅** Lab C — evolve a JSON Schema on the Lab B stack's Schema Registry while a consumer runs; compatible change flows through, incompatible one gets a 409, same change registers once the subject is FORWARD | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
-| 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ⭕** `applicableVersions` on lessons/configs/runbooks + selected version affects content + "Reviewed against Kafka X on DATE" | 1a | M3 |
+| 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ✅** `applicableVersions` (Kafka 4.x range) on all 12 modules + 14 runbooks, shared `VersionApplicability` render + out-of-range caveat, `versionRangeLabel` | 1a | M3 |
 | 9 | Expand config explorer | 9a ~15 beginner client configs (`bootstrap.servers`, serializers/deserializers, `compression.type`, fetch tuning, …); 9b add `ConfigEntry` fields — example config, safe baseline, verification, rollback, version applicability, managed caveat, official doc link — and backfill | 8b | M3 |
 | 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; 10c capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
@@ -1275,7 +1275,7 @@ PR split is **8a plumbing, then 8b content**.
 | PR | Scope | Status |
 |---|---|---|
 | 8a | Expand `KAFKA_VERSIONS` (add 4.1/4.2/4.3, drop long-EOL 3.5/3.7, keep 3.9 as the last 3.x / ZooKeeper reference); `KAFKA_VERSION_INFO` lifecycle table + `versionIsArchived` / `SUPPORTED_KAFKA_VERSIONS`; version picker shows "· archived" and an EOL note; `availableDeployments` gates ZooKeeper by `versionAtLeast(v, "4.0")` not `=== "4.0"`; `getDefaultValue` walks back to the nearest older per-version key; default selected version → `4.3`; 8c renames ("version + deployment aware" → "configuration context", "Every setting" → "Curated configurations") | ✅ Done |
-| 8b | Populate `applicableVersions` across modules/configs/runbooks; selected version annotates content; "Reviewed against Kafka X · DATE" made coherent with the selector | ⭕ Planned |
+| 8b | Populate `applicableVersions` across modules/configs/runbooks; selected version annotates content; "Reviewed against Kafka X · DATE" made coherent with the selector | ✅ Done |
 
 ### PR 8a — version model + lifecycle + renames
 
@@ -1332,6 +1332,46 @@ reads "configuration context". Mobile viewport — the top-bar note wraps below 
 | P3 | `KAFKA_VERSION_INFO["4.1"].released` was `2025-09-04` (the blog date); the field is documented as the x.y.0 release date, which the downloads page gives as 2025-09-02. | `4.1` → `2025-09-02`. Other dates re-checked against the downloads page (4.3.0 2026-05-22, 4.2.0 2026-02-17, 4.0.0 2025-03-18, 3.9.0 2024-11-06) — all already correct. |
 
 Re-verified: `typecheck` / `lint` / `test` (421) / `build` clean; browser re-checked `linger.ms` (5 on 4.3, 0 on 3.9) and `group.protocol` early access on 3.9 through the new numeric path.
+
+### PR 8b — `applicableVersions` on content + selected-version caveat
+
+The guide's content and every lab are authored against Kafka 4.0.2; nothing a beginner
+touches differs across the KRaft-only 4.x line. 8b makes that explicit and makes the top-bar
+version selector visibly matter on module and runbook pages.
+
+- **`src/lib/types.ts`**
+  - `versionRangeLabel(versions)` — collapses a contiguous set of "x.y" lines to `"4.0–4.3"`;
+    gaps stay listed (`"4.0, 4.2–4.3"`). Numeric, order-independent (reuses `releaseRank`).
+  - `Module.applicableVersions` comment reworded ("the versions this content is accurate
+    for", not "checked against"). New `Runbook.applicableVersions?: KafkaVersion[]`.
+- **`src/lib/data/modules.ts`** — all 12 modules `applicableVersions: ["4.0"]` →
+  `["4.3", "4.2", "4.1", "4.0"]`.
+- **`src/lib/data/runbooks.ts`** — all 14 runbooks get `applicableVersions:
+  ["4.3", "4.2", "4.1", "4.0"]`. Spot-checked the two that could have been narrower
+  ("Cluster migration", "Kafka upgrades") — both are written KRaft-first (`kafka-features.sh`
+  metadata level, MM2), so the 4.x range is right.
+- **`src/lib/context/ClusterContext.tsx`** — `ClusterProvider` takes optional
+  `initialVersion` / `initialDeployment` (default unchanged at `4.3` / `kraft`) so a test can
+  mount at a specific selection.
+- **`src/components/VersionApplicability.tsx`** (new, client) — renders `Kafka <range> ·
+  reviewed <date>`, and when `useCluster().version` is outside `applicableVersions` a caveat:
+  "You have Kafka <v> selected … this <module|runbook> covers the Kafka <range> line, which is
+  KRaft-only — on <v>, ZooKeeper mode still exists and a few CLI flags and config defaults
+  differ." Used by both `ModuleMeta` (replacing the old "Reviewed against Kafka 4.0" line) and
+  the runbook detail page (below "When to use this").
+- **Configs** — no change: `ConfigEntry` already carries finer-grained
+  `availableFromVersion` / `earlyAccessUntilVersion` / `defaultValueByVersion`, and 8a's
+  archived-version banner is the "selected version affects content" surface for the explorer.
+- **Tests** — `versionRangeLabel` cases in `types.test.ts`; new
+  `VersionApplicability.test.tsx` (range line, silent in range, caveat out of range via
+  `initialVersion="3.9"`, date-only fallback); `modules.test.ts` / `runbooks.test.ts` assert
+  every entry has a valid `applicableVersions` that includes `4.0` and excludes `3.9`. Suite
+  421 → 428.
+
+Verified: `typecheck` / `lint` / `test` (428) / `build` clean; browser — a module header
+reads "Kafka 4.0–4.3 · reviewed <date>" with no caveat at 4.3; selecting 3.9 in the top bar
+raises the KRaft-only caveat on both the module page and a runbook detail page; back to 4.3
+clears it.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:

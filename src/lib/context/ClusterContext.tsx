@@ -21,12 +21,20 @@ interface ClusterContextValue {
 
 const ClusterContext = createContext<ClusterContextValue | null>(null);
 
-export function ClusterProvider({ children }: { children: ReactNode }) {
-  // Default to the newest supported line. Course content and labs are verified against
-  // 4.0.2 (see each module's "Reviewed against" line); nothing a beginner touches differs
-  // between 4.0 and 4.3.
-  const [version, setVersionState] = useState<KafkaVersion>("4.3");
-  const [deployment, setDeploymentState] = useState<DeploymentType>("kraft");
+export function ClusterProvider({
+  children,
+  initialVersion = "4.3",
+  initialDeployment = "kraft",
+}: {
+  children: ReactNode;
+  // Overridable so tests can mount at a specific selection. Default to the newest supported
+  // line — course content and labs are authored against 4.0.2, and nothing a beginner
+  // touches differs between 4.0 and 4.3.
+  initialVersion?: KafkaVersion;
+  initialDeployment?: DeploymentType;
+}) {
+  const [version, setVersionState] = useState<KafkaVersion>(initialVersion);
+  const [deployment, setDeploymentState] = useState<DeploymentType>(initialDeployment);
 
   function setVersion(v: KafkaVersion) {
     setVersionState(v);

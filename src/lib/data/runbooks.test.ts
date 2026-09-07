@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runbooks, getRunbook } from "./runbooks";
+import { KAFKA_VERSIONS } from "@/lib/types";
 
 const SECTIONS = ["prechecks", "execution", "validation", "rollback", "escalation"] as const;
 
@@ -21,6 +22,19 @@ describe("production runbooks data", () => {
           expect(step.trim().length, `${r.slug}: ${section}`).toBeGreaterThan(0);
         }
       }
+    }
+  });
+
+  it("marks every runbook with the Kafka 4.x lines it applies to", () => {
+    for (const r of runbooks) {
+      expect(r.applicableVersions, r.slug).toBeDefined();
+      expect(r.applicableVersions!.length, r.slug).toBeGreaterThan(0);
+      for (const v of r.applicableVersions!) {
+        expect(KAFKA_VERSIONS, `${r.slug}: ${v}`).toContain(v);
+      }
+      // authored against 4.0, so 4.0 is always in range; the procedures are KRaft-only
+      expect(r.applicableVersions, r.slug).toContain("4.0");
+      expect(r.applicableVersions, r.slug).not.toContain("3.9");
     }
   });
 

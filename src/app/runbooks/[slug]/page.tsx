@@ -4,6 +4,7 @@ import { runbooks, getRunbook } from "@/lib/data/runbooks";
 import { Runbook } from "@/lib/types";
 import SectionHeading from "@/components/SectionHeading";
 import Badge from "@/components/Badge";
+import VersionApplicability from "@/components/VersionApplicability";
 
 export function generateStaticParams() {
   return runbooks.map((r) => ({ slug: r.slug }));
@@ -34,6 +35,12 @@ export default async function RunbookDetailPage({ params }: { params: Promise<{ 
         <div className="mb-1 font-mono text-[10px] uppercase tracking-wide text-text-faint">When to use this</div>
         <p className="text-sm leading-relaxed text-text-muted">{runbook.when}</p>
       </div>
+
+      {runbook.applicableVersions && runbook.applicableVersions.length > 0 && (
+        <div className="mb-8">
+          <VersionApplicability versions={runbook.applicableVersions} subject="runbook" />
+        </div>
+      )}
 
       <div className="flex flex-col gap-8">
         {SECTIONS.map((section) => (
