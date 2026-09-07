@@ -491,9 +491,132 @@ describe("lab data", () => {
       expect(note).toMatch(/down -v/);
     });
 
-    it("is carried by the connect-and-streams module", () => {
+    it("is carried by the connect-and-streams module, first of its two labs", () => {
       const mod = modules.find((m) => m.slug === "connect-and-streams")!;
-      expect(mod.labs?.map((l) => l.slug)).toEqual([labD.slug]);
+      expect(mod.labs?.map((l) => l.slug)).toEqual([labD.slug, "lab-e-streams-order-totals"]);
+    });
+  });
+
+  describe("Lab E — Streams order totals", () => {
+    const labE = labs.find((l) => l.slug === "lab-e-streams-order-totals")!;
+    const step = (id: string) => labE.steps.find((s) => s.id === id)!;
+
+    it("reuses Lab B's stack (no extras profile) and runs the Java Streams example", () => {
+      expect(labE.setup.some((c) => /docker compose up -d/.test(c.command))).toBe(true);
+      expect(labE.setup.some((c) => /--profile extras/.test(c.command))).toBe(false);
+      expect(labE.setup.some((c) => /examples\/order-pipeline-java/.test(c.command))).toBe(true);
+      expect(labE.prerequisites.join(" ")).toMatch(/finished Lab B/i);
+      expect(labE.prerequisites.join(" ")).toMatch(/JDK|Java 21/);
+    });
+
+    it("uses a dedicated input topic so shared-topic records can't skew the fixed totals", () => {
+      const create = step("create-topics");
+      // lab-e-orders, not the shared `orders` topic
+      expect(create.command).toMatch(/--create --topic lab-e-orders/);
+      // no --if-not-exists on the input topic — a leftover must fail loudly
+      expect(create.command).not.toMatch(/lab-e-orders --partitions.*--if-not-exists|--if-not-exists --topic lab-e-orders/);
+      expect(create.command).not.toMatch(/--if-not-exists/);
+      // the streams app and producer both target lab-e-orders
+      expect(step("start-streams").command).toMatch(/runStreams --args="localhost:29092 lab-e-orders"/);
+      expect(step("produce-orders").command).toMatch(/run --args="localhost:29092 12 lab-e-orders"/);
+      // verify checks the lab's own topics, not the shared one
+      expect(labE.verify!.command).toMatch(/lab-e-orders/);
+      expect(labE.verify!.command).not.toMatch(/grep -E 'order-totals\|orders'/);
+      // whole-line match so a similarly-named unrelated topic doesn't trip it
+      expect(labE.verify!.command).toMatch(/grep -xE '/);
+      expect(labE.verify!.command).toMatch(/order-totals-app-order-totals-store-changelog/);
+      expect(labE.verify!.note).toMatch(/grep -x|whole line|order-totals-archive/i);
+    });
+
+    it("creates the output topic itself — Streams won't auto-create a .to() topic", () => {
+      const create = step("create-topics");
+      expect(create.command).toMatch(/--create --topic order-totals/);
+      expect(`${create.intro} ${create.observe}`).toMatch(/auto-create|never the topic|\.to\(/i);
+    });
+
+    it("runs the topology test with no broker, then the app against the broker", () => {
+      expect(step("build-app").command).toMatch(/\.\/gradlew build/);
+      expect(step("build-app").observe).toMatch(/TopologyTestDriver/);
+      expect(step("start-streams").command).toMatch(/\.\/gradlew runStreams/);
+      expect(step("start-streams").expected).toMatch(/REBALANCING|RUNNING/);
+    });
+
+    it("reads order-totals with a Long deserializer and shows per-customer running totals", () => {
+      const read = step("read-totals");
+      expect(read.command).toMatch(/kafka-console-consumer\.sh/);
+      expect(read.command).toMatch(/LongDeserializer/);
+      expect(read.command).toMatch(/--max-messages \d+/);
+      const t = read.command.match(/--timeout-ms (\d+)/);
+      expect(t).not.toBeNull();
+      expect(Number(t![1])).toBeGreaterThanOrEqual(20000);
+      // the totals are exact because the input topic is dedicated
+      expect(read.observe).toMatch(/exact|lab-e-orders/i);
+    });
+
+    it("shows the changelog topic and frames the local store as a cache of it", () => {
+      const cl = step("changelog-topic");
+      expect(cl.command).toMatch(/order-totals-app-order-totals-store-changelog/);
+      expect(cl.observe).toMatch(/compact/i);
+      expect(cl.observe).toMatch(/cache|source of truth/i);
+    });
+
+    it("the restart step actually proves changelog reconstruction — it deletes the local RocksDB dir first", () => {
+      const r = step("restart-restore");
+      // without wiping the local state dir the restart would just read local disk, proving nothing
+      expect(r.command).toMatch(/rm -rf "\$\{TMPDIR:-\/tmp\}\/kafka-streams\/order-totals-app"/);
+      expect(r.command).toMatch(/&& \.\/gradlew runStreams/);
+      expect(r.observe).toMatch(/changelog/);
+      expect(r.observe).toMatch(/does NOT reprocess|not reprocess|committed past/i);
+      expect(r.observe).toMatch(/did not reset|continued|not reset/i);
+      // the re-read command must lift the cap so the 4 new output records are visible
+      expect(r.observe).toMatch(/--max-messages 16/);
+      expect(r.observe).toMatch(/12 original \+ 4 new|--max-messages 12 .*would stop|need `16`/i);
+      // standby replicas: replay only their own gap on takeover — maybe nothing — never
+      // the whole changelog; and don't claim a standby always lags
+      expect(r.observe).toMatch(/num\.standby\.replicas/);
+      expect(r.observe).toMatch(/never the whole changelog|only whatever .*hadn't caught up/i);
+      expect(r.observe).toMatch(/nothing if it was current/i);
+      expect(r.observe).not.toMatch(/skip the replay\b|slightly-lagging|always lag/i);
+    });
+
+    it("scales out to a second instance with its own state dir and shows the split", () => {
+      const s = step("scale-out");
+      expect(s.command).toMatch(/STREAMS_STATE_DIR=/);
+      expect(s.command).toMatch(/\.\/gradlew runStreams/);
+      expect(s.expected).toMatch(/kafka-consumer-groups\.sh .*--group order-totals-app/);
+      expect(s.observe).toMatch(/consumer group/i);
+      expect(s.commonError?.symptom).toMatch(/lock/i);
+    });
+
+    it("resets honestly: the tool needs the group stopped, leaves the group itself, and doesn't clear local state", () => {
+      const reset = step("reset-app");
+      expect(reset.command).toMatch(/kafka-streams-application-reset\.sh/);
+      expect(reset.command).toMatch(/--input-topics lab-e-orders/);
+      // it does NOT delete the consumer group — the observe must say so
+      expect(reset.observe).toMatch(/leaves the .*consumer group|still listed|never deletes the (consumer )?group/i);
+      // and it does NOT clear local RocksDB
+      expect(reset.observe).toMatch(/cleanUp\(\)|not touch the local|does not touch/i);
+      // and it does NOT reset the OUTPUT topic — recomputed records append to the old ones
+      expect(reset.observe).toMatch(/output topic `order-totals`|does not touch.*order-totals/i);
+      expect(reset.observe).toMatch(/append|both runs|until compaction/i);
+      expect(reset.commonError?.symptom).toMatch(/still active/i);
+      expect(reset.commonError?.cause).toMatch(/session timeout|45 second|hasn't expired/i);
+      // the verify note must not require the group's absence (the reset can't deliver that)
+      expect(labE.verify!.note).not.toMatch(/no `order-totals-app` consumer group/);
+      expect(labE.verify!.note).toMatch(/leaves the `order-totals-app` consumer group/i);
+    });
+
+    it("teardown warning names both halves of Streams state — cluster topics and the local RocksDB dir", () => {
+      expect(labE.teardownWarning).toMatch(/order-totals-app-/);
+      expect(labE.teardownWarning).toMatch(/changelog/);
+      expect(labE.teardownWarning).toMatch(/state\.dir|RocksDB|local (directory|dir)/i);
+      expect(labE.teardownWarning).toMatch(/down -v/);
+      expect(labE.teardown.some((c) => /kafka-streams-application-reset\.sh/.test(c.command))).toBe(true);
+    });
+
+    it("is carried by the connect-and-streams module as its second lab", () => {
+      const mod = modules.find((m) => m.slug === "connect-and-streams")!;
+      expect(mod.labs?.map((l) => l.slug)).toEqual(["lab-d-connect-file-pipeline", labE.slug]);
     });
   });
 

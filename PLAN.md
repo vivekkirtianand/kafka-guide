@@ -50,7 +50,7 @@ unless noted.
 | 4 | Java producer/consumer module ✅ | **4a ✅** `examples/order-pipeline-java/` scaffold (Gradle Kotlin DSL, producer/consumer/shared/tests, MockProducer/MockConsumer) + `verify-order-pipeline-java` CI job; **4b ✅** Module 3 (new, `index: 3`) — an in-app `CodeWalkthrough` over the scaffold; reference config modules renumbered 3–7 → 4–8; **4c ✅** rebalance listener + `PoisonPolicy` (propagate/skip/dead-letter) + `PoisonProducerApp` + 5 "Break it on purpose" lessons | 3a | M2 |
 | 5 | Schemas & serialization ✅ | **5a ✅** "Schemas and data contracts" module (new, `index: 4`) — Topic-explorer content: bytes/serializers, JSON/Avro/Protobuf, Schema Registry, subjects & naming, compatibility modes, safe evolution, deserialization poison records; reference config modules renumbered 4–8 → 5–9; **5b ✅** Lab C — evolve a JSON Schema on the Lab B stack's Schema Registry while a consumer runs; compatible change flows through, incompatible one gets a 409, same change registers once the subject is FORWARD | 4 | M2 |
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
-| 7 | Connect & Streams | 7a Module 7 Connect content + file/DB↔Kafka lab (lab stack already has `cp-kafka-connect`); 7b Streams content + order-total aggregation lab | 4, 5 | M2 |
+| 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
 | 8 | Version & deployment awareness | 8a add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, mark archived releases, bump lab image; 8b `applicableVersions` on lessons/configs/runbooks + selected version affects content + "Reviewed against Kafka X on DATE"; 8c rename "version + deployment aware" → "configuration context", "Every setting" → "Curated configurations" (do first, cheap) | 1a | M3 |
 | 9 | Expand config explorer | 9a ~15 beginner client configs (`bootstrap.servers`, serializers/deserializers, `compression.type`, fetch tuning, …); 9b add `ConfigEntry` fields — example config, safe baseline, verification, rollback, version applicability, managed caveat, official doc link — and backfill | 8b | M3 |
 | 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; 10c capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) | 4, 5, 7 | M3 |
@@ -1024,7 +1024,7 @@ content. The 7a lab is **file source → topic → file sink** (`FileStreamSourc
 | PR | Scope | Status |
 |---|---|---|
 | 7a | Module 8 Connect content (2 topics) + conceptual Streams content (2 topics) + Lab D (file source/sink via the Connect REST API); module → `"available"` | ✅ Done |
-| 7b | Deeper Streams content + a Streams lab (an order-total aggregation running against the lab stack) | ⭕ Planned |
+| 7b | Deeper Streams content (5th topic + serdes / GlobalKTable / cache-dedup / co-partitioning) + Lab E — an order-total aggregation Streams app against the Lab B stack | ✅ Done |
 
 ### PR 7a — Connect content + Lab D
 
@@ -1151,6 +1151,116 @@ wording):
 
 Re-verified: `typecheck` / `lint` / `build` clean; suite still 393; browser-checked the
 reworded `append-tail` observe renders.
+
+### PR 7b — Deeper Streams content + Lab E
+
+7a shipped the Streams topics as coherent conceptual content; 7b makes them hands-on and
+adds the operational third of the picture.
+
+- **`examples/order-pipeline-java/` — a Streams app.** New `streams/` package:
+  - `OrderTotalsTopology.java` — a pure `static Topology build(ordersTopic, totalsTopic)`:
+    read `orders` (String/JSON) → `flatMapValues` parse to `amountCents` (a value that won't
+    parse is dropped, not fatal) → `groupByKey` → `.aggregate(() -> 0L, (k, amt, total) ->
+    total + amt, Materialized.as("order-totals-store").withValueSerde(Serdes.Long()))` →
+    `toStream().to("order-totals", Produced.with(String, Long))`. Output is one running total
+    per input order.
+  - `OrderTotalsApp.java` — `main()`: `new KafkaStreams(topology, config).start()`, a
+    `StateListener` that prints each transition, a shutdown hook that `close()`s. Config:
+    `application.id=order-totals-app`, `replication.factor=1` (lab), `statestore.cache.max.bytes=0`
+    + `commit.interval.ms=1000` (emit every update so a learner can watch), optional
+    `STREAMS_STATE_DIR` env for running a second instance on one machine.
+  - `OrderTotalsTopologyTest.java` — 4 tests on a `TopologyTestDriver`, no broker: sums per
+    customer, emits a running total per input, drops unparseable records without breaking the
+    aggregate, keeps a queryable per-customer store.
+  - `build.gradle.kts` — `kafka-streams` (main) + `kafka-streams-test-utils` (test), a
+    `runStreams` JavaExec task forwarding `STREAMS_STATE_DIR`. The Module 3 walkthrough's
+    verbatim `build.gradle.kts` slice was kept intact by appending the streams dep after the
+    existing block. `verify-order-pipeline-java` CI job already runs `./gradlew build`, so the
+    new tests are covered.
+- **`src/lib/data/modules.ts` — `connect-and-streams`.** `estimatedMinutes` 100 → 115,
+  `lastReviewed` → 2026-09-07, `labs: [connectFileLab, orderTotalsLab]`, a 5th objective and a
+  4th completion criterion, a 3rd `furtherReading` link (Streams testing guide, canonical
+  trailing-slash URL, verified 200). Two existing Streams topics deepened: **serdes on every
+  edge** and **GlobalKTable** added to "topologies, KStream, and KTable"; **output is
+  deduplicated by default** (record cache + `commit.interval.ms`) and **joins need
+  co-partitioning** added to "Stateful processing". New 5th topic **"Running, testing, and
+  operating a Streams app"**: run it (no cluster, the state machine, shutdown hook), scale /
+  fail over through the consumer group + `num.standby.replicas`, `TopologyTestDriver`,
+  `kafka-streams-application-reset.sh` (+ that it doesn't clear local state / needs
+  `cleanUp()`), interactive queries. `[[state-store]]` / `[[topology]]` tokens wired in.
+- **`src/lib/data/labs.ts` — `orderTotalsLab`** (`slug: "lab-e-streams-order-totals"`), the
+  connect-and-streams module's 2nd lab, runs on the Lab B stack (no `--profile extras` — only
+  the brokers). 10 steps: create `orders` + a compacted `order-totals` (Streams won't
+  auto-create a `.to()` topic) → `./gradlew build` (the TopologyTestDriver test, no broker) →
+  `./gradlew runStreams` (watch `CREATED → REBALANCING → RUNNING`) → produce 12 orders →
+  read `order-totals` with `LongDeserializer` (running totals, last per key = sum) → find the
+  `order-totals-app-order-totals-store-changelog` topic (compacted) → **restart the app,
+  watch it replay the changelog and the totals resume rather than reset** (the point of the
+  lab) → start a 2nd instance with its own `STREAMS_STATE_DIR`, watch the partitions split →
+  `kafka-streams-application-reset.sh` (needs the group empty — the "still active" error and
+  the ~45s wait are called out; and it leaves the local RocksDB dir behind) → cleanup. 4
+  `troubleshooting` entries. `teardownWarning`: Streams state lives in **two** places —
+  internal topics + consumer group in the cluster, and a local `state.dir` on your machine;
+  `down -v` clears only the first.
+- **`src/lib/data/glossary.ts`** — `topology` and `state-store` added (both list
+  `connect-and-streams`); `kafka-streams` / `ktable` `seeAlso` extended.
+- Tests: `modules.test.ts` +5 (5th topic, deepened points, honest reset guidance),
+  `labs.test.ts` +9 (Lab E block; the two "carried by connect-and-streams" assertions updated
+  from `[labD]` to `[labD, labE]`), `order-pipeline-java.test.ts` +2 (streams wiring + the
+  topology shape). Suite 393 → 410.
+- **Verified end to end** against a real `apache/kafka:4.0.2` broker (single-broker, heap
+  capped at 512M — Docker on this box has 1.9 GB — every command is broker-count-independent):
+  `./gradlew build` (26 Java tests), `runStreams` reaching RUNNING, the producer, the
+  `LongDeserializer` console read showing correct running totals (alice 12600 / bob 27000 /
+  carol 4500 over 12 orders), the `order-totals-app-order-totals-store-changelog` topic
+  (`cleanup.policy=compact`, 3 partitions), a **restart replaying the changelog and the
+  totals continuing** (alice 12600 → 16800 after one more cycle, not reset), a **second
+  instance splitting the partitions** (0,2 / 1 across two consumer ids), and
+  `kafka-streams-application-reset.sh` (the "group still active" error, then a clean rewind +
+  changelog delete, then a from-scratch recompute once the local state dir was also removed).
+
+Re-verified: `typecheck` / `lint` / `test` (410) / `build` clean; `./gradlew build` clean on
+Temurin 21; browser-checked the Module 8 page — 5 topics, both labs, the 3 further-reading
+links, and the new glossary anchors.
+
+**Review findings addressed (round 1)** (4 findings from a review of PR #35; all about Lab E
+determinism plus one about the Streams app's exit code — re-verified against a real
+`apache/kafka:4.0.2` broker):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The reset tool leaves the `order-totals-app` consumer group, but the verifier required that group to be absent. | Confirmed against the broker: `kafka-streams-application-reset.sh` rewinds the group's offsets to 0 and deletes the changelog topic, but the group is still listed by `--list`. `verify` no longer checks the group at all — it checks that the lab's three topics don't exist — and its note plus `reset-app`'s observe and the module's "Reprocessing" point now say plainly the tool leaves the group behind (a `kafka-consumer-groups.sh --delete` removes it, or `down -v`). |
+| P1 | Existing records in `orders` were allowed by verification yet would invalidate the lab's fixed expected totals. | Lab E now uses its own dedicated `lab-e-orders` input topic, created without `--if-not-exists` (a leftover fails loudly). `ProducerApp` / `OrderProducer` gained an optional topic arg (`./gradlew run --args="… 12 lab-e-orders"`) and `OrderTotalsApp` already took one. `read-totals`' totals are now exact because the topic holds only this lab's 12 orders. |
+| P1 | The restart reused the same local RocksDB state, so it didn't prove reconstruction from the changelog. | `restart-restore` now runs `rm -rf "${TMPDIR:-/tmp}/kafka-streams/order-totals-app" && ./gradlew runStreams …` — with the local store gone and the group committed past all 12 input records, the totals it comes back with (alice 12600, then +4200 = 16800 after one more cycle) can only have come from the changelog. Verified end to end. |
+| P2 | A fatal Kafka Streams `ERROR` state let `OrderTotalsApp` exit with status 0. | The state listener sets an `AtomicBoolean crashed` on `State.ERROR`; after the latch, `if (crashed.get()) System.exit(1)`. Also added an explicit `setUncaughtExceptionHandler(… SHUTDOWN_CLIENT)`. Verified a clean SIGINT/SIGTERM shutdown still exits 0. |
+
+Re-verified: `typecheck` / `lint` / `test` (**410 → 412**) / `build` clean; `./gradlew build`
+clean (26 Java tests); every Lab E command re-run verbatim against a real broker — dedicated
+topic, the `rm -rf`+restart changelog replay, the two-instance split (partitions 0,2 / 1),
+and the reset tool leaving the group.
+
+**Review findings addressed (round 2)** (4 more findings on Lab E — all prose/command
+precision, no Java change; re-verified against a real `apache/kafka:4.0.2` broker):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The restart proof told the reader to re-read `order-totals` but the `--max-messages 12` command from the earlier step stops before the 4 newly-produced records, so it can never show alice 16800. | `restart-restore`'s observe now spells out the re-read command with `--max-messages 16` (12 original + 4 new) and states the last value per key — alice 16800, bob 36000, carol 6000 — plus a note that `--max-messages 12` would stop short. Verified: the 16-message read shows all four new records. |
+| P2 | The reset explanation omitted that `order-totals` (the output topic) is not reset, so a recomputed run appends its records alongside the old ones. | `reset-app`'s observe now lists three things the tool does NOT do — leave the group, touch local state, **and touch the output topic** — and explains the recomputed records append until compaction collapses each key (delete+recreate `order-totals` for a clean output). |
+| P2 | "standby replicas … skip the replay" overclaims — a standby lags the changelog, so a takeover still replays the tail. | `modules.ts` "Scale and fail over" and the lab's `restart-restore` observe reworded: a standby "continuously tails the changelog" but "lags a little, so a takeover still replays the short tail it hadn't caught up to — but not the whole changelog." Tests forbid "skip the replay" / "near-instant". |
+| P3 | `verify` used `grep -E 'lab-e-orders\|order-totals'` — a substring match that would also flag an unrelated `order-totals-archive`. | Switched to `grep -xE 'lab-e-orders\|order-totals\|order-totals-app-order-totals-store-changelog'` (whole-line match, all three exact names). Verified against the broker: a decoy `order-totals-archive` is not flagged. |
+
+Re-verified: `typecheck` / `lint` / `test` (still 412) / `build` clean; the `grep -xE` verify
+and the `--max-messages 16` re-read both confirmed against a real broker.
+
+**Review findings addressed (round 3)** (3 follow-ups on the round-2 wording; prose only):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The round-2 output-topic point was added to the lab's `reset-app` step but not to Module 8's "Reprocessing" content or the example README. | `modules.ts` "Reprocessing" now lists **three** things the reset tool doesn't do — leave the group, touch local state, and touch the output topics ("a reprocessed run appends a fresh set of results after the old ones"). `examples/order-pipeline-java/README.md`'s reset section gets the same third item. |
+| P2 | "a standby lags a little" overcorrected — a standby may be fully caught up (zero replay on takeover); if not, only its own gap is replayed. | `modules.ts` and the lab's `restart-restore` observe reworded: "on takeover a standby replays only whatever it hadn't yet caught up to — nothing if it was current, just the gap if it had fallen behind — never the whole changelog." Tests forbid "always lag" / "slightly-lagging". |
+| P3 | The root `README.md` still described the Streams app / Lab E as folding the `orders` topic. | Both mentions updated: Lab E "folds a dedicated `lab-e-orders` topic", and the `examples/` description says "an order-events topic — `lab-e-orders` in Lab E". |
+
+Re-verified: `typecheck` / `lint` / `test` (still 412) / `build` clean.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:

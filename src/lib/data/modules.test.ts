@@ -398,10 +398,13 @@ describe("Module 8 — Kafka Connect and Kafka Streams (Phase 7a: Connect conten
     expect(m.status).toBe("available");
     expect(m.difficulty).toBe("intermediate");
     expect(m.prerequisites).toEqual(["build-a-producer-and-consumer", "consumer-configuration"]);
-    expect(m.labs?.map((l) => l.slug)).toEqual(["lab-d-connect-file-pipeline"]);
+    expect(m.labs?.map((l) => l.slug)).toEqual([
+      "lab-d-connect-file-pipeline",
+      "lab-e-streams-order-totals",
+    ]);
   });
 
-  it("covers all four topics — the two Connect ones and the two Streams ones", () => {
+  it("covers every topic — the two Connect ones and the Streams ones — with real detail", () => {
     expect(Object.keys(m.topicDetail ?? {})).toHaveLength(m.topics.length);
     for (const t of m.topics) {
       const d = m.topicDetail![t];
@@ -466,6 +469,69 @@ describe("Module 8 — Kafka Connect and Kafka Streams (Phase 7a: Connect conten
     // module must not claim a specific connector lacks it (FileStream, for one, supports it)
     expect(owns.detail).toMatch(/both|and a connector|connector that/i);
     expect(owns.detail).not.toMatch(/FileStream (doesn't|does not|can't|isn't)/i);
+  });
+});
+
+describe("Module 8 — deeper Streams content + Lab E (Phase 7b)", () => {
+  const m = getModule("connect-and-streams")!;
+  const detail = (t: string) => m.topicDetail![t];
+
+  it("carries both labs and a bumped time estimate", () => {
+    expect(m.labs?.map((l) => l.slug)).toEqual([
+      "lab-d-connect-file-pipeline",
+      "lab-e-streams-order-totals",
+    ]);
+    expect(m.estimatedMinutes).toBeGreaterThanOrEqual(115);
+    expect(m.lastReviewed).toBe("2026-09-07");
+  });
+
+  it("has the fifth topic — running, testing, and operating a Streams app", () => {
+    expect(m.topics).toContain("Running, testing, and operating a Streams app");
+    const ops = detail("Running, testing, and operating a Streams app");
+    const text = ops.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    // TopologyTestDriver / broker-free testing
+    expect(text).toMatch(/TopologyTestDriver/);
+    expect(text).toMatch(/no broker|in memory|without a broker/i);
+    // the application reset tool for reprocessing, and that it doesn't clear local state
+    expect(text).toMatch(/kafka-streams-application-reset|application reset tool/i);
+    expect(`${text} ${ops.watchOut}`).toMatch(/cleanUp\(\)|local state|state\.dir/i);
+    // scaling / failover is the consumer group; a standby replays only its own gap on
+    // takeover — possibly nothing — never the whole changelog, and it doesn't ALWAYS lag
+    expect(text).toMatch(/num\.standby\.replicas/);
+    const standby = ops.points.find((p) => /num\.standby\.replicas/.test(p.detail))!;
+    expect(standby.detail).toMatch(/tail|caught up|never the whole changelog/i);
+    expect(standby.detail).toMatch(/nothing if it was current|only .*hadn't|only the gap/i);
+    expect(standby.detail).not.toMatch(/instead of a full changelog replay|skip the replay|near-instant|always lag|lags a little/i);
+    expect(text).toMatch(/state machine|CREATED|REBALANCING|RUNNING/);
+  });
+
+  it("deepens the KTable topic with serdes and GlobalKTable", () => {
+    const streams = detail("Kafka Streams: topologies, KStream, and KTable");
+    const text = streams.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    expect(text).toMatch(/serde/i);
+    expect(text).toMatch(/GlobalKTable/);
+  });
+
+  it("deepens stateful processing with cache/commit-interval dedup and co-partitioning", () => {
+    const stateful = detail("Stateful processing: joins, aggregations, and windows");
+    const text = stateful.points.map((p) => `${p.term} ${p.detail}`).join(" ");
+    // downstream output is not per-record by default
+    expect(text).toMatch(/statestore\.cache\.max\.bytes|record cache/i);
+    expect(text).toMatch(/commit\.interval\.ms/);
+    // joins need co-partitioning
+    expect(text).toMatch(/co-partition/i);
+  });
+
+  it("the reset guidance is honest: the tool leaves the group, local state, AND output topics behind", () => {
+    const ops = detail("Running, testing, and operating a Streams app");
+    const resetPoint = ops.points.find((p) => /reprocess|reset/i.test(p.term))!;
+    expect(resetPoint.detail).toMatch(/does not touch|not touch the local|cleanUp\(\)/i);
+    expect(resetPoint.detail).toMatch(/instances stopped|all instances/i);
+    // it rewinds but does not delete the consumer group
+    expect(resetPoint.detail).toMatch(/leaves the consumer group|does not.*delete.*group/i);
+    // and it does not reset the OUTPUT topics — a reprocessed run appends
+    expect(resetPoint.detail).toMatch(/output topic/i);
+    expect(resetPoint.detail).toMatch(/append|truncate or recreate/i);
   });
 });
 

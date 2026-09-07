@@ -1,14 +1,18 @@
 # order-pipeline-java
 
 A tiny Kafka producer and consumer in plain Java, built for **Module 3 — Build a producer
-and consumer**. It is the smallest thing that is still a real client: it connects to a
-broker, sends structured events to a topic, reads them back in a poll loop, and commits
-offsets deliberately.
+and consumer**, plus a Kafka Streams app for **Module 8**. It is the smallest thing that is
+still a real client: it connects to a broker, sends structured events to a topic, reads them
+back in a poll loop, and commits offsets deliberately — and then aggregates the same topic
+with Streams.
 
 ```
 ProducerApp ──▶  orders topic  ──▶ ConsumerApp
    OrderEvent  →  JSON bytes    →  OrderEvent
               key = customerId
+                        │
+                        └──▶ OrderTotalsApp (Kafka Streams)  ──▶  order-totals topic
+                             groupByKey().aggregate(+amountCents)     customerId → total cents
 ```
 
 Everything runs against the broker you already start in **[Lab A](../../local-cluster-lab/)
@@ -26,7 +30,9 @@ or Lab B** — this project adds no infrastructure of its own.
 | `consumer/PoisonPolicy.java` | What to do with a record that won't parse: `propagate` (stop), `skip`, or `deadLetter`. |
 | `consumer/ConsumerApp.java` | `main()` — prints each order until Ctrl-C. 3rd arg picks the poison policy. |
 | `producer/PoisonProducerApp.java` | `main()` — sends good orders plus one malformed record, to exercise the policies. |
-| `src/test/**` | Unit tests using `MockProducer` / `MockConsumer` — **no broker required**. |
+| `streams/OrderTotalsTopology.java` | The Kafka Streams topology: fold `orders` into a per-customer running total on `order-totals`. A pure `build(ordersTopic, totalsTopic)` — no Kafka connection — so a test can run it. |
+| `streams/OrderTotalsApp.java` | `main()` — runs the topology against a broker. `application.id=order-totals-app`; Ctrl-C to stop. |
+| `src/test/**` | Unit tests using `MockProducer` / `MockConsumer` and (for the topology) `TopologyTestDriver` — **no broker required**. |
 
 ## Prerequisites
 
@@ -114,11 +120,61 @@ SLOW_MS=200 ./gradlew runConsumer             # 200 ms per record
 # batch is redelivered: the orders you'd already handled print again, the rest for the first time
 ```
 
+## The Streams app (Module 8, Lab E)
+
+`OrderTotalsApp` reads an input topic and keeps a running total of cents per customer,
+writing each new total to `order-totals` (String key, **Long** value). Lab E points it at a
+dedicated `lab-e-orders` topic (the 2nd arg) so a shared `orders` topic full of other labs'
+records can't skew the totals. Both topics must exist first — Streams auto-creates its
+internal changelog/repartition topics but never the one in `.to()`:
+
+```bash
+docker exec kafka-lab-a /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
+  --create --topic lab-e-orders --partitions 3 --replication-factor 1
+docker exec kafka-lab-a /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
+  --create --topic order-totals --partitions 3 --replication-factor 1 --config cleanup.policy=compact
+```
+
+```bash
+# terminal 1 — the Streams app (watch CREATED -> REBALANCING -> RUNNING)
+./gradlew runStreams --args="localhost:9092 lab-e-orders"
+
+# terminal 2 — send some orders, then read the totals
+./gradlew run --args="localhost:9092 12 lab-e-orders"
+docker exec kafka-lab-a /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic order-totals --from-beginning --property print.key=true \
+  --value-deserializer org.apache.kafka.common.serialization.LongDeserializer \
+  --max-messages 12 --timeout-ms 20000
+```
+
+The app sets its record cache to 0 and `commit.interval.ms` to 1s so you see **every**
+running total — production leaves the cache on and only the collapsed latest-per-key updates
+are emitted. Stop the app, **delete its local state dir**, and start it again: with the local
+RocksDB gone it replays `order-totals-app-order-totals-store-changelog` to rebuild the totals
+before it resumes — they don't reset. Run a second copy with `STREAMS_STATE_DIR=/tmp/streams-2
+./gradlew runStreams --args="localhost:9092 lab-e-orders"` and the two split the partitions.
+
+To reprocess from scratch: stop every instance, wait ~45s for the group to empty, then
+
+```bash
+docker exec kafka-lab-a /opt/kafka/bin/kafka-streams-application-reset.sh \
+  --bootstrap-server localhost:9092 --application-id order-totals-app --input-topics lab-e-orders
+rm -rf "${TMPDIR:-/tmp}/kafka-streams/order-totals-app" /tmp/streams-2/order-totals-app
+```
+
+The reset tool rewinds the input offsets and deletes the internal topics, but it does **not**
+delete the consumer group (just seeks it to 0), touch the local RocksDB state (the `rm -rf`
+handles that), or touch the **output topic** `order-totals` — a reprocessed run appends a
+fresh set of running totals after the old records (compaction eventually collapses each key).
+Delete and recreate `order-totals` if you want the output clean too.
+
 ## Design choices (and where they change later)
 
 | Choice | Why | Later |
 |--|--|--|
 | Value is JSON in a `String` | Keeps serialization visible — you can `kafka-console-consumer.sh` the topic and read it. | **Module 5** swaps in Avro + Schema Registry. |
+| Streams output value is a `Long` | Shows a non-String serde end to end (`Produced.with(String, Long)`); the console consumer needs `--value-deserializer LongDeserializer`. | — |
+| Streams cache off, 1s commit interval | So a learner sees every running total in Lab E. | Production keeps the ~10 MB cache and 30s interval — only collapsed updates are emitted. |
 | `acks=all` + `enable.idempotence=true` | The safe default for a pipeline you care about; no silent loss, no duplicates on retry. | Module 4 covers the delivery-guarantee trade-offs. |
 | Manual `commitSync()` after the batch | At-least-once: a crash mid-batch reprocesses, never skips. | The **Failure drills** above make the trade-off bite. |
 | `PoisonPolicy` is `propagate` by default | The naive "no handling" behaviour, so you feel why `skip` / `deadLetter` exist. | A real service picks one deliberately and alerts on the dead-letter topic. |
@@ -133,3 +189,8 @@ SLOW_MS=200 ./gradlew runConsumer             # 200 ms per record
 | `Connection to node -1 could not be established` | No broker on that address. Start Lab A / Lab B, or pass the right `--args`. |
 | Consumer prints nothing | Either the `orders` topic doesn't exist (create it, then re-run), or the group id you passed has already committed past those records — a **new** group id reads from the start (`auto.offset.reset=earliest`). |
 | `UnknownTopicOrPartitionException` | The topic doesn't exist yet — create it first. |
+| `runStreams` sits on `REBALANCING` forever | No broker at the address, or the `orders` topic is missing. |
+| `order-totals` empty though the app is `RUNNING` | You didn't create `order-totals` — Streams never auto-creates a `.to()` topic. |
+| `order-totals` values print as garbage | Missing `--value-deserializer org.apache.kafka.common.serialization.LongDeserializer`. |
+| Second `runStreams` fails with `state directory is already locked` | Set `STREAMS_STATE_DIR` to a different path for it. |
+| `application-reset` says the group is still active | An instance is still running, or the group hasn't expired its members (up to ~45s after the last stop). Wait, or pass `--force`. |
