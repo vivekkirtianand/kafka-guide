@@ -52,7 +52,7 @@ unless noted.
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
 | 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ✅** `applicableVersions` (Kafka 4.x range) on all 12 modules + 14 runbooks, shared `VersionApplicability` render + out-of-range caveat, `versionRangeLabel` | 1a | M3 |
-| 9 | Expand config explorer | 9a ~15 beginner client configs (`bootstrap.servers`, serializers/deserializers, `compression.type`, fetch tuning, …); 9b add `ConfigEntry` fields — example config, safe baseline, verification, rollback, version applicability, managed caveat, official doc link — and backfill | 8b | M3 |
+| 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); 9b add `ConfigEntry` fields — example value, safe baseline, verification, rollback, managed caveat, official doc link — populated on the new configs + high-traffic existing ones | 8b | M3 |
 | 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; 10c capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
 
@@ -1381,6 +1381,62 @@ clears it.
 | P3 | `versionRangeLabel` detected contiguity as `releaseRank(next) === releaseRank(prev) + 1`, so Kafka's adjacent 3.9 and 4.0 lines rendered as `3.9, 4.0`. | Rewrote it to group runs by **adjacency in `KAFKA_VERSIONS`** (the ordered release list) rather than raw minor arithmetic — `3.9`+`4.0` now collapse to `3.9–4.0`. Signature narrowed `KafkaRelease[]` → `KafkaVersion[]` (it only ever labels selectable versions). Cross-major test added. |
 
 Re-verified: `typecheck` / `lint` / `test` (429) / `build` clean; browser — a runbook page now reads "Kafka 4.0–4.3 · reviewed 2026-08-31".
+
+## Phase 9 — expand the config explorer
+
+The explorer was seeded from v1's operational priorities: it went deep on producer durability,
+consumer rebalancing, and broker replication, but a beginner opening it never found the
+settings they actually touch first — how to point a client at a cluster, which serializer to
+pick, how to turn on compression. Phase 9 fills that gap (9a) and then enriches every
+beginner-facing entry with the practical fields a newcomer needs to act safely (9b).
+
+**AskUserQuestion decisions:** 9a adds the **broader ~20-config** set (not the leaner ~10);
+9b's richer fields are populated on **the new 9a configs plus the ~10 highest-traffic existing
+entries**, not all 60+ (keeps the Kafka-accuracy review surface manageable); **two PRs**,
+9a then 9b.
+
+| PR | Scope | Status |
+|---|---|---|
+| 9a | New `client` scope + ~20 beginner client configs (connection, security, serialization, producer compression/partitioning, consumer fetch tuning); config-catalog structural test | ✅ Done |
+| 9b | New optional `ConfigEntry` fields (example value, safe baseline, verification step, rollback step, managed caveat, official doc link); populate on the 9a entries + high-traffic existing ones; explorer renders them | ⭕ Planned |
+
+### PR 9a — beginner client configs + `client` scope
+
+- **`src/lib/types.ts`** — `ConfigEntry.scope` gains `"client"`: a common client property
+  that behaves identically on a producer and a consumer (connection, security, timeouts).
+  Producer-only (serializers) and consumer-only (deserializers, fetch tuning) properties keep
+  those scopes.
+- **`src/lib/data/configs.ts`** — 20 new entries, 31 → 51:
+  - *client* (8): `bootstrap.servers`, `client.id`, `security.protocol`, `sasl.mechanism`,
+    `connections.max.idle.ms`, `reconnect.backoff.max.ms`, `retry.backoff.ms`,
+    `metadata.max.age.ms`.
+  - *producer* (4): `key.serializer`, `value.serializer`, `compression.type`,
+    `partitioner.class`.
+  - *consumer* (8): `key.deserializer`, `value.deserializer`, `fetch.min.bytes`,
+    `fetch.max.wait.ms`, `max.partition.fetch.bytes`, `client.rack`,
+    `allow.auto.create.topics`, `default.api.timeout.ms`.
+  - New goals: "Connect to the cluster", "Authenticate and encrypt", "Serialize records",
+    "Reduce bandwidth and storage cost", "Control partitioning", "Control topic
+    auto-creation". Existing "Tune consumer fetching" / "Bound request latency" reused.
+  - Kafka 4.0 defaults verified: `compression.type` none, `partitioner.class` null (KIP-794
+    built-in logic — explicit partition wins, else key hash, else batch-wise sticky),
+    `fetch.min.bytes` 1 / `fetch.max.wait.ms` 500, `max.partition.fetch.bytes` 1 MiB (soft
+    limit), `connections.max.idle.ms` 540000, `metadata.max.age.ms` 300000,
+    `default.api.timeout.ms` 60000, `allow.auto.create.topics` true, `security.protocol`
+    PLAINTEXT, `sasl.mechanism` GSSAPI. `retry.backoff.ms` 100 with exponential backoff +
+    jitter to `retry.backoff.max.ms` since 3.7.
+- **`src/app/config-explorer/page.tsx`** — description reworded to lead with the client
+  settings ("From the client settings you meet on your first connection to broker internals").
+- **`src/lib/data/configs.test.ts`** — new `config catalog shape` block: unique keys, every
+  prose field filled, `relatedConfigs` resolve to a real key (or a small `KNOWN_EXTERNAL`
+  allowlist — `listeners`, `listener.security.protocol.map`), the beginner-critical keys are
+  present, the shared connection properties sit under `client` scope while serializers stay
+  producer-only, and every entry's `goal` is in the filter list. Suite 429 → 435.
+- **`README.md`** — "Config explorer" bullet lists the new scope and the 9a additions.
+
+Verified: `typecheck` / `lint` / `test` (435) / `build` clean; browser — `/config-explorer`
+shows 51 of 51, the scope filter has `client`, the goal filter has the 6 new goals,
+`bootstrap.servers` expands with all fields populated.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
