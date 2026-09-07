@@ -571,10 +571,12 @@ describe("lab data", () => {
       // the re-read command must lift the cap so the 4 new output records are visible
       expect(r.observe).toMatch(/--max-messages 16/);
       expect(r.observe).toMatch(/12 original \+ 4 new|--max-messages 12 .*would stop|need `16`/i);
-      // standby replicas shorten the replay, they don't eliminate it
+      // standby replicas: replay only their own gap on takeover — maybe nothing — never
+      // the whole changelog; and don't claim a standby always lags
       expect(r.observe).toMatch(/num\.standby\.replicas/);
-      expect(r.observe).toMatch(/short tail|not the whole changelog|slightly-lagging|lags/i);
-      expect(r.observe).not.toMatch(/skip the replay\b/);
+      expect(r.observe).toMatch(/never the whole changelog|only whatever .*hadn't caught up/i);
+      expect(r.observe).toMatch(/nothing if it was current/i);
+      expect(r.observe).not.toMatch(/skip the replay\b|slightly-lagging|always lag/i);
     });
 
     it("scales out to a second instance with its own state dir and shows the split", () => {

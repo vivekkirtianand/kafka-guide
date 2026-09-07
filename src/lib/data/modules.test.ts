@@ -495,12 +495,13 @@ describe("Module 8 — deeper Streams content + Lab E (Phase 7b)", () => {
     // the application reset tool for reprocessing, and that it doesn't clear local state
     expect(text).toMatch(/kafka-streams-application-reset|application reset tool/i);
     expect(`${text} ${ops.watchOut}`).toMatch(/cleanUp\(\)|local state|state\.dir/i);
-    // scaling / failover is the consumer group; standby replicas SHORTEN the replay,
-    // they don't skip it (a standby lags the changelog)
+    // scaling / failover is the consumer group; a standby replays only its own gap on
+    // takeover — possibly nothing — never the whole changelog, and it doesn't ALWAYS lag
     expect(text).toMatch(/num\.standby\.replicas/);
     const standby = ops.points.find((p) => /num\.standby\.replicas/.test(p.detail))!;
-    expect(standby.detail).toMatch(/lag|tail|not the whole changelog/i);
-    expect(standby.detail).not.toMatch(/instead of a full changelog replay|skip the replay|near-instant/i);
+    expect(standby.detail).toMatch(/tail|caught up|never the whole changelog/i);
+    expect(standby.detail).toMatch(/nothing if it was current|only .*hadn't|only the gap/i);
+    expect(standby.detail).not.toMatch(/instead of a full changelog replay|skip the replay|near-instant|always lag|lags a little/i);
     expect(text).toMatch(/state machine|CREATED|REBALANCING|RUNNING/);
   });
 
@@ -521,13 +522,16 @@ describe("Module 8 — deeper Streams content + Lab E (Phase 7b)", () => {
     expect(text).toMatch(/co-partition/i);
   });
 
-  it("the reset guidance is honest: the tool leaves the group and local state behind", () => {
+  it("the reset guidance is honest: the tool leaves the group, local state, AND output topics behind", () => {
     const ops = detail("Running, testing, and operating a Streams app");
     const resetPoint = ops.points.find((p) => /reprocess|reset/i.test(p.term))!;
     expect(resetPoint.detail).toMatch(/does not touch|not touch the local|cleanUp\(\)/i);
     expect(resetPoint.detail).toMatch(/instances stopped|all instances/i);
     // it rewinds but does not delete the consumer group
     expect(resetPoint.detail).toMatch(/leaves the consumer group|does not.*delete.*group/i);
+    // and it does not reset the OUTPUT topics — a reprocessed run appends
+    expect(resetPoint.detail).toMatch(/output topic/i);
+    expect(resetPoint.detail).toMatch(/append|truncate or recreate/i);
   });
 });
 

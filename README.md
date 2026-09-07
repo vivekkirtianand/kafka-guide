@@ -168,9 +168,10 @@ topics in the broker/topic module have one (Phase 6d).
   (7b): five topics — topologies / KStream / KTable (with serdes and GlobalKTable), stateful
   joins-aggregations-windows (with cache/commit-interval dedup and co-partitioning), and
   "running, testing, and operating a Streams app" — plus **Lab E**, which runs a real Kafka
-  Streams app from `examples/order-pipeline-java/` against the Lab B stack: it folds the
-  `orders` topic into a per-customer running total, then restarts to rebuild that state from
-  its changelog topic and scales to a second instance to split the work.
+  Streams app from `examples/order-pipeline-java/` against the Lab B stack: it folds a
+  dedicated `lab-e-orders` topic into a per-customer running total, then (with its local
+  state deleted) restarts to rebuild that state from its changelog topic and scales to a
+  second instance to split the work.
 - **Module 9 (Broker and topic configuration)** is built: scannable Topic explorer content
   for all 11 topics plus 4 interactive demos (ISR floor vs. min.insync.replicas, delete vs.
   compact cleanup, rack placement and rack failure, client quota throttling). Its 7
@@ -252,7 +253,7 @@ topics in the broker/topic module have one (Phase 6d).
   `acks=all` + idempotence on the producer, manual at-least-once commit on the consumer,
   a rebalance-logging listener, and a `PoisonPolicy` — propagate / skip / dead-letter —
   for records that won't parse), plus a Kafka Streams app for Module 8 (`OrderTotalsTopology`
-  folds `orders` into a per-customer running total on `order-totals`, backed by a changelog
-  topic), with `MockProducer` / `MockConsumer` and `TopologyTestDriver` unit tests that need
-  no broker. Its own Gradle build (wrapper pinned by SHA-256, Java 21 toolchain, Kafka 4.0
+  folds an order-events topic — `lab-e-orders` in Lab E — into a per-customer running total on
+  `order-totals`, backed by a changelog topic), with `MockProducer` / `MockConsumer` and
+  `TopologyTestDriver` unit tests that need no broker. Its own Gradle build (wrapper pinned by SHA-256, Java 21 toolchain, Kafka 4.0
   clients + streams) runs in a dedicated CI job (`verify-order-pipeline-java`).

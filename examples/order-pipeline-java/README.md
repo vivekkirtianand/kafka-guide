@@ -162,9 +162,11 @@ docker exec kafka-lab-a /opt/kafka/bin/kafka-streams-application-reset.sh \
 rm -rf "${TMPDIR:-/tmp}/kafka-streams/order-totals-app" /tmp/streams-2/order-totals-app
 ```
 
-The reset tool clears the cluster side (offsets + internal topics) but **leaves the consumer
-group** (just seeked to 0) and never touches the local RocksDB state — the `rm -rf` handles
-that.
+The reset tool rewinds the input offsets and deletes the internal topics, but it does **not**
+delete the consumer group (just seeks it to 0), touch the local RocksDB state (the `rm -rf`
+handles that), or touch the **output topic** `order-totals` — a reprocessed run appends a
+fresh set of running totals after the old records (compaction eventually collapses each key).
+Delete and recreate `order-totals` if you want the output clean too.
 
 ## Design choices (and where they change later)
 

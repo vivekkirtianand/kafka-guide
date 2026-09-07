@@ -1252,6 +1252,16 @@ precision, no Java change; re-verified against a real `apache/kafka:4.0.2` broke
 Re-verified: `typecheck` / `lint` / `test` (still 412) / `build` clean; the `grep -xE` verify
 and the `--max-messages 16` re-read both confirmed against a real broker.
 
+**Review findings addressed (round 3)** (3 follow-ups on the round-2 wording; prose only):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The round-2 output-topic point was added to the lab's `reset-app` step but not to Module 8's "Reprocessing" content or the example README. | `modules.ts` "Reprocessing" now lists **three** things the reset tool doesn't do — leave the group, touch local state, and touch the output topics ("a reprocessed run appends a fresh set of results after the old ones"). `examples/order-pipeline-java/README.md`'s reset section gets the same third item. |
+| P2 | "a standby lags a little" overcorrected — a standby may be fully caught up (zero replay on takeover); if not, only its own gap is replayed. | `modules.ts` and the lab's `restart-restore` observe reworded: "on takeover a standby replays only whatever it hadn't yet caught up to — nothing if it was current, just the gap if it had fallen behind — never the whole changelog." Tests forbid "always lag" / "slightly-lagging". |
+| P3 | The root `README.md` still described the Streams app / Lab E as folding the `orders` topic. | Both mentions updated: Lab E "folds a dedicated `lab-e-orders` topic", and the `examples/` description says "an order-events topic — `lab-e-orders` in Lab E". |
+
+Re-verified: `typecheck` / `lint` / `test` (still 412) / `build` clean.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

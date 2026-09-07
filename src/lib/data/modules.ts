@@ -2063,7 +2063,7 @@ export const modules: Module[] = [
           {
             term: "Scale and fail over through the consumer group",
             detail:
-              "More copies with the same application.id, or a higher num.stream.threads, spread the partitions wider — same rebalance mechanics as any consumer group. When an instance dies, another picks up its partitions and rebuilds its state stores from the changelog first. num.standby.replicas (0 by default) keeps warm copies of each store on other instances, continuously tailing the changelog; a standby lags a little, so a takeover still replays the short tail it hadn't caught up to — but not the whole changelog.",
+              "More copies with the same application.id, or a higher num.stream.threads, spread the partitions wider — same rebalance mechanics as any consumer group. When an instance dies, another picks up its partitions and rebuilds its state stores from the changelog first. num.standby.replicas (0 by default) keeps warm copies of each store on other instances, continuously tailing the changelog; on takeover a standby replays only whatever it hadn't yet caught up to — nothing if it was current, just the gap if it had fallen behind — never the whole changelog.",
           },
           {
             term: "Test the topology with no broker",
@@ -2073,7 +2073,7 @@ export const modules: Module[] = [
           {
             term: "Reprocessing: the application reset tool",
             detail:
-              "Change the aggregation logic and you often want to recompute from the start. kafka-streams-application-reset.sh (all instances stopped first) rewinds the group's committed offsets on the input topics and deletes the internal repartition and changelog topics. Two things it does not do: it leaves the consumer group itself (just seeked to the start), and it does not touch the local state directories — the app must also call KafkaStreams.cleanUp() before start(), or you delete state.dir by hand.",
+              "Change the aggregation logic and you often want to recompute from the start. kafka-streams-application-reset.sh (all instances stopped first) rewinds the group's committed offsets on the input topics and deletes the internal repartition and changelog topics. Three things it does not do: it leaves the consumer group itself (just seeked to the start); it does not touch the local state directories (the app must also call KafkaStreams.cleanUp() before start(), or you delete state.dir by hand); and it does not touch the output topics — a reprocessed run appends a fresh set of results after the old ones, so truncate or recreate an output topic if you need it clean.",
           },
           {
             term: "Interactive queries",
