@@ -1,7 +1,13 @@
 "use client";
 
 import { useCluster, KAFKA_VERSIONS, DEPLOYMENT_LABELS, KafkaVersion } from "@/lib/context/ClusterContext";
-import { DeploymentType, availableDeployments } from "@/lib/types";
+import {
+  DeploymentType,
+  KAFKA_VERSION_INFO,
+  SUPPORTED_KAFKA_VERSIONS,
+  availableDeployments,
+  versionIsArchived,
+} from "@/lib/types";
 import LogStrip from "./LogStrip";
 
 export default function TopBar() {
@@ -11,7 +17,7 @@ export default function TopBar() {
     <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg/90 px-6 py-3 backdrop-blur">
       <LogStrip />
 
-      <div className="flex items-center gap-2 text-xs font-mono">
+      <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
         <label className="flex items-center gap-1.5">
           <span className="text-text-faint">version</span>
           <select
@@ -22,6 +28,7 @@ export default function TopBar() {
             {KAFKA_VERSIONS.map((v) => (
               <option key={v} value={v}>
                 {v}
+                {versionIsArchived(v) ? " · archived" : ""}
               </option>
             ))}
           </select>
@@ -41,6 +48,16 @@ export default function TopBar() {
             ))}
           </select>
         </label>
+
+        {versionIsArchived(version) && (
+          <span
+            className="w-full text-[11px] text-text-faint sm:w-auto"
+            title={KAFKA_VERSION_INFO[version].note}
+          >
+            Kafka {version} is end of life — latest patch {KAFKA_VERSION_INFO[version].latestPatch}, no
+            further releases. Apache supports {SUPPORTED_KAFKA_VERSIONS.join(", ")}.
+          </span>
+        )}
       </div>
     </header>
   );

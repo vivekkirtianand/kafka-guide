@@ -74,7 +74,7 @@ src/
     data/                           Seed content for modules, labs, configs, incidents, troubleshooting, runbooks
     data/labs.ts                    In-app hands-on lab walkthroughs (Lab A single-broker, Lab B three-broker, Lab C schema evolution, Lab D Connect file pipeline, Lab E Streams order totals)
     data/walkthroughs.ts            Module 3 code walkthrough — 16 lessons (build it / break it), each a verbatim snippet of an order-pipeline-java file
-    context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
+    context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar (4.1–4.3 supported, 4.0/3.9 archived; ZooKeeper only offered below 4.0)
     context/ProgressContext.tsx     Per-module completion + resume state + lab/walkthrough step checkboxes, persisted to localStorage
 
 examples/

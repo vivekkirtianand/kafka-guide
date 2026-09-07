@@ -1,11 +1,70 @@
 export type DeploymentType = "kraft" | "zookeeper" | "managed";
 
-export const KAFKA_VERSIONS = ["4.0", "3.9", "3.7", "3.5"] as const;
+// Newest first. Apache actively supports the three most recent minor lines (4.1–4.3);
+// 4.0 and 3.9 are kept as selectable reference points — 4.0 is what the course content and
+// labs are written against, and 3.9 is the last 3.x line (the "before KRaft-only" case).
+export const KAFKA_VERSIONS = ["4.3", "4.2", "4.1", "4.0", "3.9"] as const;
 export type KafkaVersion = (typeof KAFKA_VERSIONS)[number];
 
-// Kafka 4.0 removed ZooKeeper mode (KIP-833) — only KRaft and managed services remain valid.
+// "current" = Apache still ships bugfix releases for this line; "archived" = end of life,
+// no further patches (Apache supports only the three most recent minor lines).
+export type VersionSupport = "current" | "archived";
+
+export interface KafkaVersionInfo {
+  // Date of the x.y.0 release.
+  released: string;
+  // Newest patch in the line.
+  latestPatch: string;
+  support: VersionSupport;
+  // One line of context — why it is archived, or what is notable about the line.
+  note?: string;
+}
+
+export const KAFKA_VERSION_INFO: Record<KafkaVersion, KafkaVersionInfo> = {
+  "4.3": {
+    released: "2026-05-22",
+    latestPatch: "4.3.1",
+    support: "current",
+    note: "Latest release line.",
+  },
+  "4.2": {
+    released: "2026-02-17",
+    latestPatch: "4.2.1",
+    support: "current",
+  },
+  "4.1": {
+    released: "2025-09-04",
+    latestPatch: "4.1.2",
+    support: "current",
+    note: "First line to fully clear CVE-2026-35554 in a .0 release.",
+  },
+  "4.0": {
+    released: "2025-03-18",
+    latestPatch: "4.0.2",
+    support: "archived",
+    note: "First ZooKeeper-free release (KIP-833). No longer receives bugfix releases. The course content and every lab are written and verified against 4.0.2 — run 4.0.0 or 4.0.1 and you are exposed to CVE-2026-35554.",
+  },
+  "3.9": {
+    released: "2024-11-06",
+    latestPatch: "3.9.2",
+    support: "archived",
+    note: "Final Kafka 3.x line and the last that supports ZooKeeper mode. Archived by Apache in 2026 — stay on it only while a KRaft migration is still pending.",
+  },
+};
+
+export function versionIsArchived(version: KafkaVersion): boolean {
+  return KAFKA_VERSION_INFO[version].support === "archived";
+}
+
+// The lines Apache still ships bugfix releases for, newest first.
+export const SUPPORTED_KAFKA_VERSIONS = KAFKA_VERSIONS.filter(
+  (v) => KAFKA_VERSION_INFO[v].support === "current",
+);
+
+// ZooKeeper mode was removed in Kafka 4.0 (KIP-833) — from 4.0 on, only KRaft and managed
+// services remain valid.
 export function availableDeployments(version: KafkaVersion): DeploymentType[] {
-  if (version === "4.0") return ["kraft", "managed"];
+  if (versionAtLeast(version, "4.0")) return ["kraft", "managed"];
   return ["kraft", "zookeeper", "managed"];
 }
 
@@ -227,7 +286,9 @@ export interface ConfigEntry {
   goal: string;
   controls: string;
   defaultValue: string;
-  // Only set when the default differs for that version; falls back to defaultValue otherwise.
+  // Keyed at the version where the default CHANGED to that value and stays there for newer
+  // releases; `getDefaultValue` walks back to the nearest older key, falling through to
+  // `defaultValue` for versions older than every key.
   defaultValueByVersion?: Partial<Record<KafkaVersion, string>>;
   // Set when the config did not exist before a given release — the entry is hidden in the
   // Config Explorer for older selected versions.
@@ -247,7 +308,15 @@ export interface ConfigEntry {
 }
 
 export function getDefaultValue(entry: ConfigEntry, version: KafkaVersion): string {
-  return entry.defaultValueByVersion?.[version] ?? entry.defaultValue;
+  const byVersion = entry.defaultValueByVersion;
+  if (!byVersion) return entry.defaultValue;
+  // KAFKA_VERSIONS is newest-first. Start at the selected version and walk towards older
+  // releases; the first key we hit is the default in effect for that version.
+  for (let i = KAFKA_VERSIONS.indexOf(version); i < KAFKA_VERSIONS.length; i++) {
+    const hit = byVersion[KAFKA_VERSIONS[i]];
+    if (hit !== undefined) return hit;
+  }
+  return entry.defaultValue;
 }
 
 // KAFKA_VERSIONS is ordered newest-first, so a lower index means a newer release.
