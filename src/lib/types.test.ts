@@ -34,10 +34,15 @@ describe("Kafka version model", () => {
     expect(availableDeployments("3.9")).toContain("zookeeper");
   });
 
-  it("versionAtLeast reads the newest-first ordering correctly", () => {
+  it("versionAtLeast compares release lines numerically, not by picker position", () => {
     expect(versionAtLeast("4.3", "4.0")).toBe(true);
     expect(versionAtLeast("4.0", "4.0")).toBe(true);
     expect(versionAtLeast("3.9", "4.0")).toBe(false);
+    // a boundary the picker no longer offers still resolves
+    expect(versionAtLeast("3.9", "3.7")).toBe(true);
+    expect(versionAtLeast("3.6", "3.7")).toBe(false);
+    // numeric, not lexicographic
+    expect(versionAtLeast("4.10", "4.9")).toBe(true);
   });
 });
 
@@ -67,6 +72,12 @@ describe("getDefaultValue walk-back", () => {
 
   it("falls through to defaultValue for versions older than every key", () => {
     expect(getDefaultValue(linger, "3.9")).toBe("0");
+  });
+
+  it("resolves keys for release boundaries the picker no longer offers", () => {
+    const c: ConfigEntry = { ...linger, defaultValueByVersion: { "3.6": "1", "4.0": "5" } };
+    expect(getDefaultValue(c, "3.9")).toBe("1"); // >= 3.6, < 4.0
+    expect(getDefaultValue(c, "4.3")).toBe("5");
   });
 
   it("returns defaultValue when there is no per-version table", () => {

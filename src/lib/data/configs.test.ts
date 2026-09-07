@@ -9,7 +9,11 @@ function get(key: string) {
 }
 
 describe("config version gating", () => {
-  it("keeps group.protocol available across every selectable version (oldest is 3.9)", () => {
+  it("records group.protocol's true introduction line (3.7), not the oldest selectable one", () => {
+    expect(get("group.protocol").availableFromVersion).toBe("3.7");
+  });
+
+  it("keeps group.protocol available across every selectable version (3.7 predates them all)", () => {
     const gp = get("group.protocol");
     expect(configAvailable(gp, "3.9")).toBe(true);
     expect(configAvailable(gp, "4.0")).toBe(true);

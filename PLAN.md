@@ -1285,17 +1285,21 @@ PR split is **8a plumbing, then 8b content**.
     the only one with ZooKeeper mode, and the "before KIP-848 GA" case.
   - `KAFKA_VERSION_INFO: Record<KafkaVersion, { released; latestPatch; support; note? }>` —
     `support` is `"current"` (Apache still ships bugfix releases: 4.1–4.3) or `"archived"`
-    (4.0, 3.9). Dates and patch levels checked against kafka.apache.org release announcements
-    (Sept 2026): 4.3.1 / 4.2.1 / 4.1.2 / 4.0.2 / 3.9.2.
+    (4.0, 3.9). Dates (x.y.0 release, from the kafka.apache.org downloads page) and latest
+    patch, Sept 2026: 4.3.0 2026-05-22 / 4.3.1, 4.2.0 2026-02-17 / 4.2.1, 4.1.0 2025-09-02 /
+    4.1.2, 4.0.0 2025-03-18 / 4.0.2, 3.9.0 2024-11-06 / 3.9.2.
+  - New `KafkaRelease = \`${number}.${number}\`` — an "x.y" line **not** constrained to
+    `KAFKA_VERSIONS`. `versionAtLeast` compares two `KafkaRelease`s **numerically**
+    (`releaseRank` = major·1000 + minor), never by position in `KAFKA_VERSIONS`. So a
+    threshold in content data can name a line the picker no longer shows.
+    `ConfigEntry.availableFromVersion` / `earlyAccessUntilVersion` / `defaultValueByVersion`
+    keys are now `KafkaRelease` — `group.protocol.availableFromVersion` stays its true `"3.7"`.
   - `versionIsArchived(v)`, `SUPPORTED_KAFKA_VERSIONS` (the `"current"` lines).
   - `availableDeployments` now `versionAtLeast(version, "4.0")` → `["kraft", "managed"]` (was
     `version === "4.0"`, which would have offered ZooKeeper on the new 4.1–4.3).
-  - `getDefaultValue` walks newest→oldest from the selected version to the first
-    `defaultValueByVersion` key, so `{ "4.0": "5" }` on `linger.ms` resolves to `5` on
-    4.0–4.3 and falls through to `0` on 3.9. Comment on the field updated to match.
-- **`src/lib/data/configs.ts`** — `group.protocol.availableFromVersion` `"3.7"` → `"3.9"`
-  (3.7 is no longer a `KafkaVersion`, so `versionAtLeast` against it would break the gate).
-  Still `earlyAccessUntilVersion: "4.0"`; a comment records the 3.7 origin.
+  - `getDefaultValue` picks the value at the newest `defaultValueByVersion` key the selected
+    version has reached (numeric), so `{ "4.0": "5" }` on `linger.ms` resolves to `5` on
+    4.0–4.3 and falls through to `0` on 3.9 — independent of `KAFKA_VERSIONS` membership.
 - **`src/lib/context/ClusterContext.tsx`** — default `version` `"4.0"` → `"4.3"` (newest
   supported line; nothing a beginner touches differs from 4.0). 8b reconciles the per-module
   "Reviewed against Kafka 4.0" lines with the selector.
@@ -1308,15 +1312,26 @@ PR split is **8a plumbing, then 8b content**.
   "configuration context"; description "Every setting filterable by …" → "Curated
   configurations, each filterable by …".
 - **Tests** — new `src/lib/types.test.ts` (version list + info table shape, archived flags,
-  ZooKeeper gating by version, `versionAtLeast` ordering, `getDefaultValue` walk-back).
-  `configs.test.ts` version-gating cases rewritten to the new selectable set (3.9 / 4.0 /
-  4.3). Suite 412 → 419.
+  ZooKeeper gating by version, `versionAtLeast` numeric compare incl. dropped lines,
+  `getDefaultValue` incl. a boundary the picker no longer offers). `configs.test.ts` version
+  cases updated (3.9 / 4.0 / 4.3; `group.protocol` records its true `3.7` introduction).
+  Suite 412 → 421.
 
-Verified: `typecheck` / `lint` / `test` (419) / `build` clean; browser — default 4.3 opens
+Verified: `typecheck` / `lint` / `test` (421) / `build` clean; browser — default 4.3 opens
 with no EOL banners; selecting 4.0 or 3.9 shows the archived note in the top bar and the
 Config Explorer banner; 3.9 re-enables the ZooKeeper deployment option; `linger.ms` default
 reads `5` on 4.3 and `0` on 3.9; `group.protocol` flags early access on 3.9 only; home card
 reads "configuration context". Mobile viewport — the top-bar note wraps below the selects.
+
+**Review findings addressed (round 1)** (3 findings on PR #36):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The 4.1 `KAFKA_VERSION_INFO` note said 4.1.0 cleared CVE-2026-35554 — 4.1.0 and 4.1.1 are both affected; 4.1.2 fixes the line and 4.2.0 is the first clean `.0`. | 4.1 note rewritten ("4.1.0 and 4.1.1 carry CVE-2026-35554 — 4.1 users need 4.1.2, the patch shown here"); a CVE note added to 4.2 ("first .0 release clear of …"). |
+| P2 | Version comparison used `KAFKA_VERSIONS.indexOf`, so every threshold had to be a currently-selectable version — dropping 3.7 had forced `group.protocol.availableFromVersion` off its true value. | New `KafkaRelease` type (any "x.y", not the selectable union); `versionAtLeast` and `getDefaultValue` compare numerically via `releaseRank`; `ConfigEntry` version fields retyped to `KafkaRelease`; `group.protocol.availableFromVersion` restored to `"3.7"`. `KAFKA_VERSIONS` is now *only* the picker list. |
+| P3 | `KAFKA_VERSION_INFO["4.1"].released` was `2025-09-04` (the blog date); the field is documented as the x.y.0 release date, which the downloads page gives as 2025-09-02. | `4.1` → `2025-09-02`. Other dates re-checked against the downloads page (4.3.0 2026-05-22, 4.2.0 2026-02-17, 4.0.0 2025-03-18, 3.9.0 2024-11-06) — all already correct. |
+
+Re-verified: `typecheck` / `lint` / `test` (421) / `build` clean; browser re-checked `linger.ms` (5 on 4.3, 0 on 3.9) and `group.protocol` early access on 3.9 through the new numeric path.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
