@@ -1452,6 +1452,14 @@ precision in the new prose):
 Re-verified: `typecheck` / `lint` / `test` (435) / `build` clean; browser — the reworded
 entries render with every field populated.
 
+**Review findings addressed (round 2)** (1 finding on PR #38, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | `max.partition.fetch.bytes` — round 1 still implied the soft-limit escape is per partition ("each partition contributes its first oversized batch"). Kafka only guarantees it for the first record batch in the **first non-empty partition** of the fetch. | `performanceImpact` / `reliabilityImpact` now scope the guarantee to the first non-empty partition; the failure mode is reworded to "fewer batches per partition per fetch → more round trips", dropping the per-partition-escape phrasing. |
+
+Re-verified: `typecheck` / `lint` / `test` (435) / `build` clean.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

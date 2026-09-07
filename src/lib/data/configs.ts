@@ -737,12 +737,12 @@ export const configs: ConfigEntry[] = [
     whenToChange:
       "Raise it when records are large and one partition should be able to return more per round trip; lower it to bound per-partition memory when a consumer subscribes to many partitions at once.",
     performanceImpact:
-      "Larger values mean fewer fetch round trips per partition and more client memory held between polls. It is a soft limit: if the first batch on a partition is larger than this, the broker returns it anyway so the consumer can make progress.",
+      "Larger values mean fewer, fuller batches per partition and more client memory held between polls. It has a soft-limit escape: if the first record batch in the first non-empty partition of a fetch is larger than this, the broker returns that one batch anyway so the consumer can always make progress.",
     reliabilityImpact:
-      "Because it is a soft limit, an oversized record batch never wedges a consumer — the broker returns that first batch whole even though it exceeds the cap.",
+      "The soft-limit escape means an oversized record batch never wedges a consumer — it is guaranteed to come back whole in the first non-empty partition of a fetch, even though it exceeds the cap.",
     relatedConfigs: ["fetch.max.bytes", "max.poll.records"],
     failureModes: [
-      "Set well below the topic's record-batch size, so each partition contributes only its first batch per fetch — the consumer still makes progress but needs more fetch round trips to drain a backlog",
+      "Set well below the topic's record-batch size, so each partition returns fewer batches per fetch and the consumer needs more fetch round trips to drain a backlog",
     ],
   },
   {
