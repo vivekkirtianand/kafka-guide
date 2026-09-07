@@ -72,7 +72,7 @@ src/
     types.ts                        Shared content types (incl. per-module course metadata)
     course.ts                       Computed course length + beginner/reference/advanced splits
     data/                           Seed content for modules, labs, configs, incidents, troubleshooting, runbooks
-    data/labs.ts                    In-app hands-on lab walkthroughs (Lab A single-broker, Lab B three-broker, Lab C schema evolution)
+    data/labs.ts                    In-app hands-on lab walkthroughs (Lab A single-broker, Lab B three-broker, Lab C schema evolution, Lab D Connect file pipeline)
     data/walkthroughs.ts            Module 3 code walkthrough — 16 lessons (build it / break it), each a verbatim snippet of an order-pipeline-java file
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar
     context/ProgressContext.tsx     Per-module completion + resume state + lab/walkthrough step checkboxes, persisted to localStorage
@@ -161,9 +161,12 @@ topics in the broker/topic module have one (Phase 6d).
   commits, crashing before/after a commit, offset reset and replay, and poison-message
   handling with retry and dead-letter topics. Retitled and moved onto the beginner path in
   Phase 6c (same slug and content as the old "Consumer configuration").
-- **Module 8 (Kafka Connect and Kafka Streams)** is a `status: "planned"` stub added in
-  Phase 6c — objectives, prerequisites, and 4 topic titles are scoped, content and hands-on
-  labs land in Phase 7. Renders the generic "planned" callout, same as any unbuilt module.
+- **Module 8 (Kafka Connect and Kafka Streams)** — the Connect half is built (Phase 7a):
+  Topic explorer content for source/sink connectors and standalone-vs-distributed mode, plus
+  **Lab D**, a code-free walkthrough that creates a file source and a file sink connector
+  through the Connect REST API and watches records flow through a topic. The Streams half
+  (topologies / KStream / KTable, and stateful joins-aggregations-windows) has conceptual
+  Topic explorer content now; its hands-on lab lands in Phase 7b.
 - **Module 9 (Broker and topic configuration)** is built: scannable Topic explorer content
   for all 11 topics plus 4 interactive demos (ISR floor vs. min.insync.replicas, delete vs.
   compact cleanup, rack placement and rack failure, client quota throttling). Its 7
@@ -215,6 +218,15 @@ topics in the broker/topic module have one (Phase 6d).
     The console consumer is generic (dynamic lookup, not a compatibility demo), and the lab
     is careful about direction: BACKWARD protects a consumer *moving to* the new schema, not
     one still pinned to the old one.
+  - **Lab D** (Module 8) — Kafka Connect on Lab B's stack with the Connect worker
+    (`--profile extras`), 11 steps: confirm the REST API → list plugins → create a
+    `FileStreamSourceConnector` that tails a file into a topic → consume the topic → append
+    a line and watch it flow → read the source connector's byte offset → create a
+    `FileStreamSinkConnector` back out to a file → see the sink is an ordinary consumer
+    group → `DELETE` both. All `curl` against `localhost:8083` plus `docker exec`; no code.
+    Needs a 6 GB Docker limit (Connect is a second heavy JVM); the compose file adds
+    `/usr/share/filestream-connectors` to `CONNECT_PLUGIN_PATH` so the FileStream connectors
+    load.
 - The **local cluster lab** at [`local-cluster-lab/`](local-cluster-lab/) is the Docker
   Compose project Lab B drives — its own `docker-compose.yml`, a `verify-lab.sh` health
   check, and a README with the service inventory, per-OS setup, and troubleshooting. CI

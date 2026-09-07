@@ -1011,6 +1011,147 @@ now opens with one plain-language paragraph before the mechanics.
 
 **Phase 6 (re-sequence core material) is complete** — PRs 6a, 6b, 6c, 6d.
 
+## Phase 7 — Connect & Streams
+
+Fills the `connect-and-streams` module (Module 8) that 6c stubbed. Two PRs.
+
+**AskUserQuestion decisions:** 7a **flips the module to `"available"`** — it writes the two
+Connect topics in full *and* conceptual (lab-free) Topic-explorer content for the two Streams
+topics, so the module reads as coherent; 7b then adds the Streams lab and deepens the Streams
+content. The 7a lab is **file source → topic → file sink** (`FileStreamSourceConnector` /
+`FileStreamSinkConnector` via the REST API), no external database.
+
+| PR | Scope | Status |
+|---|---|---|
+| 7a | Module 8 Connect content (2 topics) + conceptual Streams content (2 topics) + Lab D (file source/sink via the Connect REST API); module → `"available"` | ✅ Done |
+| 7b | Deeper Streams content + a Streams lab (an order-total aggregation running against the lab stack) | ⭕ Planned |
+
+### PR 7a — Connect content + Lab D
+
+- `src/lib/data/modules.ts` — `connect-and-streams` gets full `topicDetail` for all 4
+  topics and `status: "planned"` → `"available"`, `estimatedMinutes` 90 → 100, `labs:
+  [connectFileLab]`, a 2nd completion criterion for the lab. **Connect** (2 topics):
+  source/sink is one connector one direction; you configure not code; tasks are the
+  parallelism unit; converters do serialization; Connect owns source offsets (internal
+  topic) while a sink commits ordinary consumer offsets; "Connect is not a transformation
+  engine — stateful work is Streams". Standalone vs. distributed; the REST API drives
+  distributed; even one worker runs distributed; the three internal topics are the cluster's
+  memory. **Streams** (2 topics, conceptual): it's a library not a cluster, scaled by
+  `application.id`; topology = source → ops → sink; KStream (events) vs. KTable (latest value
+  per key = the compacted-topic idea); the stream/table duality. Stateful: RocksDB state
+  stores backed by compacted changelog topics; aggregations fold a stream into a KTable;
+  windows keep one entry per (key, window); stream–table and stream–stream joins.
+- `src/lib/data/labs.ts` — `connectFileLab` (`slug: "lab-d-connect-file-pipeline"`), added
+  to the `labs` array. 11 steps on the Lab B stack with `docker compose --profile extras up
+  -d kafka-connect`: check the REST API → list plugins → make a source file → `PUT` a
+  `FileStreamSourceConnector` → check status (connector + task RUNNING) → consume the topic
+  (`"line one"` — JSON-quoted, `JsonConverter` + `schemas.enable=false`) → append a line and
+  watch only the new record appear → `GET /connectors/file-source/offsets` (byte position,
+  flushed every `offset.flush.interval.ms` = 60s) → `PUT` a `FileStreamSinkConnector` (note
+  `topics` plural) writing the topic back to a file → `kafka-consumer-groups.sh --describe
+  --group connect-file-sink` (a sink is a managed consumer group) → `DELETE` both (204, topic
+  survives). 4 lab-level `troubleshooting` entries. `teardownWarning` covers `down -v` wiping
+  `_connect-configs` / `_connect-offsets` / `_connect-status`.
+- **`local-cluster-lab/docker-compose.yml`** — `CONNECT_PLUGIN_PATH` gains
+  `/usr/share/filestream-connectors`. The FileStream connectors ship with Kafka but are NOT
+  on Connect's default plugin path in recent Confluent images (they live in that directory),
+  so without this a `FileStreamSourceConnector` PUT returns `Failed to find any class that
+  implements Connector`. CI's `docker compose … config --quiet` still passes (it's a syntax
+  check). `local-cluster-lab/README.md` — a "Lab D" subsection, the `kafka-connect` one-line
+  `up`, and a 6 GB Docker note (Connect is a second heavy JVM; on 4 GB it's OOM-killed).
+- `src/lib/data/glossary.ts` — 4 new terms: `kafka-connect`, `connector`, `kafka-streams`,
+  `ktable` (KStream/KTable), all listing `connect-and-streams`.
+- Tests: `modules.test.ts` — the "Module 8" block rewritten for the available module (all 4
+  topics covered, Connect-is-config-not-code + not-a-transformation-engine, KStream vs.
+  KTable, Streams state stores + changelog). `labs.test.ts` — a "Lab D" block (extras-profile
+  connect-only setup, code-free (every step is `curl`/`docker exec`), the source PUT + topic
+  consume, file-tailing + byte offset, the sink + its consumer group, DELETE cleanup, the
+  `down -v` warning, module wiring). `course.test.ts` — the 6c `trackableBeginnerPath`
+  real-data test generalised (it asserted exactly 1 planned module dropped; now it's `0`).
+  Suite 374 → 383.
+- **Verified end to end** against a real `apache/kafka:4.0.2` + `confluentinc/cp-kafka-connect:7.7.1`
+  stack: the plugin-path fix, every `curl` and its response, the JSON-quoted topic values,
+  the raw (unquoted) sink-file lines, the `{"offsets":[{"partition":{"filename":…},"offset":
+  {"position":39}}]}` shape and its 60s flush delay, the `connect-file-sink` consumer group,
+  and the `204` deletes. Also confirmed the "class not found" error is exactly what you get
+  without the plugin-path change. (Docker on this box has only 1.9 GB, so the test ran the
+  Connect JVM with a capped heap — hence Lab D's own 6 GB floor and OOM `commonError`.)
+
+**Review findings addressed (round 1)** (4 findings from a review of PR #34; round-1 changes
+are behavioural documentation, not new lab commands — the commands themselves are unchanged
+from the end-to-end verification above, and the new `verify` command composes three checks
+each already verified individually, incl. the `Topic 'Optional[...]' does not exist` string
+shared with Lab C's verified verify):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Lab D isn't deterministically rerunnable — a connector `DELETE` leaves its source offsets in `_connect-offsets`, its sink consumer group, and the topic's records behind, so recreated connectors resume past all the data and steps 6–11 see nothing. | `verify` rewritten as a clean-slate check (`/connectors` is `[]`, the FileStream plugins are present, `connect-file-topic` doesn't exist) with a CLEAN SLATE / LEFTOVER STATE / PLUGINS MISSING breakdown and `down -v` as the reset — mirrors Lab C's verified verify, no `\|\|`-masking. New `commonError` on the `consume-topic` step (RUNNING connector, 0 messages → leftover byte position → `down -v`). `cleanup-connectors` observe now spells out what survives a `DELETE` and that a rerun must start from `down -v`. `teardownWarning`: `curl -X DELETE` is not a clean reset — only `down -v` is. |
+| P2 | The `sink-consumer-group` check races the default 60s `offset.flush.interval.ms` — the sink writes the file on poll but only commits its consumer offset on the flush interval. | Step 10 `expected` now flags CURRENT-OFFSET/LAG may read `-` / stale for up to a minute; `observe` explains the file is complete on poll while the committed offset lags the flush; new `commonError` says re-run after a minute, the correct file already proves the sink works. |
+| P2 | "Standalone" claimed "no REST-driven changes" — standalone Connect does run the REST API and accept connector changes; they're just not durable across a restart. | `modules.ts` "Standalone" point reworded: the REST API runs and accepts changes, but a runtime-added connector is in-memory only and gone on restart. "The REST API drives distributed mode" → "The REST API is how you drive Connect" (both modes expose it; distributed is where a PUT is stored durably and survives a restart). |
+| P2 | "Every state store is mirrored to a compacted changelog topic" overclaims — changelogging can be disabled, and a store that materializes an existing topic can restore from it. | `modules.ts` "Backed by a changelog topic" point: "By default…" plus the two exceptions (disable changelogging; a store that materializes an existing topic rebuilds from that topic). |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite 383 → 387; browser-checked the
+`connect-and-streams` topic-explorer (both reworded Connect/Streams points) and the Lab D
+walkthrough (clean-slate verify, step-10 race note, step-11 + teardown determinism note).
+
+**Review findings addressed (round 2)** (4 more findings from a follow-up review; still
+prose, not new lab commands — the one command change is adding `--timeout-ms 20000` to the two
+consume steps, the same bound Labs A/B/C already use):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Source-offset storage described as always an internal topic — standalone keeps it in a local file. | `modules.ts` "Connect owns the offsets": "in an internal topic on a distributed worker, a local file in standalone". Lab D `source-offsets` intro and the `{"offsets":[]}` troubleshooting entry both now say "distributed → internal topic; standalone → local file". |
+| P2 | "Restart resumes from exactly there" ignores replay from the last flushed offset. | Lab D `append-tail` observe: an append resumes from that exact byte, but a restart resumes from the last *flushed* position and re-emits anything read-but-not-flushed — a file-source pipeline is at-least-once. Same point added to the `modules.ts` offsets bullet. |
+| P2 | The `consume-topic` `commonError` says the consumer "times out", but the command had no `--timeout-ms` (it would hang). | Added `--timeout-ms 20000` to `consume-topic` and `append-tail` (matches Lab A/B/C); the `commonError` symptom now names the flag that stops it and notes that without it the consumer just hangs. |
+| P3 | `down -v` called "the only" clean reset — a by-hand reset (drop topic + delete sink group + `DELETE /connectors/file-source/offsets`) also works. | `consume-topic` recovery, `cleanup-connectors` observe, and `teardownWarning` now frame `down -v` as the *simplest* reset and spell out the by-hand alternative. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite 387 → 390; browser-checked the
+reworded offsets/changelog/standalone points and the Lab D `source-offsets` + `append-tail`
+text render.
+
+**Review findings addressed (round 3)** (3 more findings; doc URLs checked live with `curl`):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The round-2 by-hand reset said `DELETE /connectors/file-source/offsets` *after* deleting the connector — that endpoint 404s once the connector is gone, and the `verify` check can't see a stale offset left in `_connect-offsets`, so it can falsely report a clean slate. | `cleanup-connectors` observe + `teardownWarning` now give the correct sequence — the source offset can only be cleared while the connector still exists and is stopped (`PUT /connectors/file-source/stop` → `DELETE …/offsets`), *before* step 11's delete — and say plainly that `down -v` is much simpler. `verify` note gains a **BLIND SPOT** paragraph: an orphaned `file-source` byte position in `_connect-offsets` is invisible to the checks (no connector → no `/offsets`), so a "clean" verify followed by `Processed a total of 0 messages` means that orphan — `down -v` clears it. |
+| P2 | At-least-once presented as universal for Connect source delivery — a distributed worker can be configured for exactly-once source. | `modules.ts` "Connect owns the offsets": "by default … at-least-once. A distributed worker can be switched to exactly-once source delivery (`exactly.once.source.support`), which wraps each batch and its offset write in one transaction." Lab D `append-tail` observe notes this worker runs the default at-least-once and EOS source is the opt-in alternative. |
+| P3 | `furtherReading` used legacy redirect URLs — `…/40/documentation.html` bounces to Getting Started (not Connect), `…/40/documentation/streams/` bounces to `/40/streams/`. | Repointed to the canonical section pages: `https://kafka.apache.org/40/kafka-connect/` (label "Kafka Connect") and `https://kafka.apache.org/40/streams/`, both verified as real 200 pages. `modules.test.ts` further-reading test now also rejects `documentation.html` and `/documentation/streams/`. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite 390 → 392; browser-checked the
+reworded offsets/append-tail/verify text and the two new further-reading links render.
+
+**Review findings addressed (round 4)** (3 more findings, all P2; EOS-needs-connector-support
+confirmed against the Connect developer guide):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | `PUT /connectors/…/stop` is asynchronous — must wait for the connector to reach `STOPPED` before `DELETE …/offsets`. | `cleanup-connectors` observe + `teardownWarning`: `PUT …/stop`, then poll `GET …/status` until the connector state is `STOPPED` (the stop is asynchronous), *then* `DELETE …/offsets`. |
+| P2 | Exactly-once source delivery needs connector support too, not just the worker setting. | `modules.ts` "Connect owns the offsets": EOS "needs both sides — `exactly.once.source.support` enabled on a distributed worker *and* a connector that implements the transaction hooks (FileStream doesn't)". Lab D `append-tail` observe: "it needs both the worker setting and a connector built for it — the FileStream connector isn't, so at-least-once is the only option here". |
+| P2 | The Kafka Connect glossary term still said offsets always live in internal topics. | `glossary.ts` `kafka-connect`: "tracks each connector's position itself (in internal Kafka topics on a distributed worker, a local file in standalone)". New `glossary.test.ts` guard. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite 392 → 393; browser-checked the
+glossary term and the reworded module/lab text render.
+
+**Review findings addressed (round 5)** (1 finding — a correction to round 4, checked against
+the Kafka 4.0 source):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Round 4 wrongly said FileStream can't do exactly-once. `FileStreamSourceConnector.exactlyOnceSupport()` returns `SUPPORTED` whenever `file` is set (Lab D sets it) — so Lab D is at-least-once purely because the lab's worker leaves `exactly.once.source.support` off. | `modules.ts` "Connect owns the offsets": drop the "(FileStream doesn't)" aside — "a connector that declares it can support it for the given config". Lab D `append-tail` observe: "at-least-once — but only because the lab's worker leaves `exactly.once.source.support` off. The FileStream source connector itself supports exactly-once for a real file; turn the worker setting on and this same connector would deliver each line exactly once." Both tests updated to forbid a "FileStream can't" claim. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite still 393; browser-checked the two
+reworded passages render.
+
+**Review findings addressed (round 6)** (1 finding — a further tightening of the round-5 EOS
+wording):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Round 5 said turning on `exactly.once.source.support` would make this connector "deliver each line exactly once" — but the lab's `kafka-console-consumer.sh` defaults to `isolation.level=read_uncommitted`, so it can still surface records from aborted transactions. Observing exactly-once also needs `--isolation-level read_committed`. | Lab D `append-tail` observe: enabling the worker setting makes the *write* side transactional; "seeing the effect takes one more change — the console consumer in step 6 defaults to `isolation.level=read_uncommitted` … you'd run it with `--isolation-level read_committed`". Test asserts both `read_committed` and the `read_uncommitted`/`isolation.level` caveat, and forbids the bare "would deliver each line exactly once" claim. |
+
+Re-verified: `typecheck` / `lint` / `build` clean; suite still 393; browser-checked the
+reworded `append-tail` observe renders.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

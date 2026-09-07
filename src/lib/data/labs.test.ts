@@ -344,6 +344,159 @@ describe("lab data", () => {
     });
   });
 
+  describe("Lab D — Kafka Connect file pipeline", () => {
+    const labD = labs.find((l) => l.slug === "lab-d-connect-file-pipeline")!;
+    const step = (id: string) => labD.steps.find((s) => s.id === id)!;
+
+    it("reuses Lab B's stack with the extras profile, connect worker only", () => {
+      expect(labD.setup.some((c) => /docker compose --profile extras up -d kafka-connect/.test(c.command))).toBe(true);
+      expect(labD.setup.some((c) => /git rev-parse --show-toplevel/.test(c.command))).toBe(true);
+      expect(labD.setup.some((c) => /cd kafka-guide\/local-cluster-lab/.test(c.command))).toBe(false);
+      expect(labD.prerequisites.join(" ")).toMatch(/finished Lab B/i);
+      // Connect + 3 brokers needs more than the Lab B 4 GB floor
+      expect(labD.resourceFloor).toMatch(/6 GB/);
+    });
+
+    it("is a code-free lab: every step is curl against :8083 or docker exec, no producer/consumer source", () => {
+      for (const s of labD.steps) {
+        expect(s.command, s.id).toMatch(/curl |docker exec /);
+      }
+      expect(labD.summary).toMatch(/No producer or consumer code|no code/i);
+    });
+
+    it("creates a file source connector via PUT and shows records reaching the topic", () => {
+      const create = step("create-source");
+      expect(create.command).toMatch(/-X PUT http:\/\/localhost:8083\/connectors\/file-source\/config/);
+      expect(create.command).toMatch(/FileStreamSourceConnector/);
+      const consume = step("consume-topic");
+      expect(consume.command).toMatch(/kafka-console-consumer\.sh/);
+      expect(consume.command).toMatch(/--max-messages 3\b/);
+      // JsonConverter + schemas.enable=false ⇒ a bare string line serialises with quotes
+      expect(consume.expected).toMatch(/"line one"/);
+    });
+
+    it("shows the source connector tails the file and tracks a byte offset", () => {
+      expect(step("append-tail").observe).toMatch(/didn't re-read|tails the file|resumes from/i);
+      const offsets = step("source-offsets");
+      expect(offsets.command).toMatch(/\/connectors\/file-source\/offsets/);
+      expect(offsets.observe).toMatch(/offset\.flush\.interval\.ms|60s|60 seconds/i);
+    });
+
+    it("creates a file sink connector and frames it as an ordinary consumer group", () => {
+      const sink = step("create-sink");
+      expect(sink.command).toMatch(/FileStreamSinkConnector/);
+      expect(sink.command).toMatch(/"topics":"connect-file-topic"/);
+      const group = step("sink-consumer-group");
+      expect(group.command).toMatch(/kafka-consumer-groups\.sh .*--group connect-file-sink/);
+      expect(group.observe).toMatch(/consumer group|managed consumer/i);
+    });
+
+    it("cleans up with DELETE and notes the topic's records survive", () => {
+      const cleanup = step("cleanup-connectors");
+      expect(cleanup.command).toMatch(/-X DELETE http:\/\/localhost:8083\/connectors\/file-source/);
+      expect(cleanup.expected).toMatch(/204/);
+      expect(cleanup.observe).toMatch(/records? stay|doesn't touch the data|records still exist|still exists?/i);
+    });
+
+    it("warns that down -v wipes the connect internal topics", () => {
+      expect(labD.teardown.some((c) => /down -v/.test(c.command))).toBe(true);
+      expect(labD.teardownWarning).toMatch(/_connect-configs|_connect-offsets|_connect-status/);
+      expect(labD.teardownWarning).toMatch(/no undo|down -v|wipes/i);
+    });
+
+    it("verify does a clean-slate check — no connectors, no leftover topic — without masking failures", () => {
+      const cmd = labD.verify!.command;
+      expect(cmd).toMatch(/curl -sS http:\/\/localhost:8083\/connectors/);
+      // exact topic by --describe, not a grep of the topic list
+      expect(cmd).toMatch(/--describe --topic connect-file-topic/);
+      // no `|| echo` that would turn a failed check into a false all-clear
+      expect(cmd).not.toMatch(/\|\|\s*echo/);
+      const note = labD.verify!.note;
+      expect(note).toMatch(/clean slate/i);
+      expect(note).toMatch(/leftover state/i);
+      // says down -v is the reset
+      expect(note).toMatch(/down -v/);
+    });
+
+    it("is deterministically rerunnable — leftover state is named, and down -v is the simplest reset (not the only one)", () => {
+      // connector delete leaves offsets + the sink group behind: cleanup observe says so
+      const cleanup = step("cleanup-connectors").observe;
+      expect(cleanup).toMatch(/_connect-offsets|consumer group keeps|resume past/i);
+      expect(cleanup).toMatch(/down -v/);
+      // the first step where that bites (source resumed past EOF) has a recovery
+      const consume = step("consume-topic");
+      expect(consume.commonError?.cause).toMatch(/_connect-offsets|resumes past|previous run/i);
+      expect(consume.commonError?.recovery).toMatch(/down -v/);
+      // down -v is framed as simplest, and a by-hand reset is offered — not "the only way"
+      for (const s of [cleanup, labD.teardownWarning, consume.commonError!.recovery]) {
+        expect(s).not.toMatch(/only (way|clean reset|option)/i);
+      }
+      expect(`${cleanup} ${labD.teardownWarning}`).toMatch(/by hand|by-hand|alternative|DELETE \/connectors\/file-source\/offsets/i);
+    });
+
+    it("does not let the sink consumer-group check race the 60s offset flush", () => {
+      const group = step("sink-consumer-group");
+      const text = `${group.expected} ${group.observe} ${group.commonError?.symptom ?? ""} ${group.commonError?.cause ?? ""} ${group.commonError?.recovery ?? ""}`;
+      expect(text).toMatch(/offset\.flush\.interval\.ms|60[\s-]?second|a minute/i);
+      // the file being right is the real signal; the committed offset just lags
+      expect(text).toMatch(/file .*already|already complete|file being correct/i);
+    });
+
+    it("bounds both consume steps with --timeout-ms so the 'no records' symptom is real, not an infinite hang", () => {
+      for (const id of ["consume-topic", "append-tail"]) {
+        const cmd = step(id).command;
+        const m = cmd.match(/--timeout-ms (\d+)/);
+        expect(m, id).not.toBeNull();
+        expect(Number(m![1]), id).toBeGreaterThanOrEqual(20000);
+      }
+      // the leftover-state symptom now cites the flag that produces it
+      expect(step("consume-topic").commonError?.symptom).toMatch(/--timeout-ms|20s|would (just )?hang/i);
+    });
+
+    it("doesn't overclaim source-offset storage or restart semantics", () => {
+      // standalone keeps the position in a local file, not always a topic
+      expect(step("source-offsets").intro).toMatch(/standalone.*local file|local file.*standalone/i);
+      // a restart can replay from the last flushed offset — at-least-once BY DEFAULT,
+      // and the exactly-once source option is named
+      const appendObserve = step("append-tail").observe;
+      expect(appendObserve).toMatch(/flush|at-least-once|re-produced|last committed/i);
+      // at-least-once HERE is a worker-config choice, not a FileStream limitation:
+      // FileStreamSourceConnector does support exactly-once for a real file
+      expect(appendObserve).toMatch(/exactly\.once\.source\.support/);
+      expect(appendObserve).toMatch(/FileStream source connector .*supports exactly-once|connector itself supports exactly-once/i);
+      expect(appendObserve).not.toMatch(/FileStream .*(isn't|doesn't|can't)/i);
+      // observing EOS also needs a read_committed consumer — the console default is read_uncommitted
+      expect(appendObserve).toMatch(/read_committed/);
+      expect(appendObserve).toMatch(/read_uncommitted|isolation.level/i);
+      expect(appendObserve).not.toMatch(/would deliver each line exactly once\b/);
+    });
+
+    it("gets the by-hand source-offset reset right: stop (async) → wait for STOPPED → DELETE offsets, before deleting the connector", () => {
+      const cleanup = step("cleanup-connectors").observe;
+      const both = `${cleanup} ${labD.teardownWarning}`;
+      // the /offsets endpoint is gone once the connector is deleted
+      expect(both).toMatch(/404|before you delete|while the connector still exists/i);
+      // the correct sequence stops the connector first
+      expect(both).toMatch(/\/connectors\/file-source\/stop|stopping the connector/i);
+      // the stop is asynchronous — must wait for STOPPED before DELETE offsets
+      expect(cleanup).toMatch(/asynchronous|poll .*status|until .*STOPPED/i);
+      expect(both).toMatch(/STOPPED/);
+    });
+
+    it("verify note owns its blind spot — a stale source offset in _connect-offsets is invisible to the checks", () => {
+      const note = labD.verify!.note;
+      expect(note).toMatch(/blind spot/i);
+      expect(note).toMatch(/_connect-offsets/);
+      // and points at down -v as the fix for that specific case
+      expect(note).toMatch(/down -v/);
+    });
+
+    it("is carried by the connect-and-streams module", () => {
+      const mod = modules.find((m) => m.slug === "connect-and-streams")!;
+      expect(mod.labs?.map((l) => l.slug)).toEqual([labD.slug]);
+    });
+  });
+
   describe("verify-lab.sh", () => {
     it("checks the metrics-pipeline services the Grafana step depends on, not just the brokers", () => {
       // kafka-exporter is what makes the dashboard non-empty — the verifier must not pass without it

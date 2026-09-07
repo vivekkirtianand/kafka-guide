@@ -38,6 +38,13 @@ describe("glossary data", () => {
     expect(getGlossaryTerm("offset")?.term).toBe("Offset");
     expect(getGlossaryTerm("nope")).toBeUndefined();
   });
+
+  it("the Kafka Connect term doesn't claim offsets always live in internal topics", () => {
+    const def = getGlossaryTerm("kafka-connect")!.definition;
+    expect(def).toMatch(/local file/i);
+    expect(def).toMatch(/distributed/i);
+    expect(def).not.toMatch(/position in internal topics\.|offsets? .*always .*internal topic/i);
+  });
 });
 
 describe("inline [[glossary]] tokens in module content", () => {

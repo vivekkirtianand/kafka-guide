@@ -210,7 +210,10 @@ services:
       CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
       CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
-      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      # /usr/share/filestream-connectors holds the FileStream source/sink connectors, which
+      # ship with Kafka but aren't on Connect's default plugin path in recent CP images.
+      # Module 8's Lab D uses them.
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/usr/share/filestream-connectors
       CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
     networks:
       - kafka-lab
