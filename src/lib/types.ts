@@ -25,15 +25,19 @@ export function versionAtLeast(version: KafkaRelease, min: KafkaRelease): boolea
   return releaseRank(version) >= releaseRank(min);
 }
 
-// Compact label for a set of "x.y" lines: a contiguous run collapses to "4.0–4.3"; a gap
-// stays listed ("4.0, 4.2–4.3"). Input order does not matter.
-export function versionRangeLabel(versions: readonly KafkaRelease[]): string {
-  const ranked = [...new Set(versions)].sort((a, b) => releaseRank(a) - releaseRank(b));
-  if (ranked.length === 0) return "";
-  const runs: [KafkaRelease, KafkaRelease][] = [];
-  for (const v of ranked) {
+// Compact label for a set of selectable Kafka versions: a run that is contiguous in
+// KAFKA_VERSIONS collapses to "4.0–4.3" — including across the major boundary ("3.9–4.0"),
+// since Kafka's minor numbering restarts per major and only the release list knows what
+// follows what. A gap stays listed ("4.0, 4.2–4.3"). Input order does not matter.
+export function versionRangeLabel(versions: readonly KafkaVersion[]): string {
+  const present = new Set<string>(versions);
+  const oldestFirst = [...KAFKA_VERSIONS].reverse().filter((v) => present.has(v));
+  if (oldestFirst.length === 0) return "";
+  const runs: [KafkaVersion, KafkaVersion][] = [];
+  for (const v of oldestFirst) {
     const run = runs[runs.length - 1];
-    if (run && releaseRank(v) === releaseRank(run[1]) + 1) run[1] = v;
+    // adjacent in KAFKA_VERSIONS (which is newest-first, so the next-older line is index + 1)
+    if (run && KAFKA_VERSIONS.indexOf(v) === KAFKA_VERSIONS.indexOf(run[1]) - 1) run[1] = v;
     else runs.push([v, v]);
   }
   return runs.map(([lo, hi]) => (lo === hi ? lo : `${lo}–${hi}`)).join(", ");
@@ -453,6 +457,8 @@ export interface Runbook {
   // The selectable Kafka versions these steps apply to, rendered as a range on the detail
   // page with a caveat when the reader has something else selected.
   applicableVersions?: KafkaVersion[];
+  // ISO date (YYYY-MM-DD) the procedure was last checked against real Kafka behavior.
+  lastReviewed?: string;
   steps: {
     prechecks: string[];
     execution: string[];

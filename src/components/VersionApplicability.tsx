@@ -1,6 +1,6 @@
 "use client";
 
-import { KafkaRelease, KafkaVersion, versionRangeLabel } from "@/lib/types";
+import { KafkaVersion, versionRangeLabel } from "@/lib/types";
 import { useCluster } from "@/lib/context/ClusterContext";
 
 // The "accurate for Kafka X" line under a module header or a runbook, plus a caveat when the
@@ -22,7 +22,7 @@ export default function VersionApplicability({
     ) : null;
   }
 
-  const label = versionRangeLabel(versions as KafkaRelease[]);
+  const label = versionRangeLabel(versions);
   const inRange = versions.includes(version);
 
   return (

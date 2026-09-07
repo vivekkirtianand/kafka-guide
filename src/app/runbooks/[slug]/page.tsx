@@ -38,7 +38,11 @@ export default async function RunbookDetailPage({ params }: { params: Promise<{ 
 
       {runbook.applicableVersions && runbook.applicableVersions.length > 0 && (
         <div className="mb-8">
-          <VersionApplicability versions={runbook.applicableVersions} subject="runbook" />
+          <VersionApplicability
+            versions={runbook.applicableVersions}
+            reviewed={runbook.lastReviewed}
+            subject="runbook"
+          />
         </div>
       )}
 

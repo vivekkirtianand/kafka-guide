@@ -25,7 +25,7 @@ describe("production runbooks data", () => {
     }
   });
 
-  it("marks every runbook with the Kafka 4.x lines it applies to", () => {
+  it("marks every runbook with the Kafka 4.x lines it applies to and a review date", () => {
     for (const r of runbooks) {
       expect(r.applicableVersions, r.slug).toBeDefined();
       expect(r.applicableVersions!.length, r.slug).toBeGreaterThan(0);
@@ -35,6 +35,7 @@ describe("production runbooks data", () => {
       // authored against 4.0, so 4.0 is always in range; the procedures are KRaft-only
       expect(r.applicableVersions, r.slug).toContain("4.0");
       expect(r.applicableVersions, r.slug).not.toContain("3.9");
+      expect(r.lastReviewed, r.slug).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
   });
 

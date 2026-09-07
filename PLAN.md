@@ -1373,6 +1373,15 @@ reads "Kafka 4.0–4.3 · reviewed <date>" with no caveat at 4.3; selecting 3.9 
 raises the KRaft-only caveat on both the module page and a runbook detail page; back to 4.3
 clears it.
 
+**Review findings addressed (round 1)** (2 findings on PR #37):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Runbook pages rendered only "Kafka 4.0–4.3" — no dated review provenance, and `Runbook` had no field for it. | Added `Runbook.lastReviewed?: string`; populated all 14 with `2026-08-31` (git shows the runbook content was last touched for Kafka accuracy that day — PR #14's review commit); the detail page passes it to `VersionApplicability`. |
+| P3 | `versionRangeLabel` detected contiguity as `releaseRank(next) === releaseRank(prev) + 1`, so Kafka's adjacent 3.9 and 4.0 lines rendered as `3.9, 4.0`. | Rewrote it to group runs by **adjacency in `KAFKA_VERSIONS`** (the ordered release list) rather than raw minor arithmetic — `3.9`+`4.0` now collapse to `3.9–4.0`. Signature narrowed `KafkaRelease[]` → `KafkaVersion[]` (it only ever labels selectable versions). Cross-major test added. |
+
+Re-verified: `typecheck` / `lint` / `test` (429) / `build` clean; browser — a runbook page now reads "Kafka 4.0–4.3 · reviewed 2026-08-31".
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

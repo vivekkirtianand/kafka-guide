@@ -43,6 +43,12 @@ describe("Kafka version model", () => {
     expect(versionRangeLabel([])).toBe("");
   });
 
+  it("versionRangeLabel treats 3.9 and 4.0 as contiguous (adjacent release lines)", () => {
+    expect(versionRangeLabel(["3.9", "4.0"])).toBe("3.9–4.0");
+    expect(versionRangeLabel(["3.9", "4.0", "4.1", "4.2", "4.3"])).toBe("3.9–4.3");
+    expect(versionRangeLabel(["3.9", "4.1"])).toBe("3.9, 4.1");
+  });
+
   it("versionAtLeast compares release lines numerically, not by picker position", () => {
     expect(versionAtLeast("4.3", "4.0")).toBe(true);
     expect(versionAtLeast("4.0", "4.0")).toBe(true);
