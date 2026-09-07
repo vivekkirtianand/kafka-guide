@@ -1239,6 +1239,19 @@ clean (26 Java tests); every Lab E command re-run verbatim against a real broker
 topic, the `rm -rf`+restart changelog replay, the two-instance split (partitions 0,2 / 1),
 and the reset tool leaving the group.
 
+**Review findings addressed (round 2)** (4 more findings on Lab E — all prose/command
+precision, no Java change; re-verified against a real `apache/kafka:4.0.2` broker):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The restart proof told the reader to re-read `order-totals` but the `--max-messages 12` command from the earlier step stops before the 4 newly-produced records, so it can never show alice 16800. | `restart-restore`'s observe now spells out the re-read command with `--max-messages 16` (12 original + 4 new) and states the last value per key — alice 16800, bob 36000, carol 6000 — plus a note that `--max-messages 12` would stop short. Verified: the 16-message read shows all four new records. |
+| P2 | The reset explanation omitted that `order-totals` (the output topic) is not reset, so a recomputed run appends its records alongside the old ones. | `reset-app`'s observe now lists three things the tool does NOT do — leave the group, touch local state, **and touch the output topic** — and explains the recomputed records append until compaction collapses each key (delete+recreate `order-totals` for a clean output). |
+| P2 | "standby replicas … skip the replay" overclaims — a standby lags the changelog, so a takeover still replays the tail. | `modules.ts` "Scale and fail over" and the lab's `restart-restore` observe reworded: a standby "continuously tails the changelog" but "lags a little, so a takeover still replays the short tail it hadn't caught up to — but not the whole changelog." Tests forbid "skip the replay" / "near-instant". |
+| P3 | `verify` used `grep -E 'lab-e-orders\|order-totals'` — a substring match that would also flag an unrelated `order-totals-archive`. | Switched to `grep -xE 'lab-e-orders\|order-totals\|order-totals-app-order-totals-store-changelog'` (whole-line match, all three exact names). Verified against the broker: a decoy `order-totals-archive` is not flagged. |
+
+Re-verified: `typecheck` / `lint` / `test` (still 412) / `build` clean; the `grep -xE` verify
+and the `--max-messages 16` re-read both confirmed against a real broker.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

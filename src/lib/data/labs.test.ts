@@ -522,6 +522,10 @@ describe("lab data", () => {
       // verify checks the lab's own topics, not the shared one
       expect(labE.verify!.command).toMatch(/lab-e-orders/);
       expect(labE.verify!.command).not.toMatch(/grep -E 'order-totals\|orders'/);
+      // whole-line match so a similarly-named unrelated topic doesn't trip it
+      expect(labE.verify!.command).toMatch(/grep -xE '/);
+      expect(labE.verify!.command).toMatch(/order-totals-app-order-totals-store-changelog/);
+      expect(labE.verify!.note).toMatch(/grep -x|whole line|order-totals-archive/i);
     });
 
     it("creates the output topic itself — Streams won't auto-create a .to() topic", () => {
@@ -564,7 +568,13 @@ describe("lab data", () => {
       expect(r.observe).toMatch(/changelog/);
       expect(r.observe).toMatch(/does NOT reprocess|not reprocess|committed past/i);
       expect(r.observe).toMatch(/did not reset|continued|not reset/i);
+      // the re-read command must lift the cap so the 4 new output records are visible
+      expect(r.observe).toMatch(/--max-messages 16/);
+      expect(r.observe).toMatch(/12 original \+ 4 new|--max-messages 12 .*would stop|need `16`/i);
+      // standby replicas shorten the replay, they don't eliminate it
       expect(r.observe).toMatch(/num\.standby\.replicas/);
+      expect(r.observe).toMatch(/short tail|not the whole changelog|slightly-lagging|lags/i);
+      expect(r.observe).not.toMatch(/skip the replay\b/);
     });
 
     it("scales out to a second instance with its own state dir and shows the split", () => {
@@ -584,6 +594,9 @@ describe("lab data", () => {
       expect(reset.observe).toMatch(/leaves the .*consumer group|still listed|never deletes the (consumer )?group/i);
       // and it does NOT clear local RocksDB
       expect(reset.observe).toMatch(/cleanUp\(\)|not touch the local|does not touch/i);
+      // and it does NOT reset the OUTPUT topic — recomputed records append to the old ones
+      expect(reset.observe).toMatch(/output topic `order-totals`|does not touch.*order-totals/i);
+      expect(reset.observe).toMatch(/append|both runs|until compaction/i);
       expect(reset.commonError?.symptom).toMatch(/still active/i);
       expect(reset.commonError?.cause).toMatch(/session timeout|45 second|hasn't expired/i);
       // the verify note must not require the group's absence (the reset can't deliver that)

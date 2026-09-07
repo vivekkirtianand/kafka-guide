@@ -495,8 +495,12 @@ describe("Module 8 — deeper Streams content + Lab E (Phase 7b)", () => {
     // the application reset tool for reprocessing, and that it doesn't clear local state
     expect(text).toMatch(/kafka-streams-application-reset|application reset tool/i);
     expect(`${text} ${ops.watchOut}`).toMatch(/cleanUp\(\)|local state|state\.dir/i);
-    // scaling / failover is the consumer group, and standby replicas speed takeover
+    // scaling / failover is the consumer group; standby replicas SHORTEN the replay,
+    // they don't skip it (a standby lags the changelog)
     expect(text).toMatch(/num\.standby\.replicas/);
+    const standby = ops.points.find((p) => /num\.standby\.replicas/.test(p.detail))!;
+    expect(standby.detail).toMatch(/lag|tail|not the whole changelog/i);
+    expect(standby.detail).not.toMatch(/instead of a full changelog replay|skip the replay|near-instant/i);
     expect(text).toMatch(/state machine|CREATED|REBALANCING|RUNNING/);
   });
 
