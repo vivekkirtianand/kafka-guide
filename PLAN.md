@@ -52,7 +52,7 @@ unless noted.
 | 6 | Re-sequence core material | 6a beginner/intermediate/advanced **level** on topics + Module 1/4/6 split + renumber (`index` 0-based, nav + tests); 6b a "basic explanation" preface before each advanced mechanical topic | 1a, 2 | M2 |
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
 | 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ✅** `applicableVersions` (Kafka 4.x range) on all 12 modules + 14 runbooks, shared `VersionApplicability` render + out-of-range caveat, `versionRangeLabel` | 1a | M3 |
-| 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); 9b add `ConfigEntry` fields — example value, safe baseline, verification, rollback, managed caveat, official doc link — populated on the new configs + high-traffic existing ones | 8b | M3 |
+| 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); **9b ✅** `ConfigEntry` gains optional `exampleValue` / `safeBaseline` / `verification` / `rollback` / `managedCaveat` + a derived `kafkaDocUrl`; populated on the 9a configs + ~11 high-traffic existing; explorer gains a risk filter and renders the new fields | 8b | M3 |
 | 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; 10c capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
 
@@ -1398,7 +1398,7 @@ entries**, not all 60+ (keeps the Kafka-accuracy review surface manageable); **t
 | PR | Scope | Status |
 |---|---|---|
 | 9a | New `client` scope + ~20 beginner client configs (connection, security, serialization, producer compression/partitioning, consumer fetch tuning); config-catalog structural test | ✅ Done |
-| 9b | New optional `ConfigEntry` fields (example value, safe baseline, verification step, rollback step, managed caveat, official doc link); populate on the 9a entries + high-traffic existing ones; explorer renders them | ⭕ Planned |
+| 9b | Optional `ConfigEntry` enrichment fields + derived doc URL; populated on the 9a entries + high-traffic existing; explorer risk filter + new field rendering | ✅ Done |
 
 ### PR 9a — beginner client configs + `client` scope
 
@@ -1459,6 +1459,76 @@ entries render with every field populated.
 | P2 | `max.partition.fetch.bytes` — round 1 still implied the soft-limit escape is per partition ("each partition contributes its first oversized batch"). Kafka only guarantees it for the first record batch in the **first non-empty partition** of the fetch. | `performanceImpact` / `reliabilityImpact` now scope the guarantee to the first non-empty partition; the failure mode is reworded to "fewer batches per partition per fetch → more round trips", dropping the per-partition-escape phrasing. |
 
 Re-verified: `typecheck` / `lint` / `test` (435) / `build` clean.
+
+### PR 9b — per-entry enrichment + risk filter
+
+Adds the practical fields a newcomer needs to act on a config safely, and closes the
+home-page card's overclaim ("filterable by … risk — with rollback and verification steps").
+
+- **`src/lib/types.ts`** — `ConfigEntry` gains five optional fields: `exampleValue`,
+  `safeBaseline`, `verification`, `rollback`, `managedCaveat`. Optional so an entry only
+  carries what actually adds something (no `rollback` on a two-value boolean). New exported
+  `kafkaDocUrl(entry)` — derives the version-pinned Apache 4.0 anchor from the scope
+  (`https://kafka.apache.org/40/configuration/<page>/#<scope>configs_<key>`), `client`-scope
+  common properties documented on the producer-configs page. No per-entry URL to drift.
+- **`src/lib/data/configs.ts`** — enrichment populated on 31 entries: all 20 from 9a plus the
+  11 highest-traffic operational ones (`acks`, `enable.idempotence`, `min.insync.replicas`,
+  `linger.ms`, `batch.size`, `group.id`, `auto.offset.reset`, `enable.auto.commit`,
+  `max.poll.records`, `max.poll.interval.ms`, `default.replication.factor`). Verification
+  steps are concrete (a metric that moves, a command, a kill-a-broker test); rollback notes
+  call out what a revert does *not* undo (records already written in the old encoding, offsets
+  already committed under a changed `group.id`).
+- **`src/components/ConfigExplorer.tsx`** — new `risk` `<select>` (`any risk` / safe /
+  caution / high-risk) with an `aria-label`. Expanded row renders `Safe baseline` /
+  `Example value` beside the default, `How to verify the change` / `How to roll back` /
+  `On a managed service` in the grid, and an `Apache Kafka 4.0 reference — <key> ↗` link
+  (`kafkaDocUrl`) at the foot.
+- **`src/app/config-explorer/page.tsx`** + **`src/app/page.tsx`** — descriptions updated to
+  "filter by scope, goal, and risk" and to mention the baseline / example / verify / rollback
+  detail on beginner-facing entries (the home card no longer claims a version/deployment
+  *filter*).
+- **Tests** — `configs.test.ts` gains a `config enrichment` block (the beginner + high-traffic
+  keys carry `safeBaseline` + `verification`; no optional field is an empty string;
+  `kafkaDocUrl` builds the right per-scope anchor for all five scopes; every config resolves
+  to a version-pinned URL). New `ConfigExplorer.test.tsx` (risk filter narrows the list to
+  high-risk only; an enriched entry shows the new fields + the doc link). Suite 435 → 441.
+
+Verified: `typecheck` / `lint` / `test` (441) / `build` clean; browser — the risk filter
+narrows to the 12 high-risk configs, `acks` expands with safe baseline / example / verify /
+rollback / managed caveat and a working `#producerconfigs_acks` doc link.
+
+**Review findings addressed (round 1)** (5 findings on PR #39 — 3×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | `kafkaDocUrl` mapped topic scope to `/configuration/topic-configs/` — Kafka 4.0 serves it at `/configuration/topic-level-configs/`, so every topic-scoped entry (incl. `min.insync.replicas`) got a broken link and the test locked the wrong URL in. | Topic scope → `topic-level-configs` (anchor stays `#topicconfigs_<key>`, verified against the live page). Test URL corrected. |
+| P1 | `enable.auto.commit` verification claimed a mid-batch crash silently skips records with auto-commit on. In a synchronous poll→process loop, auto-commit commits the *previous* batch on the *next* poll, so a mid-processing crash redelivers under either setting. | Verification rewritten around the case where it actually differs — a poll can run before the previous batch's work finishes (processing handed to another thread): then auto-commit skips the unfinished records. |
+| P1 | `min.insync.replicas` verification used `kafka-configs.sh --describe --topic <t>` (no such selector), and rollback said `--delete-config` reverts to `1` and resumes writes. | Verification uses `--bootstrap-server … --entity-type topics --entity-name <t> --describe`; rollback restores the *captured prior* value, and only suggests `--delete-config` when the topic was inheriting the broker default (which is not necessarily 1). |
+| P2 | `enable.idempotence` verification ("retries non-zero while no duplicate key/sequence at consumer offsets") is not observable — consumer offsets don't expose producer sequence numbers and duplicate keys are valid. | Verification now: confirm `enable.idempotence = true` in the producer's logged effective config; to prove dedup, send uniquely tagged records through an induced retriable error and count each tag at the consumer. |
+| P2 | `group.id` rollback assumed the old group's committed offsets still exist — an inactive group's offsets expire after `offsets.retention.minutes`. | Rollback tells the operator to check the old group's offsets first (`kafka-consumer-groups.sh --describe --group <old>`); if expired, the old id falls back to `auto.offset.reset`. |
+
+Re-verified: `typecheck` / `lint` / `test` (441) / `build` clean; browser — `min.insync.replicas`
+now links to `…/topic-level-configs/#topicconfigs_min.insync.replicas`.
+
+**Review findings addressed (round 2)** (4 findings on PR #39 — 1×P1, 3×P2, all tightening
+round-1 verification procedures):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | `enable.auto.commit` — a later `poll()` only auto-commits once `auto.commit.interval.ms` has elapsed, so "the next poll already committed" is not reliable. | Verification now: hand off a batch, poll until `kafka-consumer-groups.sh --describe` shows the committed offset has moved past it, *then* kill while the async work is unfinished. |
+| P2 | `min.insync.replicas` — stopping a broker does not shrink the ISR instantly; an immediate write can still succeed. | Wait until `kafka-topics.sh --describe` reports `Isr` with 2 entries before expecting `NOT_ENOUGH_REPLICAS`. |
+| P2 | `enable.idempotence` — a retriable error alone does not prove dedup (many fail before the broker appends). | The fault must be an *ambiguous* write (broker appends, ack lost) and the test needs a non-idempotent control run that duplicates under the same fault. |
+| P2 | `linger.ms` — cited `records-per-request`, which is not a real metric. | Corrected to `records-per-request-avg`. |
+
+Re-verified: `typecheck` / `lint` / `test` (441) / `build` clean.
+
+**Review findings addressed (round 3)** (1 finding on PR #39, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | `bootstrap.servers` managed caveat said "do not shorten or reorder" the provider's list — Kafka states server order is irrelevant. | Reworded: order does not matter; keep every address (dropping some only reduces bootstrap resilience). |
+
+Re-verified: `lint` / `test` (441) / `build` clean.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:

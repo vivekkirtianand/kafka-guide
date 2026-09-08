@@ -15,7 +15,7 @@ const pillars: { href: string; label: string; description: string; badge?: strin
     href: "/config-explorer",
     label: "Configuration explorer",
     description:
-      "Curated configurations, each filterable by version, deployment type, goal, and risk — with rollback and verification steps.",
+      "Curated configurations, version- and deployment-aware, filterable by scope, goal, and risk — the beginner-facing ones with a safe baseline, an example value, and verification and rollback steps.",
     badge: "configuration context",
   },
   {
