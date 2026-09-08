@@ -591,6 +591,31 @@ describe("Module 9 — broker and topic configuration (Phase 6d advanced-topic p
   });
 });
 
+describe("Module 12 — capstone project (Phase 10c)", () => {
+  const m = modules.find((x) => x.slug === "capstone-project")!;
+
+  it("is the terminal beginner-path module at index 12, carrying a capstone", () => {
+    expect(m.index).toBe(12);
+    expect(m.index).toBe(modules.length - 1);
+    expect(m.track).toBe("beginner-path");
+    expect(m.status).toBe("available");
+    expect(m.capstone).toBeDefined();
+    expect(m.topics).toEqual([]);
+    expect(m.topicDetail).toBeUndefined();
+  });
+
+  it("has no beginner-path module after it", () => {
+    const path = modules.filter((x) => x.track === "beginner-path").sort((a, b) => a.index - b.index);
+    expect(path[path.length - 1].slug).toBe("capstone-project");
+  });
+
+  it("depends on the modules whose material the spec exercises", () => {
+    for (const p of m.prerequisites ?? []) expect(modules.some((x) => x.slug === p), p).toBe(true);
+    expect(m.prerequisites).toContain("connect-and-streams");
+    expect(m.prerequisites).toContain("schemas-and-data-contracts");
+  });
+});
+
 describe("knowledge checks (any module)", () => {
   it("every KnowledgeCheck has an in-range answerIndex and enough options", () => {
     for (const m of modules) {

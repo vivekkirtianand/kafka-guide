@@ -157,6 +157,44 @@ export interface Exercise {
   successCriteria: string[];
 }
 
+// One deliverable in the capstone spec. The learner ticks it off; the checkbox is persisted
+// per module in the progress store, the same mechanism a lab step uses.
+export interface CapstoneRequirement {
+  // Stable progress-store key — must not change once learners have progress saved.
+  id: string;
+  // The deliverable, one line.
+  title: string;
+  // What "done" looks like — one to three sentences.
+  detail: string;
+  // Slugs of the modules whose material this requirement exercises.
+  buildsOn: string[];
+}
+
+// One axis of the capstone scoring rubric. Each level is a self-assessed band — no
+// auto-grading, the learner places their own work.
+export interface CapstoneRubricDimension {
+  name: string;
+  // One line: what this axis judges.
+  focus: string;
+  // Ordered best-to-worst; `label` is the band, `descriptor` is what that band looks like.
+  levels: { label: "Meets" | "Partial" | "Missing"; descriptor: string }[];
+}
+
+// The end-of-course project, done unassisted. Rendered as its own module page section
+// (brief → spec → rubric → what to hand in), not as topic content.
+export interface Capstone {
+  // The scenario and what the finished system must do. Paragraphs separated by a blank line.
+  brief: string;
+  // What to build it on, one line (e.g. the Lab B three-broker stack).
+  stack: string;
+  // The spec — a fixed set of deliverables the learner works through in order.
+  requirements: CapstoneRequirement[];
+  // The scoring rubric — one entry per dimension.
+  rubric: CapstoneRubricDimension[];
+  // What to produce and how to self-check when the build is done.
+  submission: string[];
+}
+
 // One step in a guided code walkthrough — a module built around a real example project
 // (`examples/<repo>/`) rather than around concepts. The learner reads `code` (a verbatim
 // excerpt of `file`), works through the `points`, optionally runs `run`, and ticks the
@@ -299,6 +337,9 @@ export interface Module {
   // and types are stable.
   knowledgeChecks?: KnowledgeCheck[];
   exercises?: Exercise[];
+  // The end-of-course capstone project. When set, the module page renders the brief, spec,
+  // and rubric in place of topic content.
+  capstone?: Capstone;
   // In-app, step-by-step hands-on labs rendered above the topic content. The first renders
   // expanded; any others render collapsed.
   labs?: Lab[];
