@@ -1510,6 +1510,18 @@ rollback / managed caveat and a working `#producerconfigs_acks` doc link.
 Re-verified: `typecheck` / `lint` / `test` (441) / `build` clean; browser — `min.insync.replicas`
 now links to `…/topic-level-configs/#topicconfigs_min.insync.replicas`.
 
+**Review findings addressed (round 2)** (4 findings on PR #39 — 1×P1, 3×P2, all tightening
+round-1 verification procedures):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | `enable.auto.commit` — a later `poll()` only auto-commits once `auto.commit.interval.ms` has elapsed, so "the next poll already committed" is not reliable. | Verification now: hand off a batch, poll until `kafka-consumer-groups.sh --describe` shows the committed offset has moved past it, *then* kill while the async work is unfinished. |
+| P2 | `min.insync.replicas` — stopping a broker does not shrink the ISR instantly; an immediate write can still succeed. | Wait until `kafka-topics.sh --describe` reports `Isr` with 2 entries before expecting `NOT_ENOUGH_REPLICAS`. |
+| P2 | `enable.idempotence` — a retriable error alone does not prove dedup (many fail before the broker appends). | The fault must be an *ambiguous* write (broker appends, ack lost) and the test needs a non-idempotent control run that duplicates under the same fault. |
+| P2 | `linger.ms` — cited `records-per-request`, which is not a real metric. | Corrected to `records-per-request-avg`. |
+
+Re-verified: `typecheck` / `lint` / `test` (441) / `build` clean.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
