@@ -119,7 +119,7 @@ describe("config enrichment (Phase 9b)", () => {
       "https://kafka.apache.org/40/configuration/broker-configs/#brokerconfigs_default.replication.factor",
     );
     expect(kafkaDocUrl(get("min.insync.replicas"))).toBe(
-      "https://kafka.apache.org/40/configuration/topic-configs/#topicconfigs_min.insync.replicas",
+      "https://kafka.apache.org/40/configuration/topic-level-configs/#topicconfigs_min.insync.replicas",
     );
     // client-scope common properties are documented on the producer-configs page
     expect(kafkaDocUrl(get("bootstrap.servers"))).toBe(

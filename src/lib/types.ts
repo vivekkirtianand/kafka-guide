@@ -378,7 +378,7 @@ export function kafkaDocUrl(entry: ConfigEntry): string {
       : entry.scope === "broker"
         ? "broker-configs"
         : entry.scope === "topic"
-          ? "topic-configs"
+          ? "topic-level-configs"
           : "producer-configs";
   const anchorScope = entry.scope === "client" ? "producer" : entry.scope;
   return `https://kafka.apache.org/40/configuration/${page}/#${anchorScope}configs_${entry.key}`;

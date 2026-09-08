@@ -1497,6 +1497,19 @@ Verified: `typecheck` / `lint` / `test` (441) / `build` clean; browser — the r
 narrows to the 12 high-risk configs, `acks` expands with safe baseline / example / verify /
 rollback / managed caveat and a working `#producerconfigs_acks` doc link.
 
+**Review findings addressed (round 1)** (5 findings on PR #39 — 3×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | `kafkaDocUrl` mapped topic scope to `/configuration/topic-configs/` — Kafka 4.0 serves it at `/configuration/topic-level-configs/`, so every topic-scoped entry (incl. `min.insync.replicas`) got a broken link and the test locked the wrong URL in. | Topic scope → `topic-level-configs` (anchor stays `#topicconfigs_<key>`, verified against the live page). Test URL corrected. |
+| P1 | `enable.auto.commit` verification claimed a mid-batch crash silently skips records with auto-commit on. In a synchronous poll→process loop, auto-commit commits the *previous* batch on the *next* poll, so a mid-processing crash redelivers under either setting. | Verification rewritten around the case where it actually differs — a poll can run before the previous batch's work finishes (processing handed to another thread): then auto-commit skips the unfinished records. |
+| P1 | `min.insync.replicas` verification used `kafka-configs.sh --describe --topic <t>` (no such selector), and rollback said `--delete-config` reverts to `1` and resumes writes. | Verification uses `--bootstrap-server … --entity-type topics --entity-name <t> --describe`; rollback restores the *captured prior* value, and only suggests `--delete-config` when the topic was inheriting the broker default (which is not necessarily 1). |
+| P2 | `enable.idempotence` verification ("retries non-zero while no duplicate key/sequence at consumer offsets") is not observable — consumer offsets don't expose producer sequence numbers and duplicate keys are valid. | Verification now: confirm `enable.idempotence = true` in the producer's logged effective config; to prove dedup, send uniquely tagged records through an induced retriable error and count each tag at the consumer. |
+| P2 | `group.id` rollback assumed the old group's committed offsets still exist — an inactive group's offsets expire after `offsets.retention.minutes`. | Rollback tells the operator to check the old group's offsets first (`kafka-consumer-groups.sh --describe --group <old>`); if expired, the old id falls back to `auto.offset.reset`. |
+
+Re-verified: `typecheck` / `lint` / `test` (441) / `build` clean; browser — `min.insync.replicas`
+now links to `…/topic-level-configs/#topicconfigs_min.insync.replicas`.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
