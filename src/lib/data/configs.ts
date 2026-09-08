@@ -7,7 +7,7 @@ export const configs: ConfigEntry[] = [
     safeBaseline: "Two or three brokers, or one load-balanced endpoint, taken verbatim from your platform's connection string.",
     verification: "The client logs a cluster id and a full broker list at startup, and a metadata request in a debug log returns every broker rather than only the ones listed here.",
     rollback: "Restore the previous list and recreate the client — there is no persisted state to clean up.",
-    managedCaveat: "The provider gives you the exact bootstrap string (often one hostname that load-balances across brokers); do not shorten or reorder it.",
+    managedCaveat: "Use the bootstrap string the provider gives you (often one hostname that load-balances across brokers). Order does not matter, but keep every address — dropping some only reduces bootstrap resilience.",
     scope: "client",
     goal: "Connect to the cluster",
     controls:

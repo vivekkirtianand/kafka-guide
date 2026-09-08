@@ -1522,6 +1522,14 @@ round-1 verification procedures):
 
 Re-verified: `typecheck` / `lint` / `test` (441) / `build` clean.
 
+**Review findings addressed (round 3)** (1 finding on PR #39, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | `bootstrap.servers` managed caveat said "do not shorten or reorder" the provider's list — Kafka states server order is irrelevant. | Reworded: order does not matter; keep every address (dropping some only reduces bootstrap resilience). |
+
+Re-verified: `lint` / `test` (441) / `build` clean.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
