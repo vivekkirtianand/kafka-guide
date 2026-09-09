@@ -41,6 +41,7 @@ src/
     LogStrip.tsx                    Signature append-only-log motif (used in the top bar)
     LabWalkthrough.tsx             In-app hands-on lab: setup, per-step command/output/observe/recovery, persisted checkboxes; collapsible for secondary labs
     CodeWalkthrough.tsx           Guided read of a real example project: per-lesson file-labelled snippet, key-line notes, "try it" command, persisted checkbox
+    CapstoneBrief.tsx             Module 12 capstone: business brief, 11-requirement spec with persisted checkboxes, self-scored rubric
     demos/
       TechnologyChoiceDemo.tsx     Module 0 activity: pick Kafka / queue / DB / object store / API call per scenario
       OrderEventFanoutDemo.tsx     Module 0 activity: one order-placed event → billing, email, warehouse, analytics
@@ -74,6 +75,7 @@ src/
     data/                           Seed content for modules, labs, configs, incidents, troubleshooting, runbooks
     data/labs.ts                    In-app hands-on lab walkthroughs (Lab A single-broker, Lab B three-broker, Lab C schema evolution, Lab D Connect file pipeline, Lab E Streams order totals)
     data/walkthroughs.ts            Module 3 code walkthrough — 16 lessons (build it / break it), each a verbatim snippet of an order-pipeline-java file
+    data/capstone.ts                Module 12 capstone — the Larkspur brief, an 11-requirement spec, and a 4-dimension scoring rubric
     context/ClusterContext.tsx      Kafka version + deployment type, selectable in the top bar (4.1–4.3 supported, 4.0/3.9 archived; ZooKeeper only offered below 4.0)
     context/ProgressContext.tsx     Per-module completion + resume state + lab/walkthrough step checkboxes, persisted to localStorage
 
@@ -208,6 +210,14 @@ topics in the broker/topic module have one (Phase 6d).
   error disappear while making the system worse. Searchable by symptom, cause, evidence, or
   config key. The Module 11 page embeds the catalog; `/troubleshooting` is the standalone
   reference view.
+- **Module 12 (Capstone project)** is built: the terminal beginner-path module, rendered from
+  a new `Capstone` type (`src/lib/data/capstone.ts`, `CapstoneBrief.tsx`). A business brief
+  (build the Larkspur order pipeline on the Lab B stack, unassisted), an 11-requirement spec
+  with persisted checkboxes — topic design, schema contract, idempotent producer, consumer
+  group with commit-after-write, a dead-letter path, a Streams per-customer total, a Connect
+  sink, isolated replay, the broker-loss drill, observability, and a "totals look wrong"
+  runbook — and a self-scored rubric across correctness, reliability, observability, and
+  operational safety.
 - **Production runbooks** ships all 14 written to full content — prechecks, execution,
   validation, rollback, and escalation criteria — each on its own `/runbooks/[slug]` page:
   topic creation review, increasing partitions, adding/removing brokers, partition

@@ -1,6 +1,7 @@
 import { Module } from "@/lib/types";
 import { labA, labB, labC, connectFileLab, orderTotalsLab } from "./labs";
 import { producerConsumerWalkthrough } from "./walkthroughs";
+import { capstoneProject } from "./capstone";
 
 export const modules: Module[] = [
   {
@@ -2785,6 +2786,44 @@ export const modules: Module[] = [
     ],
     activities: [],
     status: "available",
+  },
+  {
+    slug: "capstone-project",
+    index: 12,
+    title: "Capstone project",
+    summary:
+      "Build a complete order-processing pipeline on the three-broker cluster — schema, idempotent producer, consumer group with a dead-letter path, a Streams aggregation, a Connect export, a failure drill, and its observability — with no step-by-step walkthrough.",
+    difficulty: "advanced",
+    estimatedMinutes: 480,
+    prerequisites: [
+      "build-a-producer-and-consumer",
+      "keys-ordering-and-delivery",
+      "schemas-and-data-contracts",
+      "consumer-configuration",
+      "connect-and-streams",
+    ],
+    track: "beginner-path",
+    objectives: [
+      "Turn a business brief into a topic layout, a schema contract, and client configuration you can defend",
+      "Assemble a producer, a consumer group, a Streams aggregation, and a Connect sink into one working pipeline",
+      "Show the pipeline tolerates a broker loss and refuses — rather than loses — writes it cannot make durable",
+      "Score your own work against correctness, reliability, observability, and operational-safety criteria",
+    ],
+    completionCriteria: [
+      "All eleven spec requirements are met and checked off",
+      "You have run the broker-loss drill and recorded what you observed",
+      "You have scored every rubric dimension and written a next step for any that fall below \"Meets\"",
+    ],
+    furtherReading: [
+      { label: "Apache Kafka 4.0 — Design", url: "https://kafka.apache.org/40/design/design/" },
+      { label: "Apache Kafka 4.0 — Operations", url: "https://kafka.apache.org/40/operations/" },
+    ],
+    applicableVersions: ["4.3", "4.2", "4.1", "4.0"],
+    lastReviewed: "2026-09-08",
+    topics: [],
+    activities: [],
+    status: "available",
+    capstone: capstoneProject,
   },
 ];
 

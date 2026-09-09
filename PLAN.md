@@ -53,7 +53,7 @@ unless noted.
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
 | 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ✅** `applicableVersions` (Kafka 4.x range) on all 12 modules + 14 runbooks, shared `VersionApplicability` render + out-of-range caveat, `versionRangeLabel` | 1a | M3 |
 | 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); **9b ✅** `ConfigEntry` gains optional `exampleValue` / `safeBaseline` / `verification` / `rollback` / `managedCaveat` + a derived `kafkaDocUrl`; populated on the 9a configs + ~11 high-traffic existing; explorer gains a risk filter and renders the new fields | 8b | M3 |
-| 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; 10c capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) | 4, 5, 7 | M3 |
+| 10 | Assessments & capstone | 10a per-lesson knowledge checks (content for all modules); 10b per-module practical verification; **10c ✅** capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) — Module 12 | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
 
 ### Milestones
@@ -1529,6 +1529,73 @@ Re-verified: `typecheck` / `lint` / `test` (441) / `build` clean.
 | P2 | `bootstrap.servers` managed caveat said "do not shorten or reorder" the provider's list — Kafka states server order is irrelevant. | Reworded: order does not matter; keep every address (dropping some only reduces bootstrap resilience). |
 
 Re-verified: `lint` / `test` (441) / `build` clean.
+
+## Phase 10c — the capstone (Module 12)
+
+The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
+(per-module practical verification) are deferred; 10c is the capstone only.
+
+**AskUserQuestion decisions:** the project **extends the running order pipeline** (build the
+full Larkspur order-processing system on the Lab B stack) rather than a greenfield brief or an
+operate-and-recover scenario; it renders through a **new `Capstone` type**, self-scored, with
+persisted spec checkboxes — not shoehorned into `Exercise`.
+
+- **`src/lib/types.ts`** — `CapstoneRequirement` (`id` / `title` / `detail` / `buildsOn[]`),
+  `CapstoneRubricDimension` (`name` / `focus` / `levels[]` where `label` is
+  `Meets` | `Partial` | `Missing`), `Capstone` (`brief` / `stack` / `requirements` / `rubric`
+  / `submission`). `Module.capstone?: Capstone`.
+- **`src/lib/data/capstone.ts`** (new) — `capstoneProject`: the Larkspur brief, an
+  **11-requirement spec** (topics → schema → idempotent producer + load gen → finance
+  consumer group with commit-after-write → dead-letter path → Streams per-customer total →
+  Connect sink → isolated replay → broker-loss drill → observability → "totals look wrong"
+  runbook), and a **4-dimension rubric** (Correctness / Reliability / Observability /
+  Operational safety, each Meets/Partial/Missing). The failure-drill requirement makes the
+  min-ISR floor bite by *raising `min.insync.replicas` to 3 with one broker down* and
+  explicitly says not to stop a second broker (that also loses the KRaft controller quorum) —
+  the Lab B lesson.
+- **`src/lib/data/modules.ts`** — new terminal beginner-path module `capstone-project`
+  (**`index: 12`**), `difficulty: "advanced"`, `estimatedMinutes: 480`, prereqs
+  `build-a-producer-and-consumer` / `keys-ordering-and-delivery` / `schemas-and-data-contracts`
+  / `consumer-configuration` / `connect-and-streams`, `topics: []`, `capstone: capstoneProject`.
+- **`src/components/CapstoneBrief.tsx`** (new, client) — brief (with minimal `**bold**`),
+  the spec as an `<ol>` of persisted checkboxes (`useProgress` `toggleStep` /
+  `completedStepCount`, namespaced under the module slug) with a `role="progressbar"`
+  "N / 11 done", the rubric as per-dimension cards with tone-coded level badges, and the
+  submission checklist. Each requirement lists the modules it `buildsOn` as chips.
+- **`src/app/modules/[slug]/page.tsx`** — renders `<CapstoneBrief>` when `mod.capstone` is
+  set and suppresses the topic block (same guard as `mod.walkthrough`).
+- **Tests** — `capstone.test.ts` (11 requirements, unique ids, `buildsOn` resolve, rubric is
+  the 4 named dimensions each with Meets/Partial/Missing, the drill guard-rail);
+  `CapstoneBrief.test.tsx` (renders all four sections, spec progress tracks + persists across
+  remount); `modules.test.ts` +3 (Module 12 is the terminal beginner-path module at index 12
+  with a capstone and no topics). Suite 441 → 453.
+
+Verified: `typecheck` / `lint` / `test` (453) / `build` clean; browser —
+`/modules/capstone-project` renders the brief, 11 spec items with working persisted
+checkboxes, the 4-dimension rubric, and the submission list; the home page reads "9 modules"
+on the beginner path with the capstone as the terminal entry; no console errors.
+
+**Review findings addressed (round 1)** (6 findings on PR #40 — 2×P1, 3×P2, 1×P3):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The brief promised finance "exactly once end to end" but the requirement was write-then-`commitSync` — at-least-once. A crash between the store write and the commit repeats the write. | Brief reworded to "no duplicate rows even across a consumer crash". The finance requirement now demands an idempotent store op on a stable `orderId` (upsert / insert-ignore) or an atomic offset+data commit, plus a crash-window test. |
+| P1 | The dead-letter requirement allowed an async DLT send then an immediate source commit — a later DLT failure loses the poison record. Title over-promised "never blocks a partition". | Requirement now: block on the DLT send future before committing past the source record; a DLT failure propagates and does not commit (record is redelivered). Retitled "…for records the pipeline cannot process". |
+| P2 | The runbook's third failure class was "compaction (stale value never cleaned)" — an uncompacted older value is normal and the newest record is still authoritative; a file sink appends intermediate updates regardless. | Third class reframed as an append-only sink / materialization problem (read last-value-per-key, or use an upsert-capable table sink); "this is not a compaction problem". |
+| P2 | The brief cited module numbers ("Module 6" for consumer groups, which is Module 7) — renumber drift. | All module numbers dropped from the brief; it names the topics instead. |
+| P2 | The Reliability rubric said the drill "shows one broker tolerated and two brokers refusing writes" — the drill never stops two brokers. | Rubric descriptor rewritten: one broker loss tolerated at min-ISR 2, then the two remaining replicas refusing writes once the floor is raised to 3. Also folded in the finance-idempotency and DLT-ack criteria. |
+| P3 | `CapstoneBrief` checkboxes ignored `ProgressContext.hydrated` — clickable before hydration, so an early click could invert a persisted value. | Read `hydrated`; `disabled={!hydrated}` on every checkbox, matching `LabWalkthrough` / `CodeWalkthrough`. |
+
+Re-verified: `typecheck` / `lint` / `test` (456) / `build` clean; browser — checkboxes enable
+only after hydration, the brief carries no module numbers.
+
+**Review findings addressed (round 2)** (1 finding on PR #40, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The Reliability rubric contradicted itself: "Meets" requires a failed DLT write to propagate without committing (the poison record waits at the partition head), but "Missing" penalised "a single poison record stalls a partition" and the focus said one failure must never stall the pipeline. | `focus` now qualifies it ("a healthy pipeline does not stall on one bad record — while a downstream outage stalls rather than drops"); "Meets" spells out the poison record waiting at the head until the DLT recovers; "Missing" narrowed to a stall *while the DLT is healthy and could have taken it*. |
+
+Re-verified: `typecheck` / `lint` / `test` (456) / `build` clean.
 
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
