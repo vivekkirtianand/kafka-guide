@@ -1570,6 +1570,14 @@ Module 4 pages render the check, pick → reveal → "next question →" works.
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
+**Review findings addressed (round 2)** (1 finding on PR #41, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Module 1's read-position option and explanation said it "advances every poll" — an empty poll leaves it unchanged, and `seek` can move it explicitly. | Option: "advances as poll returns records"; explanation: "moves forward as poll returns records (an empty poll leaves it where it is, and seek can move it explicitly)". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b

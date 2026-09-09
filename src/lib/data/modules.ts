@@ -656,13 +656,13 @@ export const modules: Module[] = [
         question: "What is the difference between a consumer's read position and its committed offset?",
         options: [
           "They are two names for the same value",
-          "The read position is the live in-memory spot that advances every poll; the committed offset is a saved recovery point a new owner resumes from",
+          "The read position is the live in-memory spot that advances as poll returns records; the committed offset is a saved recovery point a new owner resumes from",
           "The read position lives on the broker; the committed offset lives in the consumer's memory",
           "The committed offset is always exactly one ahead of the read position",
         ],
         answerIndex: 1,
         explanation:
-          "The read position moves every poll. The committed offset is written to __consumer_offsets whenever a commit succeeds — periodically if enable.auto.commit is on, otherwise when the application calls commitSync/commitAsync — and is where processing resumes after a restart or reassignment. Whether a crash reprocesses or skips records depends on when you commit relative to doing the work.",
+          "The read position moves forward as poll returns records (an empty poll leaves it where it is, and seek can move it explicitly). The committed offset is written to __consumer_offsets whenever a commit succeeds — periodically if enable.auto.commit is on, otherwise when the application calls commitSync/commitAsync — and is where processing resumes after a restart or reassignment. Whether a crash reprocesses or skips records depends on when you commit relative to doing the work.",
       },
       {
         question: "A topic has 4 partitions and one consumer group with 6 members. What happens?",
