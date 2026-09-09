@@ -630,7 +630,13 @@ describe("knowledge checks (any module)", () => {
   // Phase 10a authors a per-lesson knowledge check on every content module (Module 0's was
   // written earlier, in Phase 2c, and has its own tests). The list grows as each 10a PR
   // lands; a module named here must carry a real check, not an empty slot.
-  const CHECKED_MODULES = ["mental-model", "keys-ordering-and-delivery"];
+  const CHECKED_MODULES = [
+    "mental-model",
+    "keys-ordering-and-delivery",
+    "local-cluster-lab",
+    "build-a-producer-and-consumer",
+    "schemas-and-data-contracts",
+  ];
 
   it("gives every Phase 10a module a knowledge check of at least five well-formed questions", () => {
     for (const slug of CHECKED_MODULES) {

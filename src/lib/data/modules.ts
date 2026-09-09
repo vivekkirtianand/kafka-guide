@@ -880,6 +880,92 @@ export const modules: Module[] = [
           "Both REST APIs are unauthenticated and bound to 127.0.0.1 — local use only.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "Lab B creates topics with 3 partitions, replication factor 3, and min.insync.replicas=2. What does that combination buy you?",
+        options: [
+          "Three times the write throughput",
+          "One broker can go down and acks=all writes still succeed",
+          "Consumers fail over automatically to a second cluster",
+          "Every record is stored three different ways for redundancy",
+        ],
+        answerIndex: 1,
+        explanation:
+          "RF 3 puts a copy on each of 3 brokers; min.insync.replicas=2 means a write still has two in-sync copies to land on when one broker is down, so acks=all keeps working. Lose a second broker and writes are refused rather than lost.",
+      },
+      {
+        question: "Each Lab B container runs as a broker and a KRaft controller at once. What is the controller's job?",
+        options: [
+          "Serving all consumer reads",
+          "Tracking broker liveness and partition state, and electing a new partition leader when a broker fails",
+          "Compressing and storing the __consumer_offsets topic",
+          "Running the Kafka UI",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The controller quorum holds cluster metadata in a replicated Raft log and elects partition leaders. A lab co-locates it with the brokers; production usually runs controllers as separate nodes.",
+      },
+      {
+        question: "The lab turns automatic topic creation OFF. Why?",
+        options: [
+          "To save disk space",
+          "So topic settings stay deliberate and a mistyped topic name fails instead of silently creating a topic with broker defaults",
+          "Because KRaft mode does not support auto-created topics",
+          "To force every topic to have exactly 3 partitions",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Auto-create would spawn a 1-partition, default-replication topic on any typo. Off, a topic's partitions, replication factor, and configs are always a conscious choice.",
+      },
+      {
+        question: "You run kafka-topics.sh with docker exec inside a broker container. Which bootstrap address do you point it at?",
+        options: [
+          "localhost:29092 — the same one the host apps use",
+          "The in-container listener (e.g. kafka-1:19092) — the host-facing address is not reachable from inside the Docker network",
+          "Any address; Kafka works it out",
+          "The Kafka UI address on port 8080",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The host-facing bootstrap (localhost:29092…) and the in-network one (kafka-1:19092) are separate listeners. A CLI running inside a container has to use the in-network listener.",
+      },
+      {
+        question: "In the console tools you produce keyed records with parse.key=true and consume with print.partition=true. What do you expect to see?",
+        options: [
+          "Every record on partition 0",
+          "Records with the same key all on one partition; different keys spread across partitions",
+          "Records round-robining one per partition regardless of key",
+          "The consumer refusing keyed records",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The key hashes to a partition, so a given key's records all land together and stay ordered. Different keys spread across the partitions.",
+      },
+      {
+        question: "You reset a consumer group's offsets to earliest and start it again. What changed on the topic?",
+        options: [
+          "The topic was truncated and rebuilt from the start",
+          "Nothing on the topic — only the group's committed offsets moved, so it re-reads records that were always there",
+          "The records were duplicated so the group could read them twice",
+          "Retention was extended to keep the data longer",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Replay only rewinds the group's position. The records never moved — \"replay\" is re-reading a log that was never removed by being consumed.",
+      },
+      {
+        question: "On the three-broker cluster you stop one broker. What does kafka-topics.sh --describe show for a partition that broker was leading?",
+        options: [
+          "The partition disappears until the broker returns",
+          "A new leader elected from the remaining in-sync replicas, and the stopped broker dropped from the ISR",
+          "The partition switches to read-only",
+          "Every partition's leader moves to broker 1",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The controller elects a new leader from the ISR, and the down replica leaves the ISR — rejoining once it catches up on restart. It does not automatically get its leadership back.",
+      },
+    ],
     activities: [
       "Create and inspect topics",
       "Produce records with and without keys",
@@ -944,6 +1030,92 @@ export const modules: Module[] = [
       "Skip the poison record",
       "Dead-letter the poison record",
       "Prove at-least-once",
+    ],
+    knowledgeChecks: [
+      {
+        question: "producer.send(record) returns immediately, before the broker has the record. How do you confirm the record actually landed?",
+        options: [
+          "Check the producer's log for an INFO line",
+          "Block on the returned Future (or use the callback) — it completes with the RecordMetadata on success or the exception on failure",
+          "Call producer.close() right away; it throws if any send failed",
+          "Re-send the same record and watch for a duplicate error",
+        ],
+        answerIndex: 1,
+        explanation:
+          "send() only enqueues the record. The Future<RecordMetadata> (or the callback) is where success or failure surfaces. The order-pipeline app collects the Futures, flush()es, then get()s each and exits non-zero if any failed.",
+      },
+      {
+        question: "The order-pipeline producer keys each record by customerId. What does that achieve?",
+        options: [
+          "It deduplicates repeated orders from one customer",
+          "All of one customer's orders go to the same partition and stay in order",
+          "It encrypts the record for that customer",
+          "It lets the consumer look a customer up by key",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The key hashes to a partition, so one customer's events stay together and ordered. A key groups and orders — it does not identify or deduplicate.",
+      },
+      {
+        question: "The consumer runs poll then process then commitSync, with enable.auto.commit=false. What delivery guarantee is that, and where do duplicates come from?",
+        options: [
+          "Exactly-once — no duplicates",
+          "At-least-once — a crash after processing but before the commit replays that batch on restart",
+          "At-most-once — records processed before a commit are lost",
+          "It depends on the acks setting",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Process-then-commit means a crash in the gap replays already-processed records. That is at-least-once; the fix is idempotent processing, not committing first (which would skip).",
+      },
+      {
+        question: "Why does the order-pipeline consumer set enable.auto.commit=false?",
+        options: [
+          "Auto-commit is not supported once a group id is set",
+          "So the offset is committed only after a record is actually processed, not on a timer during poll()",
+          "To make poll() return faster",
+          "Auto-commit would commit offsets for the other consumers in the group",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Auto-commit advances the offset on poll() timing, so a crash after poll() but before processing finishes can skip records. Manual commit-after-work ties the offset to completed work.",
+      },
+      {
+        question: "The consumer app's shutdown hook calls consumer.wakeup(). What does that accomplish?",
+        options: [
+          "It flushes uncommitted offsets to disk",
+          "It makes the blocked poll() throw WakeupException so the loop exits and calls close(), leaving the group cleanly",
+          "It pauses the consumer without leaving the group",
+          "It forces an immediate rebalance across the group",
+        ],
+        answerIndex: 1,
+        explanation:
+          "wakeup() unblocks poll() with a WakeupException; the loop catches it, breaks, and close() sends a leave-group request — so the coordinator reassigns the partitions at once instead of waiting for the session timeout.",
+      },
+      {
+        question: "A record on the topic cannot be parsed (fromJson throws) and the consumer's policy rethrows. What happens to that partition?",
+        options: [
+          "The record is skipped and the consumer moves on",
+          "The exception propagates out of the loop; the offset never advances past the bad record, so consumption of that partition is stuck",
+          "The record is automatically sent to a dead-letter topic",
+          "The whole consumer group stops on every partition",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A rethrown parse error stops the loop; on restart poll() returns the same bytes and it fails again. Only that partition's assignment is stuck — though if it is the only consumer, everything it owns halts.",
+      },
+      {
+        question: "The 'skip' poison policy returns normally instead of throwing. What is the cost of that choice, compared with dead-lettering?",
+        options: [
+          "Skipping is slower",
+          "The bad record is gone — no copy is kept, so there is nothing to inspect or reprocess later",
+          "Skipping breaks ordering for every other key",
+          "Skipping needs a second Kafka cluster",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Skip lets the good records flow but discards the poison one silently. Dead-lettering keeps it, with error context, on another topic — an inbox someone still has to read and alert on.",
+      },
     ],
     activities: [],
     status: "available",
@@ -1535,6 +1707,104 @@ export const modules: Module[] = [
           "Adopting a registry doesn't remove the need to think about compatibility — it moves the check from a production incident to a rejected registration. The discipline is identical either way; the registry only enforces it.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "A producer starts sending records with a required field missing. When does Kafka itself notice?",
+        options: [
+          "The broker rejects the malformed records on write",
+          "Never — the broker only stores bytes; the mismatch surfaces at the consumer, or at a schema registry if one is enforcing the schema",
+          "The controller flags it in the metadata log",
+          "The next kafka-topics.sh --describe reports a schema error",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A broker never parses a key or value — it cannot reject a record for its shape, filter on a field, or warn you. Validation is entirely a client or registry concern.",
+      },
+      {
+        question: "Your topic uses plain StringSerializer and hand-written JSON, with no registry. Does it have a data contract?",
+        options: [
+          "No — a data contract only exists once you add a schema registry",
+          "Yes — every consumer depends on the fields the producers put there; the only question is whether that contract is written down and checked or implicit",
+          "Only if every producer lives in one codebase",
+          "Only for the key, not the value",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The dependency between producers and consumers is the contract. A registry does not create it — it makes it explicit and machine-checked.",
+      },
+      {
+        question: "Which is a real cost of choosing JSON over Avro for a high-volume topic?",
+        options: [
+          "JSON records cannot contain nested objects",
+          "Field names repeat in every record, values are limited to string/number/boolean/null, and there is no built-in schema check",
+          "JSON cannot be consumed by non-Java clients",
+          "JSON records are capped at 1 KB",
+        ],
+        answerIndex: 1,
+        explanation:
+          "JSON is readable and universal but verbose (repeated keys), weakly typed (no dates or exact decimals), and unvalidated unless you add JSON Schema separately.",
+      },
+      {
+        question: "With the Schema Registry and Confluent serializers, what travels in each record alongside the payload?",
+        options: [
+          "The full schema text",
+          "A magic byte and a 4-byte schema id — the schema itself is fetched once by id and cached",
+          "Nothing; the schema is negotiated when the client connects",
+          "A compressed copy of the previous record's schema",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Embedding the schema would dwarf a small record. The id references it; the deserializer fetches that schema once and decodes everything else from cache — zero registry hits per record in steady state.",
+      },
+      {
+        question: "The Schema Registry goes down, and a consumer that has run for hours keeps decoding records fine. Why?",
+        options: [
+          "The consumer switched to a backup registry",
+          "Decoding runs from the consumer's local cache of schema ids it has already fetched — the registry is off the per-record path",
+          "The broker started supplying the schemas",
+          "The consumer stopped validating and is reading raw bytes",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A registry outage blocks new schema registration and a consumer hitting a schema id it never cached (a cold start, or a just-rolled-out producer version). A warm consumer is untouched.",
+      },
+      {
+        question: "A subject is on BACKWARD compatibility (the default) and you are adding a field that has a default. Which side do you deploy first?",
+        options: [
+          "Producers first",
+          "Consumers first — BACKWARD means a consumer on the new schema can read data written with the old one",
+          "Either order — BACKWARD makes deploy order not matter",
+          "Neither — the change is rejected",
+        ],
+        answerIndex: 1,
+        explanation:
+          "BACKWARD means new-schema consumers can read old data, so upgrade consumers first, then producers. FORWARD is the reverse; FULL allows either order.",
+      },
+      {
+        question: "Every schema change on a subject passed a plain BACKWARD check. A consumer resets to earliest and immediately fails on the oldest records. How?",
+        options: [
+          "The registry lost the old schema versions",
+          "Plain BACKWARD only compares each version with the one just before it — a chain of individually-backward changes can leave the newest schema unable to read the oldest records",
+          "earliest is not supported when a registry is in use",
+          "The oldest records were corrupted by compaction",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Non-transitive modes check adjacent versions only. A consumer that replays history needs BACKWARD_TRANSITIVE, which checks the new schema against every earlier version.",
+      },
+      {
+        question: "A SerializationException is thrown while a consumer reads a topic. Where does it come from, and what does the partition do?",
+        options: [
+          "From your handler, after you have seen the record; the partition keeps going",
+          "From inside poll(), before your code sees a record; the position has not moved past the bad bytes, so a naive retry polls them forever and the partition stalls",
+          "From the broker, which then deletes the bad record",
+          "From commitSync(), and it is safe to ignore",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The deserializer runs inside poll(), so the exception comes out of poll() itself. It behaves exactly like Module 3's poison record — the fix is an error-handling deserializer, or deserializing to byte[] and parsing in your own catchable code.",
+      },
+    ],
     activities: [],
     status: "available",
   },
