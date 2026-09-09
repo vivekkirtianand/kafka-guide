@@ -116,12 +116,13 @@ Everything you need has been covered: topic and partition design, keys and deliv
     },
     {
       name: "Reliability",
-      focus: "Acknowledged data is not lost, and one failure does not stall the pipeline.",
+      focus:
+        "Acknowledged data is not lost, and a healthy pipeline does not stall on one bad record — while a downstream outage stalls rather than drops.",
       levels: [
         {
           label: "Meets",
           descriptor:
-            "acks=all with min.insync.replicas=2, the finance store idempotent on orderId so a crash between write and commit adds no duplicate row, the dead-letter send acknowledged before the source commit (and a dead-letter failure propagated, not swallowed), and the drill showing one broker loss tolerated at min-ISR 2 and the two remaining replicas refusing writes once the floor is raised to 3.",
+            "acks=all with min.insync.replicas=2, the finance store idempotent on orderId so a crash between write and commit adds no duplicate row, the dead-letter send acknowledged before the source commit (and a dead-letter failure propagated, not swallowed — the poison record waits at the partition head until the dead-letter topic recovers), and the drill showing one broker loss tolerated at min-ISR 2 and the two remaining replicas refusing writes once the floor is raised to 3.",
         },
         {
           label: "Partial",
@@ -131,7 +132,7 @@ Everything you need has been covered: topic and partition design, keys and deliv
         {
           label: "Missing",
           descriptor:
-            "acks or min.insync.replicas leave an acknowledged-loss window, a single poison record stalls a partition, or a lost dead-letter send drops the record while the source offset moves on.",
+            "acks or min.insync.replicas leave an acknowledged-loss window, a poison record stalls a partition while the dead-letter topic is healthy and could have taken it, or a lost dead-letter send drops the record while the source offset moves on.",
         },
       ],
     },

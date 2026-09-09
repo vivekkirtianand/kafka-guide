@@ -1589,6 +1589,14 @@ on the beginner path with the capstone as the terminal entry; no console errors.
 Re-verified: `typecheck` / `lint` / `test` (456) / `build` clean; browser — checkboxes enable
 only after hydration, the brief carries no module numbers.
 
+**Review findings addressed (round 2)** (1 finding on PR #40, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The Reliability rubric contradicted itself: "Meets" requires a failed DLT write to propagate without committing (the poison record waits at the partition head), but "Missing" penalised "a single poison record stalls a partition" and the focus said one failure must never stall the pipeline. | `focus` now qualifies it ("a healthy pipeline does not stall on one bad record — while a downstream outage stalls rather than drops"); "Meets" spells out the poison record waiting at the head until the DLT recovers; "Missing" narrowed to a stall *while the DLT is healthy and could have taken it*. |
+
+Re-verified: `typecheck` / `lint` / `test` (456) / `build` clean.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery
