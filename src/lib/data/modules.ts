@@ -909,13 +909,13 @@ export const modules: Module[] = [
         question: "The lab turns automatic topic creation OFF. Why?",
         options: [
           "To save disk space",
-          "So topic settings stay deliberate and a mistyped topic name fails instead of silently creating a topic with broker defaults",
+          "So topic settings stay deliberate and a mistyped topic name fails instead of silently creating a topic from the broker defaults",
           "Because KRaft mode does not support auto-created topics",
           "To force every topic to have exactly 3 partitions",
         ],
         answerIndex: 1,
         explanation:
-          "Auto-create would spawn a 1-partition, default-replication topic on any typo. Off, a topic's partitions, replication factor, and configs are always a conscious choice.",
+          "Auto-create would spawn a topic from the broker defaults on any typo — its partition count, replication factor, and configs chosen by a global default rather than for that topic's workload. Off, every one of those is a conscious choice.",
       },
       {
         question: "You run kafka-topics.sh with docker exec inside a broker container. Which bootstrap address do you point it at?",
@@ -933,13 +933,13 @@ export const modules: Module[] = [
         question: "In the console tools you produce keyed records with parse.key=true and consume with print.partition=true. What do you expect to see?",
         options: [
           "Every record on partition 0",
-          "Records with the same key all on one partition; different keys spread across partitions",
+          "Records with the same key always on one partition; two different keys may land together or apart",
           "Records round-robining one per partition regardless of key",
           "The consumer refusing keyed records",
         ],
         answerIndex: 1,
         explanation:
-          "The key hashes to a partition, so a given key's records all land together and stay ordered. Different keys spread across the partitions.",
+          "A key hashes to exactly one partition, so all of one key's records land together and stay ordered. Two different keys can hash to the same partition or to different ones — the hash spreads keys across partitions on average, it does not guarantee separation.",
       },
       {
         question: "You reset a consumer group's offsets to earliest and start it again. What changed on the topic?",
@@ -1033,7 +1033,7 @@ export const modules: Module[] = [
     ],
     knowledgeChecks: [
       {
-        question: "producer.send(record) returns immediately, before the broker has the record. How do you confirm the record actually landed?",
+        question: "producer.send(record) returns without confirming the record was written. How do you find out whether it actually landed?",
         options: [
           "Check the producer's log for an INFO line",
           "Block on the returned Future (or use the callback) — it completes with the RecordMetadata on success or the exception on failure",
@@ -1042,7 +1042,7 @@ export const modules: Module[] = [
         ],
         answerIndex: 1,
         explanation:
-          "send() only enqueues the record. The Future<RecordMetadata> (or the callback) is where success or failure surfaces. The order-pipeline app collects the Futures, flush()es, then get()s each and exits non-zero if any failed.",
+          "send() hands the record to a background sender thread and returns; the write may already be in flight or done, it just is not confirmed to the caller yet. The Future<RecordMetadata> (or the callback) is where success or failure surfaces. The order-pipeline app collects the Futures, flush()es, then get()s each and exits non-zero if any failed.",
       },
       {
         question: "The order-pipeline producer keys each record by customerId. What does that achieve?",
@@ -1072,13 +1072,13 @@ export const modules: Module[] = [
         question: "Why does the order-pipeline consumer set enable.auto.commit=false?",
         options: [
           "Auto-commit is not supported once a group id is set",
-          "So the offset is committed only after a record is actually processed, not on a timer during poll()",
+          "So the offset is committed explicitly after the work is done — the commit is tied to completed processing, not to poll() timing",
           "To make poll() return faster",
           "Auto-commit would commit offsets for the other consumers in the group",
         ],
         answerIndex: 1,
         explanation:
-          "Auto-commit advances the offset on poll() timing, so a crash after poll() but before processing finishes can skip records. Manual commit-after-work ties the offset to completed work.",
+          "In this simple loop a crash mid-batch replays either way, because auto-commit only fires on a later poll once auto.commit.interval.ms has passed and the batch is finished by then. Manual commit-after-work keeps that guarantee explicit and holds it even when processing is handed off to another thread — the case where auto-commit would advance the offset past records that are not done and skip them on a crash.",
       },
       {
         question: "The consumer app's shutdown hook calls consumer.wakeup(). What does that accomplish?",
@@ -1093,28 +1093,28 @@ export const modules: Module[] = [
           "wakeup() unblocks poll() with a WakeupException; the loop catches it, breaks, and close() sends a leave-group request — so the coordinator reassigns the partitions at once instead of waiting for the session timeout.",
       },
       {
-        question: "A record on the topic cannot be parsed (fromJson throws) and the consumer's policy rethrows. What happens to that partition?",
+        question: "A record on the topic cannot be parsed (fromJson throws) and the consumer's policy rethrows. What happens?",
         options: [
           "The record is skipped and the consumer moves on",
-          "The exception propagates out of the loop; the offset never advances past the bad record, so consumption of that partition is stuck",
+          "The exception unwinds the loop and closes the consumer; the offset never advanced past the bad record, so any instance that picks up that partition hits the same bytes and dies again",
           "The record is automatically sent to a dead-letter topic",
-          "The whole consumer group stops on every partition",
+          "Only the poison partition pauses; the consumer keeps serving its other partitions",
         ],
         answerIndex: 1,
         explanation:
-          "A rethrown parse error stops the loop; on restart poll() returns the same bytes and it fails again. Only that partition's assignment is stuck — though if it is the only consumer, everything it owns halts.",
+          "In OrderConsumer the parse exception escapes run(), whose finally block calls close() — so the whole instance leaves the group, releasing every partition it held. Other group members may keep going, but whichever instance is then assigned the poison partition crashes on it too. The partition makes no progress until the record is skipped, dead-lettered, or its offset moved by hand.",
       },
       {
         question: "The 'skip' poison policy returns normally instead of throwing. What is the cost of that choice, compared with dead-lettering?",
         options: [
           "Skipping is slower",
-          "The bad record is gone — no copy is kept, so there is nothing to inspect or reprocess later",
+          "This group just commits past the record — there is no separate copy with error context, and this consumer will not normally come back to it",
           "Skipping breaks ordering for every other key",
           "Skipping needs a second Kafka cluster",
         ],
         answerIndex: 1,
         explanation:
-          "Skip lets the good records flow but discards the poison one silently. Dead-lettering keeps it, with error context, on another topic — an inbox someone still has to read and alert on.",
+          "Skip advances this group's committed offset past the bad record and keeps the good records flowing. The original stays on the source topic until retention (another group, or an offset reset, can still read it), but there is no dead-letter copy carrying the exception and source coordinates, and nothing prompting anyone to look.",
       },
     ],
     activities: [],
@@ -1736,25 +1736,25 @@ export const modules: Module[] = [
         question: "Which is a real cost of choosing JSON over Avro for a high-volume topic?",
         options: [
           "JSON records cannot contain nested objects",
-          "Field names repeat in every record, values are limited to string/number/boolean/null, and there is no built-in schema check",
+          "Field names repeat in every record, there are no native date, exact-decimal, or binary types, and no schema is checked unless you add JSON Schema separately",
           "JSON cannot be consumed by non-Java clients",
           "JSON records are capped at 1 KB",
         ],
         answerIndex: 1,
         explanation:
-          "JSON is readable and universal but verbose (repeated keys), weakly typed (no dates or exact decimals), and unvalidated unless you add JSON Schema separately.",
+          "JSON is readable and universal, but every record repeats its field names, its scalar types stop at string / number / boolean / null (a timestamp or a money amount has to be encoded as one of those), and nothing validates the shape unless you bolt on JSON Schema.",
       },
       {
-        question: "With the Schema Registry and Confluent serializers, what travels in each record alongside the payload?",
+        question: "With the Schema Registry and the Confluent Avro serializer, what does the registry contribute to each record's bytes?",
         options: [
-          "The full schema text",
-          "A magic byte and a 4-byte schema id — the schema itself is fetched once by id and cached",
+          "The full schema text, prepended to every record",
+          "A magic byte and a 4-byte schema id — the schema itself is fetched by id on first encounter and cached (Protobuf adds a short message-index header too)",
           "Nothing; the schema is negotiated when the client connects",
           "A compressed copy of the previous record's schema",
         ],
         answerIndex: 1,
         explanation:
-          "Embedding the schema would dwarf a small record. The id references it; the deserializer fetches that schema once and decodes everything else from cache — zero registry hits per record in steady state.",
+          "Embedding the schema would dwarf a small record. The id references it; the deserializer fetches that schema the first time it sees the id and decodes from cache after that — so in steady state the registry is hit zero times per record. (An evicted cache entry means one more lookup.)",
       },
       {
         question: "The Schema Registry goes down, and a consumer that has run for hours keeps decoding records fine. Why?",

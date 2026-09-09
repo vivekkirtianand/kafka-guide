@@ -1581,6 +1581,21 @@ Module 4 pages render the check, pick → reveal → "next question →" works.
 Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 5's check
 renders, pick → reveal works.
 
+**Review findings addressed (round 1)** (8 findings on PR #42 — 4×P1, 4×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 2's keyed-record answer said different keys "spread across partitions" — hashing does not guarantee separation. | "Two different keys may land together or apart"; explanation notes the hash spreads keys on average, not by guarantee. |
+| P1 | Module 3's `enable.auto.commit=false` explanation repeated the auto-commit-skips-a-synchronous-batch error. | Reframed: in the simple loop a crash mid-batch replays either way (auto-commit fires on a later poll after the interval); manual commit keeps the guarantee explicit and holds under an async hand-off, where auto-commit would skip. |
+| P1 | Module 3's skip-policy answer said the record "is gone — no copy is kept". Skip only commits *this group* past it; the record stays on the source topic. | Answer: "this group commits past the record — no separate copy with error context, and this consumer will not normally come back"; explanation notes another group / an offset reset can still read it. |
+| P1 | Module 5's JSON answer limited JSON values to "string/number/boolean/null" — contradicting its own nested-object distractor. | "no native date, exact-decimal, or binary types" and "no schema checked unless you add JSON Schema"; explanation drops the false type limit. |
+| P2 | Module 2's auto-create explanation said Lab B would spawn a *1-partition* topic — its compose sets `KAFKA_NUM_PARTITIONS=3` / RF 3. | "a topic from the broker defaults … chosen by a global default rather than for that topic's workload" — no partition number. |
+| P2 | Module 3's `send()` premise ("returns before the broker has the record") over-specifies timing — the sender thread is concurrent. | "returns without confirming the record was written"; explanation: "may already be in flight or done, it just is not confirmed to the caller". |
+| P2 | Module 3's propagate answer said "only that partition's assignment is stuck" — `OrderConsumer.run()`'s finally closes the whole consumer. | Answer + explanation now: the exception unwinds `run()`, `close()` releases every partition on the instance, and whichever instance next gets the poison partition dies too. |
+| P2 | Module 5's wire-format question asked about "Confluent serializers" generally but described only the Avro/JSON prefix; "fetched once" ignores cache eviction. | Scoped to the Confluent Avro serializer, notes Protobuf's message-index header, and "fetched by id on first encounter and cached (an evicted entry means one more lookup)". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 **Review findings addressed (round 1)** (4 findings on PR #41 — 2×P1, 2×P2):
 
 | # | Finding | Fix |
