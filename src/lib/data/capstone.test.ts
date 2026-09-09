@@ -53,6 +53,26 @@ describe("capstone project", () => {
     }
   });
 
+  it("requires the finance store to survive the write/commit crash window without a duplicate", () => {
+    const r = capstoneProject.requirements.find((x) => x.id === "consumer-group")!;
+    expect(r.detail).toMatch(/at-least-once/);
+    expect(r.detail).toMatch(/idempotent|upsert|atomic/);
+    expect(r.detail).toMatch(/orderId/);
+  });
+
+  it("requires the dead-letter write to be acknowledged before the source commit", () => {
+    const r = capstoneProject.requirements.find((x) => x.id === "dead-letter")!;
+    expect(r.detail).toMatch(/acknowledged|send future/);
+    expect(r.detail).toMatch(/before committing past the source record/);
+    expect(r.detail).toMatch(/do not commit|propagate/);
+  });
+
+  it("does not frame the export failure mode as a compaction problem", () => {
+    const r = capstoneProject.requirements.find((x) => x.id === "runbook")!;
+    expect(r.detail).toMatch(/append-only|upsert-capable|last value per key/i);
+    expect(r.detail).toMatch(/not a compaction problem/i);
+  });
+
   it("has a brief, a stack, and a submission checklist", () => {
     expect(capstoneProject.brief).toMatch(/Larkspur/);
     expect(capstoneProject.stack).toMatch(/Lab B|three-broker/);

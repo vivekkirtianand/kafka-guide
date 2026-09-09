@@ -1575,6 +1575,20 @@ Verified: `typecheck` / `lint` / `test` (453) / `build` clean; browser —
 checkboxes, the 4-dimension rubric, and the submission list; the home page reads "9 modules"
 on the beginner path with the capstone as the terminal entry; no console errors.
 
+**Review findings addressed (round 1)** (6 findings on PR #40 — 2×P1, 3×P2, 1×P3):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The brief promised finance "exactly once end to end" but the requirement was write-then-`commitSync` — at-least-once. A crash between the store write and the commit repeats the write. | Brief reworded to "no duplicate rows even across a consumer crash". The finance requirement now demands an idempotent store op on a stable `orderId` (upsert / insert-ignore) or an atomic offset+data commit, plus a crash-window test. |
+| P1 | The dead-letter requirement allowed an async DLT send then an immediate source commit — a later DLT failure loses the poison record. Title over-promised "never blocks a partition". | Requirement now: block on the DLT send future before committing past the source record; a DLT failure propagates and does not commit (record is redelivered). Retitled "…for records the pipeline cannot process". |
+| P2 | The runbook's third failure class was "compaction (stale value never cleaned)" — an uncompacted older value is normal and the newest record is still authoritative; a file sink appends intermediate updates regardless. | Third class reframed as an append-only sink / materialization problem (read last-value-per-key, or use an upsert-capable table sink); "this is not a compaction problem". |
+| P2 | The brief cited module numbers ("Module 6" for consumer groups, which is Module 7) — renumber drift. | All module numbers dropped from the brief; it names the topics instead. |
+| P2 | The Reliability rubric said the drill "shows one broker tolerated and two brokers refusing writes" — the drill never stops two brokers. | Rubric descriptor rewritten: one broker loss tolerated at min-ISR 2, then the two remaining replicas refusing writes once the floor is raised to 3. Also folded in the finance-idempotency and DLT-ack criteria. |
+| P3 | `CapstoneBrief` checkboxes ignored `ProgressContext.hydrated` — clickable before hydration, so an early click could invert a persisted value. | Read `hydrated`; `disabled={!hydrated}` on every checkbox, matching `LabWalkthrough` / `CodeWalkthrough`. |
+
+Re-verified: `typecheck` / `lint` / `test` (456) / `build` clean; browser — checkboxes enable
+only after hydration, the brief carries no module numbers.
+
 > **Numbering note.** The `## Module N —` sections below are the v1 build record and keep
 > their original numbers. After Phases 4b / 5a / 6b / 6c the current repo numbering is:
 > Events, topics, partitions, brokers (old "mental model") = 1; Keys, ordering, and delivery

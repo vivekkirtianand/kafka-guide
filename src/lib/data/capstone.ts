@@ -3,11 +3,11 @@ import { Capstone } from "@/lib/types";
 // The end-of-course project. No new repo code ships — the spec is the deliverable, and the
 // learner builds it on the Lab B stack using everything the course covered.
 export const capstoneProject: Capstone = {
-  brief: `You have been handed the event backbone for **Larkspur**, a small online retailer. Checkout already emits an order event per purchase. Three teams are waiting on that stream: finance needs every order stored durably and exactly once end to end, the loyalty team needs a per-customer running total kept current, and the fraud team needs to replay the full history on demand without disturbing anyone else. A fourth consumer exports the loyalty totals to the analytics warehouse.
+  brief: `You have been handed the event backbone for **Larkspur**, a small online retailer. Checkout already emits an order event per purchase. Three teams are waiting on that stream: finance needs every order stored durably with no duplicate rows even across a consumer crash, the loyalty team needs a per-customer running total kept current, and the fraud team needs to replay the full history on demand without disturbing anyone else. A fourth consumer exports the loyalty totals to the analytics warehouse.
 
 Build the whole pipeline yourself, on the three-broker Lab B cluster, with no step-by-step walkthrough. You decide the topic layout, the schema, the client configuration, the failure behaviour, and how it is observed. The work is graded against the rubric below — reliability and operational safety count as much as getting the totals right.
 
-Everything you need has been covered: topic and partition design (Modules 1, 4), keys and delivery guarantees (Module 4), schemas and compatibility (Module 5), the producer and consumer you already built (Module 3), consumer groups and poison-record handling (Module 6), Connect and Streams (Module 8), the three-broker cluster and its failure modes (Module 2 / Lab B), and observability (Module 10).`,
+Everything you need has been covered: topic and partition design, keys and delivery guarantees, schemas and compatibility, the producer and consumer you already built, consumer groups and resilient processing, Connect and Streams, the three-broker cluster and its failure modes (Lab B), and observability.`,
 
   stack:
     "The Lab B three-broker cluster (local-cluster-lab/, brokers plus Schema Registry and Connect under --profile extras), Kafka 4.0, and the examples/order-pipeline-java project as your starting point.",
@@ -36,16 +36,16 @@ Everything you need has been covered: topic and partition design (Modules 1, 4),
     },
     {
       id: "consumer-group",
-      title: "Build the finance consumer group with commit-after-write",
+      title: "Build the finance consumer group — no duplicate rows across a crash",
       detail:
-        "enable.auto.commit=false; write the order to your store, then commitSync. Run three instances and show kafka-consumer-groups.sh reporting the partitions split across them, with total lag returning to zero after the backlog drains.",
+        "enable.auto.commit=false; write the order, then commitSync. Write-then-commit is only at-least-once — a crash between the write and the commit repeats the write on restart — so the store operation must be idempotent on a stable orderId (an upsert, or an insert that ignores a duplicate key), or the write and the source offset must be committed atomically together. Prove it: kill an instance in that window and show the row count is unchanged after it recovers. Run three instances and show kafka-consumer-groups.sh splitting the partitions across them, lag returning to zero after the backlog drains.",
       buildsOn: ["consumer-configuration", "build-a-producer-and-consumer"],
     },
     {
       id: "dead-letter",
-      title: "Add a dead-letter path that never blocks a partition",
+      title: "Add a dead-letter path for records the pipeline cannot process",
       detail:
-        "A record that fails to deserialize or violates the schema is produced to the dead-letter topic with its original key, its headers, and added error metadata (the exception, the source topic-partition-offset). The source consumer commits past it and keeps going. A genuine downstream failure (your store is down) must still propagate and stop the commit.",
+        "A record that fails to deserialize or violates the schema goes to the dead-letter topic with its original key, its headers, and added error metadata (the exception, the source topic-partition-offset). Wait for that dead-letter send to be acknowledged (block on the send future) before committing past the source record — if the dead-letter write fails, propagate it and do not commit, so the poison record is redelivered rather than lost. When the dead-letter topic is reachable the source partition keeps flowing; a genuine downstream failure (your store is down) also propagates and stops the commit.",
       buildsOn: ["consumer-configuration", "schemas-and-data-contracts"],
     },
     {
@@ -87,7 +87,7 @@ Everything you need has been covered: topic and partition design (Modules 1, 4),
       id: "runbook",
       title: "Write the 'loyalty totals look wrong' runbook",
       detail:
-        "One page. How to tell whether the cause is the producer (missing or miskeyed orders), the Streams app (crashed, or lagging its input), or compaction (stale value never cleaned). The safe recovery for each, including the reset tool plus KafkaStreams.cleanUp(), and an explicit list of what the reset does NOT undo (the output topic's existing records, downstream consumer offsets).",
+        "One page. How to tell whether the cause is the producer (missing or miskeyed orders), the Streams app (crashed, or lagging its input), or the export (an append-only file sink shows every intermediate update — read the last value per key, or use an upsert-capable table sink — this is not a compaction problem; the newest record for a key is always authoritative). The safe recovery for each, including the reset tool plus KafkaStreams.cleanUp(), and an explicit list of what the reset does NOT undo (the output topic's existing records, downstream consumer offsets).",
       buildsOn: ["connect-and-streams", "troubleshooting-scenarios"],
     },
   ],
@@ -121,17 +121,17 @@ Everything you need has been covered: topic and partition design (Modules 1, 4),
         {
           label: "Meets",
           descriptor:
-            "acks=all with min.insync.replicas=2, commit strictly after the write, the dead-letter path never blocks a partition while a real downstream failure still does, and the drill shows one broker tolerated and two brokers refusing (not losing) writes.",
+            "acks=all with min.insync.replicas=2, the finance store idempotent on orderId so a crash between write and commit adds no duplicate row, the dead-letter send acknowledged before the source commit (and a dead-letter failure propagated, not swallowed), and the drill showing one broker loss tolerated at min-ISR 2 and the two remaining replicas refusing writes once the floor is raised to 3.",
         },
         {
           label: "Partial",
           descriptor:
-            "Durability settings are right but the consumer can double-process or skip on a crash, or the dead-letter handler also swallows genuine processing errors.",
+            "Durability settings are right but the finance store is not idempotent, so the crash-window test leaves a duplicate row, or the dead-letter handler also swallows genuine processing errors.",
         },
         {
           label: "Missing",
           descriptor:
-            "acks or min.insync.replicas leave an acknowledged-loss window, or a single poison record stalls a partition, or the drill loses committed data.",
+            "acks or min.insync.replicas leave an acknowledged-loss window, a single poison record stalls a partition, or a lost dead-letter send drops the record while the source offset moves on.",
         },
       ],
     },

@@ -35,7 +35,7 @@ function moduleTitle(slug: string): string {
 }
 
 export default function CapstoneBrief({ capstone, slug }: { capstone: Capstone; slug: string }) {
-  const { stepDone, toggleStep, completedStepCount } = useProgress();
+  const { hydrated, stepDone, toggleStep, completedStepCount } = useProgress();
   const ids = capstone.requirements.map((r) => r.id);
   const done = completedStepCount(slug, ids);
   const total = ids.length;
@@ -76,6 +76,7 @@ export default function CapstoneBrief({ capstone, slug }: { capstone: Capstone; 
                   <input
                     type="checkbox"
                     checked={on}
+                    disabled={!hydrated}
                     onChange={() => toggleStep(slug, r.id)}
                     aria-label={`Mark done: ${r.title}`}
                     className="mt-1 h-3.5 w-3.5 shrink-0 accent-accent"
