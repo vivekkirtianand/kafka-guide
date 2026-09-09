@@ -1559,6 +1559,17 @@ rubric and gets no check.
 Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 1 and
 Module 4 pages render the check, pick → reveal → "next question →" works.
 
+**Review findings addressed (round 1)** (4 findings on PR #41 — 2×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 1's same-key question omitted the conditions that make "same partition" correct — an explicit partition or a custom partitioner can override the key. | Question now states "same key, no explicit partition, default partitioner"; the explanation calls out both overrides. |
+| P1 | Module 4's durability question ("survive the loss of one broker") could also be answered by "acks=all alone" — on a full ISR it does survive one loss. | Reworded to "guarantees every acknowledged write is on at least two in-sync replicas — even after the ISR has shrunk", which only `acks=all` + `min.insync.replicas=2` satisfies. |
+| P2 | Module 1's committed-offset explanation said the offset "is written periodically" — that is auto-commit behaviour, not manual `commitSync`/`commitAsync`. | "written to __consumer_offsets whenever a commit succeeds — periodically if enable.auto.commit is on, otherwise when the application calls commitSync/commitAsync". |
+| P2 | Module 1's group-scaling explanation called idle members "standbys" — risks conflation with Kafka Streams standby replicas. | "The extra members are simply idle — they pick up a partition only when a rebalance reassigns one". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b

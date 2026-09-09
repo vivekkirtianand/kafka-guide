@@ -641,7 +641,7 @@ export const modules: Module[] = [
           "R copies live on R distinct brokers, so RF 3 needs at least 3 brokers. One replica is the leader; the rest are followers that copy from it.",
       },
       {
-        question: "Two records are produced with the same key to a topic whose partition count has not changed. Where do they land?",
+        question: "Two records carry the same key, no explicit partition, and go through the default partitioner, to a topic whose partition count has not changed. Where do they land?",
         options: [
           "On different partitions, to spread the load",
           "On the same partition, so they stay in order",
@@ -650,7 +650,7 @@ export const modules: Module[] = [
         ],
         answerIndex: 1,
         explanation:
-          "The key is hashed (murmur2) modulo the partition count, so a given key always maps to one partition — that is how related records stay ordered. Raising the partition count later changes that mapping.",
+          "The default partitioner hashes the key (murmur2) modulo the partition count, so a given key always maps to one partition — that is how related records stay ordered. Setting an explicit partition, or using a custom partitioner, can override this; raising the partition count later changes the mapping.",
       },
       {
         question: "What is the difference between a consumer's read position and its committed offset?",
@@ -662,7 +662,7 @@ export const modules: Module[] = [
         ],
         answerIndex: 1,
         explanation:
-          "The read position moves every poll. The committed offset is written periodically to __consumer_offsets and is where processing resumes after a restart or reassignment. Whether a crash reprocesses or skips records depends on when you commit relative to doing the work.",
+          "The read position moves every poll. The committed offset is written to __consumer_offsets whenever a commit succeeds — periodically if enable.auto.commit is on, otherwise when the application calls commitSync/commitAsync — and is where processing resumes after a restart or reassignment. Whether a crash reprocesses or skips records depends on when you commit relative to doing the work.",
       },
       {
         question: "A topic has 4 partitions and one consumer group with 6 members. What happens?",
@@ -674,7 +674,7 @@ export const modules: Module[] = [
         ],
         answerIndex: 1,
         explanation:
-          "A partition goes to exactly one member of a group, so parallelism is capped at the partition count. Extra members sit idle as standbys until a partition frees up.",
+          "A partition goes to exactly one member of a group, so parallelism is capped at the partition count. The extra members are simply idle — they pick up a partition only when a rebalance reassigns one (for example after another member leaves).",
       },
     ],
     activities: [
@@ -1164,7 +1164,7 @@ export const modules: Module[] = [
           "Per-partition sequence numbers let the broker reject out-of-order and duplicate batches; the producer then resends from the rejection point. Without idempotence, a retried batch can land after a later one that already succeeded.",
       },
       {
-        question: "A topic has replication factor 3. Which setting combination makes an acknowledged write survive the loss of one broker?",
+        question: "A topic has replication factor 3. Which setting combination guarantees every acknowledged write is on at least two in-sync replicas — even after the ISR has shrunk?",
         options: [
           "acks=1 on its own",
           "acks=all on its own",
@@ -1173,7 +1173,7 @@ export const modules: Module[] = [
         ],
         answerIndex: 2,
         explanation:
-          "acks=all waits for every in-sync replica — but if the ISR has shrunk to just the leader, it would still ack a single copy. min.insync.replicas=2 makes the leader reject the write instead of acking a thin one. A new leader is only chosen from the ISR, so it holds every record acks=all waited for.",
+          "acks=all waits for every replica currently in the ISR — but if the ISR has already shrunk to just the leader, it still acks a single copy. min.insync.replicas=2 makes the leader reject the write instead of acking a thin one. A new leader is only chosen from the ISR, so it holds every record acks=all waited for.",
       },
       {
         question: "A consumer commits the offset BEFORE it processes each record. What delivery semantics is that?",
