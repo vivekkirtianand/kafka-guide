@@ -626,4 +626,22 @@ describe("knowledge checks (any module)", () => {
       }
     }
   });
+
+  // Phase 10a authors a per-lesson knowledge check on every content module (Module 0's was
+  // written earlier, in Phase 2c, and has its own tests). The list grows as each 10a PR
+  // lands; a module named here must carry a real check, not an empty slot.
+  const CHECKED_MODULES = ["mental-model", "keys-ordering-and-delivery"];
+
+  it("gives every Phase 10a module a knowledge check of at least five well-formed questions", () => {
+    for (const slug of CHECKED_MODULES) {
+      const m = modules.find((x) => x.slug === slug)!;
+      expect(m.knowledgeChecks?.length ?? 0, slug).toBeGreaterThanOrEqual(5);
+      for (const k of m.knowledgeChecks!) {
+        expect(k.options.length, `${slug}: ${k.question}`).toBe(4);
+        expect(new Set(k.options).size, `${slug}: duplicate option in "${k.question}"`).toBe(4);
+        expect(k.question.trim().endsWith("?"), `${slug}: "${k.question}"`).toBe(true);
+        expect(k.explanation.trim().length, `${slug}: "${k.question}"`).toBeGreaterThan(30);
+      }
+    }
+  });
 });

@@ -591,6 +591,92 @@ export const modules: Module[] = [
           "The read position and the committed offset are different things. Whether a crash reprocesses or skips records depends entirely on when you commit relative to doing the work.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "What assigns a record its offset, and what does that offset mean?",
+        options: [
+          "The producer, before it sends — the offset is a position across the whole topic",
+          "The broker, on append — the offset is the record's permanent position within that one partition",
+          "The consumer, when it first reads the record",
+          "The controller, as a cluster-wide sequence number",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The broker stamps the offset when it appends the record. Offsets are per-partition, never global, and only move forward — though they can have gaps where compacted records or transaction markers used to be.",
+      },
+      {
+        question: "A consumer reads a record from a partition. What happens to that record?",
+        options: [
+          "It is removed from the partition once the consumer commits its offset",
+          "It stays in the partition — other consumers can still read it, and this consumer can move back and re-read it",
+          "It is copied to an internal __consumed topic and deleted from the original",
+          "It is deleted once every subscribed consumer group has read it",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A consumer only tracks a position in the log. Records leave a partition through retention (age or size) or compaction — never because someone read them.",
+      },
+      {
+        question: "Nobody has consumed a topic for a week, and its oldest records are being deleted anyway. Why?",
+        options: [
+          "A misconfiguration — Kafka should never delete records a consumer hasn't read",
+          "Retention deletes by age or size (or keeps the latest value per key under compaction), independent of whether anything has read the records",
+          "Kafka deletes the oldest records whenever any broker disk passes 80% full",
+          "Deleting the consumer group triggered a cleanup of the topic",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Retention frees space on a time or size schedule. Consumption never enters into it — that is what makes replay and multiple independent readers possible.",
+      },
+      {
+        question: "Every partition of a topic has replication factor 3. What does the cluster need?",
+        options: [
+          "At least 3 brokers — each partition's 3 copies sit on 3 different brokers",
+          "Exactly 3 brokers, no more and no fewer",
+          "At least 3 partitions per topic",
+          "Nothing in particular — replication factor and broker count are unrelated",
+        ],
+        answerIndex: 0,
+        explanation:
+          "R copies live on R distinct brokers, so RF 3 needs at least 3 brokers. One replica is the leader; the rest are followers that copy from it.",
+      },
+      {
+        question: "Two records are produced with the same key to a topic whose partition count has not changed. Where do they land?",
+        options: [
+          "On different partitions, to spread the load",
+          "On the same partition, so they stay in order",
+          "On whichever partition currently holds the least data",
+          "On a partition chosen by the consumer group that will read them",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The key is hashed (murmur2) modulo the partition count, so a given key always maps to one partition — that is how related records stay ordered. Raising the partition count later changes that mapping.",
+      },
+      {
+        question: "What is the difference between a consumer's read position and its committed offset?",
+        options: [
+          "They are two names for the same value",
+          "The read position is the live in-memory spot that advances every poll; the committed offset is a saved recovery point a new owner resumes from",
+          "The read position lives on the broker; the committed offset lives in the consumer's memory",
+          "The committed offset is always exactly one ahead of the read position",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The read position moves every poll. The committed offset is written periodically to __consumer_offsets and is where processing resumes after a restart or reassignment. Whether a crash reprocesses or skips records depends on when you commit relative to doing the work.",
+      },
+      {
+        question: "A topic has 4 partitions and one consumer group with 6 members. What happens?",
+        options: [
+          "Each partition is shared between members so all 6 are busy",
+          "4 members each get one partition; the other 2 stay idle",
+          "The group fails to start — members must not outnumber partitions",
+          "Kafka raises the partition count to 6 to match",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A partition goes to exactly one member of a group, so parallelism is capped at the partition count. Extra members sit idle as standbys until a partition frees up.",
+      },
+    ],
     activities: [
       "Animate a record moving from producer to a partition and on to a consumer group",
       "Predict which partition a keyed record lands on before revealing the result",
@@ -1016,6 +1102,104 @@ export const modules: Module[] = [
           "Exactly-once is scoped to Kafka — it means the observable result is as if each record were processed once. A database write or HTTP call inside your processing still needs its own idempotency key.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "Using the default partitioner, a record is produced with key \"cust-42\" and no explicit partition. What picks its partition?",
+        options: [
+          "The hash of \"cust-42\" modulo the current partition count",
+          "Round-robin across every partition",
+          "The size of the record in bytes",
+          "The consumer that will eventually read it",
+        ],
+        answerIndex: 0,
+        explanation:
+          "murmur2(key) modulo the partition count. Same key maps to the same partition every time, as long as the partition count does not change.",
+      },
+      {
+        question: "In Kafka 4.0, where do null-keyed records go under the default partitioner?",
+        options: [
+          "All to partition 0",
+          "Spread across partitions in batches — the sticky partitioner fills one partition's batch, then moves to another",
+          "Strictly round-robin: one record to each partition in turn",
+          "To a partition chosen fresh at random for every record",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The 4.0 default is the sticky partitioner: batch-wise spread, not per-record round-robin. You get throughput and load spread but no ordering between those records.",
+      },
+      {
+        question: "Which statement about a record key is correct?",
+        options: [
+          "A key uniquely identifies a record, like a database primary key",
+          "Many records can share a key — it groups and orders them, but does not identify or deduplicate",
+          "A key has to be unique within its partition",
+          "Kafka rejects a second record carrying a key it has already seen",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Keys group and order. Treating a key as a unique id — expecting Kafka to dedupe on it — is the classic early mistake.",
+      },
+      {
+        question: "Records A and B are produced to the same topic but land on different partitions. A was produced first. What does Kafka guarantee about the order they are read in?",
+        options: [
+          "A is always read before B",
+          "Nothing — ordering is a per-partition guarantee, not a per-topic one",
+          "They are ordered only if they carry the same key",
+          "They are ordered as long as the consumer is single-threaded",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Kafka orders records within a partition only. To keep two records ordered, route them to the same partition by giving them the same key.",
+      },
+      {
+        question: "With enable.idempotence=true (the default) and up to 5 in-flight requests per connection, how does the producer hold ordering across a retry?",
+        options: [
+          "It drops to a single in-flight request whenever it retries",
+          "It stamps each batch with a per-partition sequence number, and the broker rejects any batch that arrives out of order or duplicated",
+          "The broker sorts pending batches by timestamp before appending them",
+          "It does not — idempotence only removes duplicates, not reordering",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Per-partition sequence numbers let the broker reject out-of-order and duplicate batches; the producer then resends from the rejection point. Without idempotence, a retried batch can land after a later one that already succeeded.",
+      },
+      {
+        question: "A topic has replication factor 3. Which setting combination makes an acknowledged write survive the loss of one broker?",
+        options: [
+          "acks=1 on its own",
+          "acks=all on its own",
+          "acks=all together with min.insync.replicas=2",
+          "acks=0 together with min.insync.replicas=3",
+        ],
+        answerIndex: 2,
+        explanation:
+          "acks=all waits for every in-sync replica — but if the ISR has shrunk to just the leader, it would still ack a single copy. min.insync.replicas=2 makes the leader reject the write instead of acking a thin one. A new leader is only chosen from the ISR, so it holds every record acks=all waited for.",
+      },
+      {
+        question: "A consumer commits the offset BEFORE it processes each record. What delivery semantics is that?",
+        options: [
+          "At-least-once",
+          "At-most-once — a crash after the commit but before the work skips that record",
+          "Exactly-once",
+          "It depends on whether enable.idempotence is set",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Commit-before-process can skip a record and never reprocess it. Process-then-commit is at-least-once (a crash replays the record). Neither is exactly-once.",
+      },
+      {
+        question: "Your consume-transform-produce app runs a producer with enable.idempotence=true. Is it exactly-once end to end?",
+        options: [
+          "Yes — idempotence gives exactly-once",
+          "No — idempotence only removes the producer's own retry duplicates within a session; end-to-end EOS needs a transaction over the output records and the input offsets, plus read_committed consumers downstream",
+          "Yes, as long as acks=all is also set",
+          "Only if the input topic has a single partition",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Idempotence is scoped to one producer's retries. Exactly-once for a Kafka-to-Kafka pipeline needs the transactional producer writing outputs and input offsets atomically, and downstream consumers on isolation.level=read_committed. A database write or HTTP call inside the processing still needs its own idempotency key.",
+      },
+    ],
     activities: [
       "Change the partition count and watch a fixed keyed-event sequence land on different partitions",
       "Simulate a broker failure and watch the ISR shrink and a new leader take over",
