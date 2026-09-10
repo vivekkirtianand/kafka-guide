@@ -636,6 +636,8 @@ describe("knowledge checks (any module)", () => {
     "local-cluster-lab",
     "build-a-producer-and-consumer",
     "schemas-and-data-contracts",
+    "consumer-configuration",
+    "connect-and-streams",
   ];
 
   it("gives every Phase 10a module a knowledge check of at least five well-formed questions", () => {

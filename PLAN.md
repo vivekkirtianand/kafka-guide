@@ -53,7 +53,7 @@ unless noted.
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
 | 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ✅** `applicableVersions` (Kafka 4.x range) on all 12 modules + 14 runbooks, shared `VersionApplicability` render + out-of-range caveat, `versionRangeLabel` | 1a | M3 |
 | 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); **9b ✅** `ConfigEntry` gains optional `exampleValue` / `safeBaseline` / `verification` / `rollback` / `managedCaveat` + a derived `kafkaDocUrl`; populated on the 9a configs + ~11 high-traffic existing; explorer gains a risk filter and renders the new fields | 8b | M3 |
-| 10 | Assessments & capstone | **10a 🚧** per-lesson knowledge checks — Modules 1–11 (4 PRs by theme, 6–8 Qs each; 10a-1 ✅ Modules 1 + 4, 10a-2 ✅ Modules 2 + 3 + 5); 10b per-module practical verification; **10c ✅** capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) — Module 12 | 4, 5, 7 | M3 |
+| 10 | Assessments & capstone | **10a 🚧** per-lesson knowledge checks — Modules 1–11 (4 PRs by theme, 6–8 Qs each; 10a-1 ✅ Modules 1 + 4, 10a-2 ✅ Modules 2 + 3 + 5, 10a-3 ✅ Modules 7 + 8); 10b per-module practical verification; **10c ✅** capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) — Module 12 | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
 
 ### Milestones
@@ -1579,6 +1579,27 @@ Module 4 pages render the check, pick → reveal → "next question →" works.
   Suite unchanged at 457 (the questions render through the existing generic path).
 
 Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 5's check
+renders, pick → reveal works.
+
+### PR 10a-3 — groups & pipelines (Modules 7, 8)
+
+- **`src/lib/data/modules.ts`** — `knowledgeChecks` on:
+  - `consumer-configuration` (8 Qs): same group.id scales / different fans out, the two
+    liveness clocks (heartbeat vs `max.poll.interval.ms`), when auto-commit actually commits,
+    eager rebalance is stop-the-world, uncommitted records redelivered on reassignment,
+    `group.instance.id` keeps the assignment across a restart, the raw consumer skips a poison
+    record (skip permanent only once committed past), the never-advance-past-an-unhandled-record
+    invariant.
+  - `connect-and-streams` (8 Qs): a connector moves one direction (source + sink = two),
+    a connector is a JSON config POSTed to the REST API, source delivery is at-least-once by
+    default, Connect is not a transformation engine (joins/aggregations = Streams), KStream vs
+    KTable, a shared `application.id` corrupts two apps, state-store failover replays the
+    compacted changelog, and which step the application-reset tool does NOT do (local
+    `state.dir`, output topics).
+- **`src/lib/data/modules.test.ts`** — `CHECKED_MODULES` extended to both slugs. Suite
+  unchanged at 457.
+
+Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 8's check
 renders, pick → reveal works.
 
 **Review findings addressed (round 1)** (8 findings on PR #42 — 4×P1, 4×P2):
