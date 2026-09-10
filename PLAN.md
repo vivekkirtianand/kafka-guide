@@ -1602,6 +1602,15 @@ renders, pick → reveal works.
 Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 8's check
 renders, pick → reveal works.
 
+**Review findings addressed (round 1)** (2 findings on PR #43 — 1×P1, 1×P2, both Module 7):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The raw-consumer poison answer said the record "is effectively skipped" — the outcome actually branches on the commit mode and lifecycle. | Answer now spells out the branches: catch-and-continue skips the batch, a clean `close()` with auto-commit on makes the skip permanent, an uncommitted crash redelivers it. |
+| P2 | The auto-commit answer said the offset commits "during a poll() call" only — `KafkaConsumer.close()` also flushes a final commit when auto-commit is on. | "On the next poll() once the interval elapses … and once more on a clean close()"; explanation notes both are loop-timing-driven, not work-completion-driven. |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 **Review findings addressed (round 1)** (8 findings on PR #42 — 4×P1, 4×P2):
 
 | # | Finding | Fix |

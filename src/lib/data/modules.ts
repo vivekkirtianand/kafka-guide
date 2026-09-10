@@ -2336,16 +2336,16 @@ export const modules: Module[] = [
           "Heartbeats prove the process is alive; max.poll.interval.ms proves the loop is making progress. Overrun it and the group takes your partitions away. max.poll.records is the main lever for keeping a batch's processing time under it.",
       },
       {
-        question: "With enable.auto.commit=true, when is the offset actually committed?",
+        question: "With enable.auto.commit=true, when does the consumer commit offsets?",
         options: [
           "The instant each record finishes processing",
-          "During a poll() call, once auto.commit.interval.ms has elapsed, for the records the previous poll returned",
+          "On the next poll() once auto.commit.interval.ms has elapsed (for the records the previous poll returned), and once more on a clean close()",
           "Only when the application calls commitSync()",
           "Only when the consumer shuts down",
         ],
         answerIndex: 1,
         explanation:
-          "Auto-commit piggybacks on poll(), on the assumption you finished the previous batch. That is why it can advance past records you are still handling on another path, or lose work if you crash after poll() but before finishing.",
+          "Auto-commit piggybacks on poll(), on the assumption you finished the previous batch, and a clean close() flushes one final commit of the current position. Both are driven by the loop's timing, not by the work finishing — so auto-commit can advance past records you are still handling on another path, or lose work if you crash after poll() but before finishing.",
       },
       {
         question: "A group is on the default assignment strategy (classic protocol). One consumer joins. What do the other consumers do during the rebalance?",
@@ -2384,16 +2384,16 @@ export const modules: Module[] = [
           "Without it, a restart looks like one member leaving and another joining — two rebalances, 2N for N instances. With it, the coordinator holds the member's assignment across the disconnect.",
       },
       {
-        question: "In the raw KafkaConsumer, an exception from a record handler propagates out of the poll loop. What happens to the poison record?",
+        question: "In the raw KafkaConsumer, an exception from a record handler propagates out of the poll loop. What is the poison record's fate?",
         options: [
           "It is retried automatically with backoff",
-          "It is effectively skipped — poll() already advanced the in-memory position past its batch — but the skip is only permanent once the offset is committed past it",
+          "It depends on what happens next: poll() already moved the in-memory position past its batch, so catching the exception and continuing skips it, a clean close() with auto-commit on makes that skip permanent, and a crash or restart before any commit redelivers it",
           "It is routed to a dead-letter topic",
           "The broker deletes it",
         ],
         answerIndex: 1,
         explanation:
-          "The raw consumer skips it; a restart before the commit redelivers it. The opposite mistake is a handler that seeks back and retries forever — the offset never advances and every record behind it is blocked.",
+          "The raw consumer's default behaviour is to skip — but only the committed offset makes a skip stick, so an uncommitted crash replays the record. The opposite mistake is a handler that seeks back and retries forever: the offset never advances and every record behind it is blocked.",
       },
       {
         question: "What single rule keeps a poison-message strategy from either losing data or blocking a partition?",
