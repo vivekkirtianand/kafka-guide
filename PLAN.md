@@ -1654,6 +1654,15 @@ Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
+**Review findings addressed (round 3)** (2 findings on PR #43, both P2, same two questions again):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The auto-commit explanation said a later poll or `close()` "advances the position" — but the in-memory position already moved on the earlier poll; what advances is the *committed offset*, catching up to it. | "successfully advances the committed offset". |
+| P2 | The poison-record option said "a clean close() … makes that skip permanent" — but `close()` only *attempts* the commit (per the neighboring answer); if it fails or times out, the record is redelivered. | "a successful clean-close commit … makes that skip permanent". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b

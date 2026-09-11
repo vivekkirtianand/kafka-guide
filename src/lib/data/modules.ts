@@ -2345,7 +2345,7 @@ export const modules: Module[] = [
         ],
         answerIndex: 1,
         explanation:
-          "Auto-commit piggybacks on poll(), on the assumption you finished the previous batch, and a clean close() attempts one final commit of the current position (it is not guaranteed to succeed). Both are driven by the loop's timing, not by the work finishing — a crash right after a poll does not by itself lose anything, but if a later poll or that closing commit advances the position while an earlier batch's work is still unfinished, that work is skipped rather than redelivered.",
+          "Auto-commit piggybacks on poll(), on the assumption you finished the previous batch, and a clean close() attempts one final commit of the current position (it is not guaranteed to succeed). Both are driven by the loop's timing, not by the work finishing — a crash right after a poll does not by itself lose anything, but if a later poll or that closing commit successfully advances the committed offset while an earlier batch's work is still unfinished, that work is skipped rather than redelivered.",
       },
       {
         question: "A group is on the default assignment strategy (classic protocol). One consumer joins. What do the other consumers do during the rebalance?",
@@ -2387,7 +2387,7 @@ export const modules: Module[] = [
         question: "In the raw KafkaConsumer, an exception from a record handler propagates out of the poll loop. What is the poison record's fate?",
         options: [
           "It is retried automatically with backoff",
-          "It depends on what happens next: poll() already moved the in-memory position past its batch, so catching the exception and continuing skips it, a clean close() with auto-commit on makes that skip permanent, and a crash or restart before any commit redelivers it",
+          "It depends on what happens next: poll() already moved the in-memory position past its batch, so catching the exception and continuing skips it, a successful clean-close commit (with auto-commit on) makes that skip permanent, and a crash or restart before any commit redelivers it",
           "It is routed to a dead-letter topic",
           "The broker deletes it",
         ],
