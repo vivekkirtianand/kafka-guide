@@ -2310,6 +2310,104 @@ export const modules: Module[] = [
           "The invariant: never advance the committed offset past a record until it has either been processed or deliberately routed somewhere durable.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "Two consumer applications must each see every record on a topic. How do you set that up?",
+        options: [
+          "Put both in the same consumer group",
+          "Give them different group.ids — each group independently gets every partition and tracks its own offsets",
+          "Have them subscribe to two different topics",
+          "Turn on static membership for both",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Sharing a group.id splits the partitions to scale one consumer. A different group.id fans the same stream out to a second application, which reads everything on its own offsets.",
+      },
+      {
+        question: "A consumer is alive and its background thread is heartbeating, but one record handler has been stuck for ten minutes. Which timeout catches that, and what happens?",
+        options: [
+          "session.timeout.ms — the consumer is declared dead on the first missed heartbeat",
+          "max.poll.interval.ms — the gap between poll() calls is exceeded, so a dynamic consumer sends LeaveGroup and its partitions are reassigned",
+          "request.timeout.ms — the fetch is retried",
+          "Nothing — heartbeats keep it in the group indefinitely",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Heartbeats prove the process is alive; max.poll.interval.ms proves the loop is making progress. Overrun it and the group takes your partitions away. max.poll.records is the main lever for keeping a batch's processing time under it.",
+      },
+      {
+        question: "With enable.auto.commit=true, when does the consumer commit offsets?",
+        options: [
+          "The instant each record finishes processing",
+          "On the next poll() once auto.commit.interval.ms has elapsed (for the records the previous poll returned), and close() attempts one more on a clean shutdown",
+          "Only when the application calls commitSync()",
+          "Only when the consumer shuts down",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Auto-commit piggybacks on poll(), on the assumption you finished the previous batch, and a clean close() attempts one final commit of the current position (it is not guaranteed to succeed). Both are driven by the loop's timing, not by the work finishing — a crash right after a poll does not by itself lose anything, but if a later poll or that closing commit successfully advances the committed offset while an earlier batch's work is still unfinished, that work is skipped rather than redelivered.",
+      },
+      {
+        question: "A group is on the default assignment strategy (classic protocol). One consumer joins. What do the other consumers do during the rebalance?",
+        options: [
+          "Keep processing their existing partitions",
+          "Every consumer revokes all of its partitions, and no partition in the group is consumed until new assignments go out",
+          "Only the joining consumer waits",
+          "The group splits into two",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The default list is headed by RangeAssignor, an eager strategy — stop-the-world. Making CooperativeStickyAssignor the only strategy pauses just the partitions that actually move.",
+      },
+      {
+        question: "A partition is revoked and reassigned mid-batch. The old owner had processed 40 of 100 records but not committed. What does the new owner do?",
+        options: [
+          "Resumes at record 41",
+          "Resumes from the last committed offset, so records 1-40 are processed a second time and any external side effects are duplicated",
+          "Skips the whole batch",
+          "Waits for the old owner to hand over its in-memory position",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The new owner only knows the committed offset. This is why at-least-once processing has to be idempotent, and why you commit close to finishing the work.",
+      },
+      {
+        question: "You set a stable group.instance.id on each consumer. What does that change on a rolling restart?",
+        options: [
+          "Restarts become instant because state is cached",
+          "A reconnecting instance keeps its exact partitions with no rebalance, as long as it returns within the session timeout — at the cost of slower detection of a real failure",
+          "The consumer no longer needs to commit offsets",
+          "The partition count is pinned",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Without it, a restart looks like one member leaving and another joining — two rebalances, 2N for N instances. With it, the coordinator holds the member's assignment across the disconnect.",
+      },
+      {
+        question: "In the raw KafkaConsumer, an exception from a record handler propagates out of the poll loop. What is the poison record's fate?",
+        options: [
+          "It is retried automatically with backoff",
+          "It depends on what happens next: poll() already moved the in-memory position past its batch, so catching the exception and continuing skips it, a successful clean-close commit (with auto-commit on) makes that skip permanent, and a crash or restart before any commit redelivers it",
+          "It is routed to a dead-letter topic",
+          "The broker deletes it",
+        ],
+        answerIndex: 1,
+        explanation:
+          "KafkaConsumer itself only moves the in-memory position past the batch it returned — it has no opinion on skip versus redelivery. What decides that is the surrounding application: whether it keeps polling (and eventually commits), closes cleanly (one attempted commit), or crashes with nothing committed. The opposite mistake is a handler that seeks back and retries forever: the offset never advances and every record behind it is blocked.",
+      },
+      {
+        question: "What single rule keeps a poison-message strategy from either losing data or blocking a partition?",
+        options: [
+          "Always retry at least three times",
+          "Never advance the committed offset past a record until it has been processed or deliberately routed somewhere durable",
+          "Always use a dead-letter topic",
+          "Always set enable.auto.commit=false",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Skipping commits past an unhandled record (data loss); unbounded retry never commits (partition blocked). Bound the retries, route the bad record out with failure metadata, then commit past it.",
+      },
+    ],
     activities: [
       "Make processing exceed max.poll.interval.ms",
       "Add and remove consumer instances",
@@ -2540,6 +2638,104 @@ export const modules: Module[] = [
           "The reset tool clears the cluster-side state but not the local state.dir, and two instances on one machine share that directory — give each its own state.dir or the second fails to take the RocksDB lock. A \"reset\" that skips cleanUp() / the local directory silently resumes from stale local state.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "You need to load rows from a Postgres table into a Kafka topic, and also write another topic's records into Elasticsearch. How many connectors?",
+        options: [
+          "One connector, configured for both directions",
+          "Two — a source connector for Postgres to Kafka, and a sink connector for Kafka to Elasticsearch",
+          "One source connector; sinks are automatic",
+          "None — Connect cannot talk to databases",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A connector moves data one direction: a source reads an external system into Kafka, a sink reads a topic out to an external system. Both directions means two connectors.",
+      },
+      {
+        question: "How do you deploy a FileStreamSourceConnector on a Connect worker?",
+        options: [
+          "Compile it into the worker and restart",
+          "POST a JSON config — plugin class, topic, file path — to Connect's REST API on port 8083",
+          "Write a Java class that extends KafkaConsumer",
+          "Add it to the broker's server.properties",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A connector is a JSON config you POST to the REST API; Connect runs the pre-built plugin. You would write a connector only for a system no existing plugin covers.",
+      },
+      {
+        question: "A distributed Connect worker restarts. Where does a source connector resume from, and what is the delivery guarantee?",
+        options: [
+          "From the exact last record; exactly-once by default",
+          "From the last position committed to an internal offsets topic — committed periodically, not per record — so it may re-emit a little: at-least-once by default",
+          "From the start of the source every time",
+          "It does not resume; you recreate the connector",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Connect tracks a source's external position (which file byte, which database row) in an internal topic on a distributed worker (a local file in standalone), committed on an interval. Exactly-once source delivery needs exactly.once.source.support on the worker AND a connector that declares it supports it.",
+      },
+      {
+        question: "You need to join two topics and emit a running per-customer total. Connect or Kafka Streams?",
+        options: [
+          "Connect, with a Single Message Transform",
+          "Kafka Streams — anything stateful (joins, aggregations, windows) is Streams' job, not a connector's",
+          "A sink connector with a custom aggregator",
+          "Either works equally well",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Single Message Transforms can rename or route a field, but they are stateless and per-record. Joins and aggregations need Streams — Connect is not a transformation engine.",
+      },
+      {
+        question: "You are modelling \"each customer's current loyalty-point balance\". Which Streams abstraction fits?",
+        options: [
+          "A KStream — every balance change is an independent event",
+          "A KTable — the latest value per key, where a new record for a customer replaces the old one",
+          "A windowed aggregation over five-minute buckets",
+          "A stream-stream join",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A KTable is the current state built from a stream of updates — the compacted-topic idea as a first-class type. A KStream treats every record as a standalone fact.",
+      },
+      {
+        question: "Two different Streams apps are accidentally deployed with the same application.id. What goes wrong?",
+        options: [
+          "Nothing — application.id is only a label",
+          "They form one consumer group and split each other's partitions, and they collide on the internal topics prefixed by that id — corrupting each other's state",
+          "The second app refuses to start",
+          "They merge into a single topology",
+        ],
+        answerIndex: 1,
+        explanation:
+          "application.id is both the consumer group id and the prefix for every internal (changelog, repartition) topic Streams creates. It has to be unique per application.",
+      },
+      {
+        question: "A Streams instance running a per-customer count() crashes, and another instance takes over its partitions. How does it get the running totals?",
+        options: [
+          "It starts every customer's count from zero",
+          "It replays the store's compacted changelog topic to rebuild the local state store before taking over — the local store is a cache, the changelog is the truth",
+          "It reads the totals back from the output topic",
+          "It queries the crashed instance over the network",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Each state store is mirrored to a compacted changelog topic; on failover another instance replays it. A store that only materializes an existing topic can rebuild from that topic instead, and changelogging can be disabled per store.",
+      },
+      {
+        question: "You change a Streams aggregation's logic and run kafka-streams-application-reset.sh with all instances stopped. Which of these does it NOT do?",
+        options: [
+          "Rewind the group's committed offsets on the input topics to the start",
+          "Delete the internal repartition and changelog topics",
+          "Delete the app's local RocksDB state directories and truncate the output topics",
+          "Leave the consumer group itself in place, just seeked to the start",
+        ],
+        answerIndex: 2,
+        explanation:
+          "The reset tool only touches cluster-side state. It does not clear the local state.dir — the app must call KafkaStreams.cleanUp() before start(), or you delete it by hand — and it does not touch output topics, so a reprocessed run appends its results after the old ones.",
+      },
+    ],
     activities: [],
     status: "available",
   },

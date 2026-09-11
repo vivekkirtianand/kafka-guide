@@ -53,7 +53,7 @@ unless noted.
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
 | 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ✅** `applicableVersions` (Kafka 4.x range) on all 12 modules + 14 runbooks, shared `VersionApplicability` render + out-of-range caveat, `versionRangeLabel` | 1a | M3 |
 | 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); **9b ✅** `ConfigEntry` gains optional `exampleValue` / `safeBaseline` / `verification` / `rollback` / `managedCaveat` + a derived `kafkaDocUrl`; populated on the 9a configs + ~11 high-traffic existing; explorer gains a risk filter and renders the new fields | 8b | M3 |
-| 10 | Assessments & capstone | **10a 🚧** per-lesson knowledge checks — Modules 1–11 (4 PRs by theme, 6–8 Qs each; 10a-1 ✅ Modules 1 + 4, 10a-2 ✅ Modules 2 + 3 + 5); 10b per-module practical verification; **10c ✅** capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) — Module 12 | 4, 5, 7 | M3 |
+| 10 | Assessments & capstone | **10a 🚧** per-lesson knowledge checks — Modules 1–11 (4 PRs by theme, 6–8 Qs each; 10a-1 ✅ Modules 1 + 4, 10a-2 ✅ Modules 2 + 3 + 5, 10a-3 ✅ Modules 7 + 8); 10b per-module practical verification; **10c ✅** capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) — Module 12 | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
 
 ### Milestones
@@ -1559,6 +1559,25 @@ rubric and gets no check.
 Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 1 and
 Module 4 pages render the check, pick → reveal → "next question →" works.
 
+**Review findings addressed (round 1)** (4 findings on PR #41 — 2×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 1's same-key question omitted the conditions that make "same partition" correct — an explicit partition or a custom partitioner can override the key. | Question now states "same key, no explicit partition, default partitioner"; the explanation calls out both overrides. |
+| P1 | Module 4's durability question ("survive the loss of one broker") could also be answered by "acks=all alone" — on a full ISR it does survive one loss. | Reworded to "guarantees every acknowledged write is on at least two in-sync replicas — even after the ISR has shrunk", which only `acks=all` + `min.insync.replicas=2` satisfies. |
+| P2 | Module 1's committed-offset explanation said the offset "is written periodically" — that is auto-commit behaviour, not manual `commitSync`/`commitAsync`. | "written to __consumer_offsets whenever a commit succeeds — periodically if enable.auto.commit is on, otherwise when the application calls commitSync/commitAsync". |
+| P2 | Module 1's group-scaling explanation called idle members "standbys" — risks conflation with Kafka Streams standby replicas. | "The extra members are simply idle — they pick up a partition only when a rebalance reassigns one". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
+**Review findings addressed (round 2)** (1 finding on PR #41, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Module 1's read-position option and explanation said it "advances every poll" — an empty poll leaves it unchanged, and `seek` can move it explicitly. | Option: "advances as poll returns records"; explanation: "moves forward as poll returns records (an empty poll leaves it where it is, and seek can move it explicitly)". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 ### PR 10a-2 — hands-on (Modules 2, 3, 5)
 
 - **`src/lib/data/modules.ts`** — `knowledgeChecks` on:
@@ -1596,22 +1615,51 @@ renders, pick → reveal works.
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
-**Review findings addressed (round 1)** (4 findings on PR #41 — 2×P1, 2×P2):
+### PR 10a-3 — groups & pipelines (Modules 7, 8)
+
+- **`src/lib/data/modules.ts`** — `knowledgeChecks` on:
+  - `consumer-configuration` (8 Qs): same group.id scales / different fans out, the two
+    liveness clocks (heartbeat vs `max.poll.interval.ms`), when auto-commit actually commits,
+    eager rebalance is stop-the-world, uncommitted records redelivered on reassignment,
+    `group.instance.id` keeps the assignment across a restart, the raw consumer skips a poison
+    record (skip permanent only once committed past), the never-advance-past-an-unhandled-record
+    invariant.
+  - `connect-and-streams` (8 Qs): a connector moves one direction (source + sink = two),
+    a connector is a JSON config POSTed to the REST API, source delivery is at-least-once by
+    default, Connect is not a transformation engine (joins/aggregations = Streams), KStream vs
+    KTable, a shared `application.id` corrupts two apps, state-store failover replays the
+    compacted changelog, and which step the application-reset tool does NOT do (local
+    `state.dir`, output topics).
+- **`src/lib/data/modules.test.ts`** — `CHECKED_MODULES` extended to both slugs. Suite
+  unchanged at 457.
+
+Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 8's check
+renders, pick → reveal works.
+
+**Review findings addressed (round 1)** (2 findings on PR #43 — 1×P1, 1×P2, both Module 7):
 
 | # | Finding | Fix |
 |--|--|--|
-| P1 | Module 1's same-key question omitted the conditions that make "same partition" correct — an explicit partition or a custom partitioner can override the key. | Question now states "same key, no explicit partition, default partitioner"; the explanation calls out both overrides. |
-| P1 | Module 4's durability question ("survive the loss of one broker") could also be answered by "acks=all alone" — on a full ISR it does survive one loss. | Reworded to "guarantees every acknowledged write is on at least two in-sync replicas — even after the ISR has shrunk", which only `acks=all` + `min.insync.replicas=2` satisfies. |
-| P2 | Module 1's committed-offset explanation said the offset "is written periodically" — that is auto-commit behaviour, not manual `commitSync`/`commitAsync`. | "written to __consumer_offsets whenever a commit succeeds — periodically if enable.auto.commit is on, otherwise when the application calls commitSync/commitAsync". |
-| P2 | Module 1's group-scaling explanation called idle members "standbys" — risks conflation with Kafka Streams standby replicas. | "The extra members are simply idle — they pick up a partition only when a rebalance reassigns one". |
+| P1 | The raw-consumer poison answer said the record "is effectively skipped" — the outcome actually branches on the commit mode and lifecycle. | Answer now spells out the branches: catch-and-continue skips the batch, a clean `close()` with auto-commit on makes the skip permanent, an uncommitted crash redelivers it. |
+| P2 | The auto-commit answer said the offset commits "during a poll() call" only — `KafkaConsumer.close()` also flushes a final commit when auto-commit is on. | "On the next poll() once the interval elapses … and once more on a clean close()"; explanation notes both are loop-timing-driven, not work-completion-driven. |
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
-**Review findings addressed (round 2)** (1 finding on PR #41, P2):
+**Review findings addressed (round 2)** (2 follow-up findings on PR #43, same two questions):
 
 | # | Finding | Fix |
 |--|--|--|
-| P2 | Module 1's read-position option and explanation said it "advances every poll" — an empty poll leaves it unchanged, and `seek` can move it explicitly. | Option: "advances as poll returns records"; explanation: "moves forward as poll returns records (an empty poll leaves it where it is, and seek can move it explicitly)". |
+| P1 | The auto-commit explanation still said a crash right after `poll()` loses work — it doesn't, by itself; loss needs a *later* poll or a successful `close()` commit to advance the position while earlier work is unfinished, and `close()` only *attempts* the commit. | Reworded: "a crash right after a poll does not by itself lose anything, but if a later poll or that closing commit advances the position while an earlier batch's work is still unfinished, that work is skipped"; option text: "close() attempts one more [commit] on a clean shutdown". |
+| P2 | The poison-record explanation still said "the raw consumer's default behaviour is to skip", contradicting the branched answer above it. | Reworded to: `KafkaConsumer` only moves the in-memory position; skip vs. redelivery is decided by the surrounding application's lifecycle and commit outcome, not the client itself. |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
+**Review findings addressed (round 3)** (2 findings on PR #43, both P2, same two questions again):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The auto-commit explanation said a later poll or `close()` "advances the position" — but the in-memory position already moved on the earlier poll; what advances is the *committed offset*, catching up to it. | "successfully advances the committed offset". |
+| P2 | The poison-record option said "a clean close() … makes that skip permanent" — but `close()` only *attempts* the commit (per the neighboring answer); if it fails or times out, the record is redelivered. | "a successful clean-close commit … makes that skip permanent". |
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
