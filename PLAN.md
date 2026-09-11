@@ -1698,6 +1698,18 @@ Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser —
 `/modules/troubleshooting-scenarios` renders both the knowledge check and the
 `TroubleshootingCatalog` together; pick → reveal works; no console errors.
 
+**Review findings addressed (round 1)** (5 findings on PR #44 — 3×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 11's repartitioning question assumed adding partitions spreads *one* dominant key's load — a single key still hashes to exactly one partition, no matter the count. The answer also overclaimed the mapping changes for "every" key. | Reworded to ask directly whether more partitions fixes a single hot key (it doesn't — that needs a different key, salting, or a custom partitioner); "changes for every key" softened to "remaps other keys' hashes … expect a reshuffle". |
+| P1 | Module 11's `max.poll.interval.ms` question said raising it delays detecting a "genuinely dead consumer" — a dead process stops heartbeating and is caught by `session.timeout.ms` instead. | Reframed around the case it actually governs: a consumer that is alive and still heartbeating but stuck/livelocked in its handler. |
+| P1 | Module 11's `RecordTooLargeException` question said `send()` throws it synchronously — `KafkaProducer.send()` catches its own local validation failures and returns an already-failed `Future` (or invokes the callback); it does not throw out of `send()` itself. | Rewrote the question to ask how the caller learns of the failure — `Future.get()` / the callback, not a synchronous throw — while keeping the "rejected before any network I/O, distinct from the broker's own limit" point. |
+| P2 | Module 10's under-replicated/offline question said a leader-but-under-replicated partition "is serving reads and writes" — a shrunk ISR below `min.insync.replicas` can still reject `acks=all` writes. | Narrowed to leaders/reads, with the write caveat now explicit in both the answer and the explanation. |
+| P2 | Module 6's transactions question described "a producer writes idempotently to two partitions in one call" — `send()` takes one `ProducerRecord`, targeting one partition. | Reworded to two `send()` calls, each keyed to a different partition. |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 **Phase 10a is complete** — 10a-1 through 10a-4 merged, every content module (1–11) has a
 per-lesson knowledge check.
 

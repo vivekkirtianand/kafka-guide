@@ -2130,7 +2130,7 @@ export const modules: Module[] = [
           "Without idempotence, in-flight requests can complete out of order on a retry. enable.idempotence=true fixes this up to 5 in-flight requests via per-partition sequence numbers; without it, the only fix is capping in-flight requests to 1.",
       },
       {
-        question: "A producer writes idempotently to two partitions in one call. Partition A's write succeeds; partition B's fails. What does idempotence alone guarantee here?",
+        question: "An idempotent producer sends two records, keyed to land on partition A and partition B. A's send succeeds; B's fails. What does idempotence alone guarantee about that outcome?",
         options: [
           "Both writes are automatically rolled back together",
           "Nothing — idempotence is per-partition, not atomic across partitions, so A's success and B's failure can both stand",
@@ -3615,13 +3615,13 @@ export const modules: Module[] = [
         question: "UnderReplicatedPartitions is non-zero, but OfflinePartitionsCount is 0. What does that tell you?",
         options: [
           "The cluster is down",
-          "Some partitions have fewer in-sync replicas than their full replica set, but every partition still has a leader and is serving reads and writes",
+          "Some partitions have fewer in-sync replicas than their full replica set, but every partition still has a leader and can serve reads — acks=all writes can still be rejected if the ISR has dropped below min.insync.replicas",
           "Every topic has lost data",
           "A consumer rebalance is in progress",
         ],
         answerIndex: 1,
         explanation:
-          "Under-replicated means the ISR is smaller than the full replica set — a replica is down or lagging — but the partition is still available as long as it has a leader. Offline means no leader at all.",
+          "Under-replicated means the ISR is smaller than the full replica set — a replica is down or lagging. Offline means no leader at all, which this rules out. But a leader alone only guarantees reads; a shrunk-enough ISR can still make the leader reject acks=all writes with NOT_ENOUGH_REPLICAS.",
       },
       {
         question: "A produce request's TotalTimeMs is dominated by RemoteTimeMs. What does that point to?",
@@ -3766,16 +3766,16 @@ export const modules: Module[] = [
           "Hot partitions hide behind a healthy group total. The fix is checking per-partition throughput and key cardinality — a better key, key salting, or more partitions — not adding consumers, which can't split one partition further.",
       },
       {
-        question: "You raise a hot topic's partition count to spread a skewed key's load. What does that cost?",
+        question: "A topic's load is dominated by one hot key, not many skewed keys. Does raising the partition count fix that on its own?",
         options: [
-          "Nothing — it's a free fix",
-          "The key-to-partition mapping changes for every key, so existing keys scatter and per-key ordering across the change boundary is not preserved",
-          "It automatically redistributes existing data across the new partitions",
-          "It reduces the topic's replication factor",
+          "Yes — the hot key's records now spread across the new partitions",
+          "No — every record for that one key still lands on exactly one partition after the change; more partitions helps spread load across many keys (or fixes assignment skew), not a single dominant one, and it also remaps other keys' hashes, so expect a reshuffle with no preserved per-key ordering across the change",
+          "Yes, but only after a full cluster restart",
+          "No — the topic's replication factor would need to be lowered first",
         ],
         answerIndex: 1,
         explanation:
-          "Repartitioning changes hash(key) % partitionCount for most keys. Do it during a quiet window and expect a temporary reshuffle — ordering guarantees don't carry across the boundary.",
+          "hash(key) % partitionCount is still one hash for that one key — no partition count splits a single key's traffic. A dominant key needs a different key, key salting (a bucket suffix), or a custom partitioner. Repartitioning does remap other keys' hashes to varying degrees, so do it during a quiet window and expect a temporary reshuffle.",
       },
       {
         question: "A topic's disk usage on one broker keeps growing well past what its retention settings should allow. Besides retention being set too high, what else is worth checking?",
@@ -3790,28 +3790,28 @@ export const modules: Module[] = [
           "Disk growth has several independent causes: the retention window, an ingestion increase, partition imbalance, a lagging log cleaner on compacted topics, and segments that haven't rolled (retention only removes whole closed segments).",
       },
       {
-        question: "A producer throws RecordTooLargeException synchronously from send(), before anything reaches the network. Which limit fired?",
+        question: "A record fails the producer's own max.request.size check, before anything reaches the network. How does the caller actually learn about that failure?",
         options: [
-          "The broker's message.max.bytes",
-          "The producer's own max.request.size, enforced locally inside send()",
-          "A topic-level max.message.bytes override",
-          "The consumer's fetch.max.bytes",
+          "send() throws RecordTooLargeException directly, synchronously",
+          "send() returns normally with a Future that is already completed exceptionally (and invokes the supplied callback, if any) — the caller sees the exception via Future.get() or the callback, not a synchronous throw",
+          "The next poll() call on a consumer surfaces it",
+          "It fails silently with no signal to the application",
         ],
         answerIndex: 1,
         explanation:
-          "max.request.size is enforced client-side, synchronously, before the record is even batched. A broker- or topic-level rejection instead shows up later, as a failed round trip.",
+          "Even this same-thread, pre-network rejection goes through send()'s normal async result path — an already-failed Future or an invoked callback — rather than throwing out of send() itself. It is still caught client-side before any bytes leave the process, which is what distinguishes it from the broker's own message.max.bytes (or a topic's max.message.bytes override), whose rejection instead shows up later as a failed round trip.",
       },
       {
         question: "A group rebalances constantly because processing occasionally overruns max.poll.interval.ms. Someone proposes just raising that timeout. What's the risk?",
         options: [
           "None — raising it is the correct fix on its own",
-          "It hides the slow processing, and it also lengthens how long a genuinely dead consumer holds its partitions before the group notices and recovers",
+          "It hides the slow processing, and it lengthens how long a consumer that is alive and still heartbeating but stuck in its handler (not a genuinely dead process — that's caught by session.timeout.ms) holds its partitions before the group notices and reassigns them",
           "It has no effect either way",
           "It will start causing NOT_ENOUGH_REPLICAS errors",
         ],
         answerIndex: 1,
         explanation:
-          "Fix the processing time (or lower max.poll.records) first. Raising the interval alone trades faster relief from the rebalance storm for slower detection of an actually-dead consumer.",
+          "Fix the processing time (or lower max.poll.records) first. max.poll.interval.ms only catches a consumer whose background thread is still heartbeating but whose handler has stopped making progress — a genuinely dead process stops heartbeating too and is caught by session.timeout.ms on its own schedule. Raising the interval alone trades faster relief from the rebalance storm for slower detection of that stuck-but-alive case.",
       },
       {
         question: "Across nearly every entry in this catalog, what incident response is repeatedly called out as usually the wrong move?",
