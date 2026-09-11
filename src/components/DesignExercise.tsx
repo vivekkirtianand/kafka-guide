@@ -24,7 +24,7 @@ export default function DesignExercise({ exercises }: { exercises: Exercise[] })
   return (
     <div className="rounded-lg border border-border bg-bg-elevated p-5" data-testid="design-exercise">
       <div className="mb-4 flex items-center justify-between">
-        <div className="font-mono text-xs uppercase tracking-wide text-text-faint">Design exercise</div>
+        <div className="font-mono text-xs uppercase tracking-wide text-text-faint">Practical exercise</div>
         <button
           onClick={reset}
           className="rounded border border-border px-2.5 py-1 font-mono text-[11px] text-text-muted hover:border-accent/50 hover:text-accent"
