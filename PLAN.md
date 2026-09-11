@@ -1559,6 +1559,25 @@ rubric and gets no check.
 Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 1 and
 Module 4 pages render the check, pick → reveal → "next question →" works.
 
+**Review findings addressed (round 1)** (4 findings on PR #41 — 2×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 1's same-key question omitted the conditions that make "same partition" correct — an explicit partition or a custom partitioner can override the key. | Question now states "same key, no explicit partition, default partitioner"; the explanation calls out both overrides. |
+| P1 | Module 4's durability question ("survive the loss of one broker") could also be answered by "acks=all alone" — on a full ISR it does survive one loss. | Reworded to "guarantees every acknowledged write is on at least two in-sync replicas — even after the ISR has shrunk", which only `acks=all` + `min.insync.replicas=2` satisfies. |
+| P2 | Module 1's committed-offset explanation said the offset "is written periodically" — that is auto-commit behaviour, not manual `commitSync`/`commitAsync`. | "written to __consumer_offsets whenever a commit succeeds — periodically if enable.auto.commit is on, otherwise when the application calls commitSync/commitAsync". |
+| P2 | Module 1's group-scaling explanation called idle members "standbys" — risks conflation with Kafka Streams standby replicas. | "The extra members are simply idle — they pick up a partition only when a rebalance reassigns one". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
+**Review findings addressed (round 2)** (1 finding on PR #41, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Module 1's read-position option and explanation said it "advances every poll" — an empty poll leaves it unchanged, and `seek` can move it explicitly. | Option: "advances as poll returns records"; explanation: "moves forward as poll returns records (an empty poll leaves it where it is, and seek can move it explicitly)". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 ### PR 10a-2 — hands-on (Modules 2, 3, 5)
 
 - **`src/lib/data/modules.ts`** — `knowledgeChecks` on:
@@ -1580,6 +1599,21 @@ Module 4 pages render the check, pick → reveal → "next question →" works.
 
 Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser — Module 5's check
 renders, pick → reveal works.
+
+**Review findings addressed (round 1)** (8 findings on PR #42 — 4×P1, 4×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 2's keyed-record answer said different keys "spread across partitions" — hashing does not guarantee separation. | "Two different keys may land together or apart"; explanation notes the hash spreads keys on average, not by guarantee. |
+| P1 | Module 3's `enable.auto.commit=false` explanation repeated the auto-commit-skips-a-synchronous-batch error. | Reframed: in the simple loop a crash mid-batch replays either way (auto-commit fires on a later poll after the interval); manual commit keeps the guarantee explicit and holds under an async hand-off, where auto-commit would skip. |
+| P1 | Module 3's skip-policy answer said the record "is gone — no copy is kept". Skip only commits *this group* past it; the record stays on the source topic. | Answer: "this group commits past the record — no separate copy with error context, and this consumer will not normally come back"; explanation notes another group / an offset reset can still read it. |
+| P1 | Module 5's JSON answer limited JSON values to "string/number/boolean/null" — contradicting its own nested-object distractor. | "no native date, exact-decimal, or binary types" and "no schema checked unless you add JSON Schema"; explanation drops the false type limit. |
+| P2 | Module 2's auto-create explanation said Lab B would spawn a *1-partition* topic — its compose sets `KAFKA_NUM_PARTITIONS=3` / RF 3. | "a topic from the broker defaults … chosen by a global default rather than for that topic's workload" — no partition number. |
+| P2 | Module 3's `send()` premise ("returns before the broker has the record") over-specifies timing — the sender thread is concurrent. | "returns without confirming the record was written"; explanation: "may already be in flight or done, it just is not confirmed to the caller". |
+| P2 | Module 3's propagate answer said "only that partition's assignment is stuck" — `OrderConsumer.run()`'s finally closes the whole consumer. | Answer + explanation now: the exception unwinds `run()`, `close()` releases every partition on the instance, and whichever instance next gets the poison partition dies too. |
+| P2 | Module 5's wire-format question asked about "Confluent serializers" generally but described only the Avro/JSON prefix; "fetched once" ignores cache eviction. | Scoped to the Confluent Avro serializer, notes Protobuf's message-index header, and "fetched by id on first encounter and cached (an evicted entry means one more lookup)". |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
 ### PR 10a-3 — groups & pipelines (Modules 7, 8)
 
@@ -1611,37 +1645,12 @@ renders, pick → reveal works.
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
-**Review findings addressed (round 1)** (8 findings on PR #42 — 4×P1, 4×P2):
+**Review findings addressed (round 2)** (2 follow-up findings on PR #43, same two questions):
 
 | # | Finding | Fix |
 |--|--|--|
-| P1 | Module 2's keyed-record answer said different keys "spread across partitions" — hashing does not guarantee separation. | "Two different keys may land together or apart"; explanation notes the hash spreads keys on average, not by guarantee. |
-| P1 | Module 3's `enable.auto.commit=false` explanation repeated the auto-commit-skips-a-synchronous-batch error. | Reframed: in the simple loop a crash mid-batch replays either way (auto-commit fires on a later poll after the interval); manual commit keeps the guarantee explicit and holds under an async hand-off, where auto-commit would skip. |
-| P1 | Module 3's skip-policy answer said the record "is gone — no copy is kept". Skip only commits *this group* past it; the record stays on the source topic. | Answer: "this group commits past the record — no separate copy with error context, and this consumer will not normally come back"; explanation notes another group / an offset reset can still read it. |
-| P1 | Module 5's JSON answer limited JSON values to "string/number/boolean/null" — contradicting its own nested-object distractor. | "no native date, exact-decimal, or binary types" and "no schema checked unless you add JSON Schema"; explanation drops the false type limit. |
-| P2 | Module 2's auto-create explanation said Lab B would spawn a *1-partition* topic — its compose sets `KAFKA_NUM_PARTITIONS=3` / RF 3. | "a topic from the broker defaults … chosen by a global default rather than for that topic's workload" — no partition number. |
-| P2 | Module 3's `send()` premise ("returns before the broker has the record") over-specifies timing — the sender thread is concurrent. | "returns without confirming the record was written"; explanation: "may already be in flight or done, it just is not confirmed to the caller". |
-| P2 | Module 3's propagate answer said "only that partition's assignment is stuck" — `OrderConsumer.run()`'s finally closes the whole consumer. | Answer + explanation now: the exception unwinds `run()`, `close()` releases every partition on the instance, and whichever instance next gets the poison partition dies too. |
-| P2 | Module 5's wire-format question asked about "Confluent serializers" generally but described only the Avro/JSON prefix; "fetched once" ignores cache eviction. | Scoped to the Confluent Avro serializer, notes Protobuf's message-index header, and "fetched by id on first encounter and cached (an evicted entry means one more lookup)". |
-
-Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
-
-**Review findings addressed (round 1)** (4 findings on PR #41 — 2×P1, 2×P2):
-
-| # | Finding | Fix |
-|--|--|--|
-| P1 | Module 1's same-key question omitted the conditions that make "same partition" correct — an explicit partition or a custom partitioner can override the key. | Question now states "same key, no explicit partition, default partitioner"; the explanation calls out both overrides. |
-| P1 | Module 4's durability question ("survive the loss of one broker") could also be answered by "acks=all alone" — on a full ISR it does survive one loss. | Reworded to "guarantees every acknowledged write is on at least two in-sync replicas — even after the ISR has shrunk", which only `acks=all` + `min.insync.replicas=2` satisfies. |
-| P2 | Module 1's committed-offset explanation said the offset "is written periodically" — that is auto-commit behaviour, not manual `commitSync`/`commitAsync`. | "written to __consumer_offsets whenever a commit succeeds — periodically if enable.auto.commit is on, otherwise when the application calls commitSync/commitAsync". |
-| P2 | Module 1's group-scaling explanation called idle members "standbys" — risks conflation with Kafka Streams standby replicas. | "The extra members are simply idle — they pick up a partition only when a rebalance reassigns one". |
-
-Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
-
-**Review findings addressed (round 2)** (1 finding on PR #41, P2):
-
-| # | Finding | Fix |
-|--|--|--|
-| P2 | Module 1's read-position option and explanation said it "advances every poll" — an empty poll leaves it unchanged, and `seek` can move it explicitly. | Option: "advances as poll returns records"; explanation: "moves forward as poll returns records (an empty poll leaves it where it is, and seek can move it explicitly)". |
+| P1 | The auto-commit explanation still said a crash right after `poll()` loses work — it doesn't, by itself; loss needs a *later* poll or a successful `close()` commit to advance the position while earlier work is unfinished, and `close()` only *attempts* the commit. | Reworded: "a crash right after a poll does not by itself lose anything, but if a later poll or that closing commit advances the position while an earlier batch's work is still unfinished, that work is skipped"; option text: "close() attempts one more [commit] on a clean shutdown". |
+| P2 | The poison-record explanation still said "the raw consumer's default behaviour is to skip", contradicting the branched answer above it. | Reworded to: `KafkaConsumer` only moves the in-memory position; skip vs. redelivery is decided by the surrounding application's lifecycle and commit outcome, not the client itself. |
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 

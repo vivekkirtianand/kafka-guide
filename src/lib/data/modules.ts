@@ -2339,13 +2339,13 @@ export const modules: Module[] = [
         question: "With enable.auto.commit=true, when does the consumer commit offsets?",
         options: [
           "The instant each record finishes processing",
-          "On the next poll() once auto.commit.interval.ms has elapsed (for the records the previous poll returned), and once more on a clean close()",
+          "On the next poll() once auto.commit.interval.ms has elapsed (for the records the previous poll returned), and close() attempts one more on a clean shutdown",
           "Only when the application calls commitSync()",
           "Only when the consumer shuts down",
         ],
         answerIndex: 1,
         explanation:
-          "Auto-commit piggybacks on poll(), on the assumption you finished the previous batch, and a clean close() flushes one final commit of the current position. Both are driven by the loop's timing, not by the work finishing — so auto-commit can advance past records you are still handling on another path, or lose work if you crash after poll() but before finishing.",
+          "Auto-commit piggybacks on poll(), on the assumption you finished the previous batch, and a clean close() attempts one final commit of the current position (it is not guaranteed to succeed). Both are driven by the loop's timing, not by the work finishing — a crash right after a poll does not by itself lose anything, but if a later poll or that closing commit advances the position while an earlier batch's work is still unfinished, that work is skipped rather than redelivered.",
       },
       {
         question: "A group is on the default assignment strategy (classic protocol). One consumer joins. What do the other consumers do during the rebalance?",
@@ -2393,7 +2393,7 @@ export const modules: Module[] = [
         ],
         answerIndex: 1,
         explanation:
-          "The raw consumer's default behaviour is to skip — but only the committed offset makes a skip stick, so an uncommitted crash replays the record. The opposite mistake is a handler that seeks back and retries forever: the offset never advances and every record behind it is blocked.",
+          "KafkaConsumer itself only moves the in-memory position past the batch it returned — it has no opinion on skip versus redelivery. What decides that is the surrounding application: whether it keeps polling (and eventually commits), closes cleanly (one attempted commit), or crashes with nothing committed. The opposite mistake is a handler that seeks back and retries forever: the offset never advances and every record behind it is blocked.",
       },
       {
         question: "What single rule keeps a poison-message strategy from either losing data or blocking a partition?",
