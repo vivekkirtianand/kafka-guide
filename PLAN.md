@@ -1721,6 +1721,40 @@ Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 **Phase 10a is complete** — 10a-1 through 10a-4 merged, every content module (1–11) has a
 per-lesson knowledge check.
 
+## Phase 10b — per-module practical verification
+
+A per-module hands-on exercise, reusing the `Exercise` type (`prompt` + `successCriteria`)
+and the `DesignExercise` component Module 0's "should this use Kafka?" task already exercises
+— renamed here from "Design exercise" to "Practical exercise" now that it covers both a
+written design task and a real command-line verification task. Same 4-PR-by-theme split as
+10a: 10b-1 core concepts (Modules 1, 4), 10b-2 hands-on (Modules 2, 3, 5), 10b-3 groups &
+pipelines (Modules 7, 8), 10b-4 reference (Modules 6, 9, 10, 11).
+
+### PR 10b-1 — core concepts (Modules 1 and 4)
+
+- **`src/lib/data/modules.ts`** — `exercises` on:
+  - `mental-model`: a paper-based predict-and-justify scenario (no running cluster — Module 1
+    sits *before* Module 2's lab in course order). Same-key partitioning without naming a
+    specific partition number, a 4-partition/2-member group split, what a third member joining
+    does to that split, that reading doesn't remove a record, and resuming from the committed
+    offset (not the in-memory read position) after a restart.
+  - `keys-ordering-and-delivery`: a hands-on Lab B task (Module 2's lab, by this point already
+    done). Confirms same-key records share a partition, then deliberately raises
+    `min.insync.replicas` to equal the replication factor *before* stopping a broker — stopping
+    only **one** of three brokers keeps the KRaft controller quorum (2 of 3) intact, so the
+    resulting `NOT_ENOUGH_REPLICAS` rejection is reproducible without the confound of losing
+    quorum. Stopping two of three would have risked both effects at once.
+- **`src/components/DesignExercise.tsx`** — header text "Design exercise" → "Practical
+  exercise". No prop/behavior change; not asserted by name in `DesignExercise.test.tsx`.
+- **`src/lib/data/modules.test.ts`** — new `describe("exercises (any module)")` block with a
+  `VERIFIED_MODULES` list (mirrors `CHECKED_MODULES`), starting with `mental-model` and
+  `keys-ordering-and-delivery`. Asserts a prompt length floor, `successCriteria.length >= 3`,
+  and no empty criteria.
+
+Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — both module pages
+render "PRACTICAL EXERCISE" with the full prompt and checklist; checkbox ticking and reset
+work; no console errors.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
