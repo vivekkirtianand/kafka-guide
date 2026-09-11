@@ -1710,6 +1710,14 @@ Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser —
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 
+**Review findings addressed (round 2)** (1 finding on PR #44, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | The hot-partition explanation on the *preceding* question still listed "more partitions" alongside a better key / salting as a fix for a single dominant key — the same false premise round 1 fixed on the next question. | Qualified: more partitions help once *many* keys are competing for too few of them; a single dominant key or tenant needs a different key, salting, or custom routing — no partition count splits one key's traffic. |
+
+Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
 **Phase 10a is complete** — 10a-1 through 10a-4 merged, every content module (1–11) has a
 per-lesson knowledge check.
 

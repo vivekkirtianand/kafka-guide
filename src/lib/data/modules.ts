@@ -3763,7 +3763,7 @@ export const modules: Module[] = [
         ],
         answerIndex: 1,
         explanation:
-          "Hot partitions hide behind a healthy group total. The fix is checking per-partition throughput and key cardinality — a better key, key salting, or more partitions — not adding consumers, which can't split one partition further.",
+          "Hot partitions hide behind a healthy group total. Start by checking per-partition throughput and key cardinality: more partitions can help once many keys are competing for too few of them, but a single dominant key or tenant needs a different key, key salting, or custom routing — no partition count splits one key's traffic. Either way, adding consumers doesn't help; a partition is never split across consumers in one group.",
       },
       {
         question: "A topic's load is dominated by one hot key, not many skewed keys. Does raising the partition count fix that on its own?",
