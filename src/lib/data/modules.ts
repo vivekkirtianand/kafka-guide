@@ -2044,6 +2044,104 @@ export const modules: Module[] = [
           "An open transaction blocks read_committed consumers from reading past it. When the timeout elapses the coordinator aborts it, and the producer's next attempt to continue that transaction is fenced.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "With acks=1, the leader acknowledges a write and then dies before any follower replicates it. What happens to that record?",
+        options: [
+          "It is safe — acks=1 confirms durability",
+          "An in-sync follower can be elected leader without the record, so the acknowledged write is simply gone",
+          "The producer automatically resends it",
+          "It is recovered from the old leader's disk once that broker returns",
+        ],
+        answerIndex: 1,
+        explanation:
+          "acks=1 only confirms the leader's own log. A clean election among the remaining ISR doesn't need that record, so it can vanish even though the producer was told the write succeeded.",
+      },
+      {
+        question: "A topic's ISR has shrunk to just the leader, and min.insync.replicas is unset (so the broker default applies loosely). What does acks=all do with the next write?",
+        options: [
+          "Rejects it outright",
+          "Still acknowledges it — acks=all waits for every replica currently in the ISR, which right now is just the leader",
+          "Waits indefinitely for the ISR to grow back",
+          "Silently downgrades to acks=1",
+        ],
+        answerIndex: 1,
+        explanation:
+          "acks=all is defined against whatever the current ISR is, not a fixed count. min.insync.replicas is the separate floor that makes the leader reject a write instead of acking a thin ISR.",
+      },
+      {
+        question: "What does enable.idempotence=true actually prevent?",
+        options: [
+          "A record ever being lost",
+          "A retried batch the broker already wrote from being appended a second time",
+          "Two different producers writing to the same key",
+          "A leader election from happening",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The producer tags each batch with an id and a per-partition sequence number; the broker discards a batch it has already seen. That's what makes Kafka's effectively-unbounded retries safe from duplication — it says nothing about durability or elections.",
+      },
+      {
+        question: "linger.ms=0 is set. Two records for the same partition arrive at the client microseconds apart. Do they end up in the same batch?",
+        options: [
+          "No — linger.ms=0 disables batching entirely",
+          "They still can — linger.ms=0 only means the producer won't deliberately wait for more records, not that records already ready together can't share a batch",
+          "Only if compression is enabled",
+          "Only if they carry the same key",
+        ],
+        answerIndex: 1,
+        explanation:
+          "batch.size is the other trigger. Records that happen to be ready together still batch even with zero linger wait.",
+      },
+      {
+        question: "The producer's buffer.memory fills up. What happens to the next send() call?",
+        options: [
+          "It throws immediately",
+          "It blocks the calling thread, up to max.block.ms, while the sender thread drains the buffer to the brokers — nothing has been lost yet",
+          "The record is silently dropped",
+          "It bypasses the buffer and writes straight to the network",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A full buffer is backpressure, not failure. The thread just looks hung until either the buffer drains or max.block.ms is exceeded and a TimeoutException is thrown.",
+      },
+      {
+        question: "retries is left at its effectively-unbounded default. What actually caps how long the producer keeps retrying a failing send before giving up?",
+        options: [
+          "retries itself — it stops after that many attempts",
+          "delivery.timeout.ms — the outer budget covering the linger wait, every retry, and every request.timeout.ms window",
+          "max.block.ms",
+          "There is no cap; it retries forever",
+        ],
+        answerIndex: 1,
+        explanation:
+          "With retries effectively unbounded, delivery.timeout.ms is what actually ends the attempt and delivers a TimeoutException to the callback. request.timeout.ms only bounds a single round trip inside that budget.",
+      },
+      {
+        question: "max.in.flight.requests.per.connection=5 and enable.idempotence=false. An earlier request to a partition fails and is retried while a later request to the same partition already succeeded. What happens to the log order?",
+        options: [
+          "Kafka detects and corrects the reordering automatically",
+          "The later record can land in the log before the retried earlier one — silently, with no error raised",
+          "The retry is rejected outright",
+          "Both records are deduplicated",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Without idempotence, in-flight requests can complete out of order on a retry. enable.idempotence=true fixes this up to 5 in-flight requests via per-partition sequence numbers; without it, the only fix is capping in-flight requests to 1.",
+      },
+      {
+        question: "A producer writes idempotently to two partitions in one call. Partition A's write succeeds; partition B's fails. What does idempotence alone guarantee here?",
+        options: [
+          "Both writes are automatically rolled back together",
+          "Nothing — idempotence is per-partition, not atomic across partitions, so A's success and B's failure can both stand",
+          "The producer is fenced from writing again",
+          "A's write is also reverted",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Idempotence gives no-duplicates per partition. All-or-nothing atomicity across partitions needs a transaction (transactional.id, enable.idempotence=true, acks=all) — read_committed consumers then see either every record in it or none.",
+      },
+    ],
     activities: [
       "Compare acks=0, acks=1, and acks=all",
       "Introduce latency and measure batching and throughput",
@@ -3079,6 +3177,104 @@ export const modules: Module[] = [
           "default.replication.factor=1 is the dangerous default on a multi-broker cluster: any topic created without an explicit factor has no redundancy at all.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "A topic has replication.factor=2 and min.insync.replicas=2. One broker goes down. What happens to acks=all writes?",
+        options: [
+          "They keep flowing at reduced durability",
+          "Every one of them starts failing — with only 2 replicas and one down, the ISR can no longer stay at 2",
+          "The topic automatically becomes read-only",
+          "min.insync.replicas is silently ignored",
+        ],
+        answerIndex: 1,
+        explanation:
+          "min.insync.replicas equal to the replication factor tolerates zero broker loss. Keep the replication factor above min.insync.replicas — RF 3 with min.insync.replicas 2 is the common safe pairing.",
+      },
+      {
+        question: "A topic is cleanup.policy=compact. Can a new consumer replay the full history of every value ever written for a key?",
+        options: [
+          "Yes — compaction only removes tombstones",
+          "No — compaction only guarantees the latest value per key survives; older values for that key are removed over time",
+          "Yes, as long as retention.ms is large enough",
+          "Only if the key was never overwritten",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Compaction is not full-history retention. It collapses each key down to its latest value (with some lag while the cleaner catches up) — never rely on it to replay a key's full history.",
+      },
+      {
+        question: "A low-traffic partition's retention.ms has clearly been exceeded, but old records are still sitting on disk. Why?",
+        options: [
+          "retention.ms is only a soft suggestion",
+          "A segment isn't eligible for deletion until it's closed and rolled — retention removes whole segments, and this partition's active segment hasn't rolled yet",
+          "The broker has a bug",
+          "Compaction is blocking deletion",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Retention granularity is the segment. A segment rolls at segment.bytes or segment.ms; until then, even long-expired records in the still-open active segment stay on disk.",
+      },
+      {
+        question: "A record batch exceeds message.max.bytes. What happens?",
+        options: [
+          "The broker accepts it and flags it for later cleanup",
+          "The broker rejects it outright with RecordTooLargeException — a hard limit, unlike the softer fetch-side limits",
+          "It's split into two smaller batches automatically",
+          "It's compressed further until it fits",
+        ],
+        answerIndex: 1,
+        explanation:
+          "message.max.bytes (or a topic's max.message.bytes override) is a hard cap enforced at write time. The fetch-side limits (replica.fetch.max.bytes, a consumer's fetch.max.bytes) are soft — an oversized batch is still returned whole so reading isn't blocked.",
+      },
+      {
+        question: "A producer exceeds its producer_byte_rate quota. What does the client actually experience?",
+        options: [
+          "A rejected produce request",
+          "No error — the broker delays its responses, so the client experiences it as added latency, not a failure",
+          "An immediate disconnect",
+          "A warning header on the next successful response",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Quotas throttle rather than reject. A throttled client just looks slow; the produce/fetch throttle-time metrics are how you tell that apart from genuine slowness.",
+      },
+      {
+        question: "2 of 3 KRaft controller nodes go down. What happens to a partition whose leader was already elected and is currently running fine?",
+        options: [
+          "It goes offline immediately",
+          "It keeps serving reads and writes — but no new leader elections, topic creations, or other metadata changes can happen until quorum is restored",
+          "Every broker in the cluster stops responding to clients",
+          "The remaining controller promotes itself and nothing else changes",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Losing controller quorum freezes metadata changes, not existing data-plane traffic. An already-elected leader keeps serving until something needs a new metadata decision — which is exactly when the frozen quorum becomes visible.",
+      },
+      {
+        question: "A client successfully bootstraps against a broker, then hangs on its very next request. What's the classic cause?",
+        options: [
+          "The topic doesn't exist",
+          "advertised.listeners handed back an address the client can't route to — NAT, a load balancer, or container networking",
+          "The consumer group is mid-rebalance",
+          "acks=all is misconfigured",
+        ],
+        answerIndex: 1,
+        explanation:
+          "listeners is what the broker binds to locally; advertised.listeners is the address it tells clients to reconnect on. A mismatch there produces exactly this connects-then-hangs pattern.",
+      },
+      {
+        question: "You add broker.rack labels to an already-running cluster. What changes for the existing topics' current replica placement?",
+        options: [
+          "Kafka immediately reassigns every partition across the new racks",
+          "Nothing yet — rack-aware placement only applies to new assignments; existing replicas need an explicit partition reassignment to actually spread across racks",
+          "The affected topics go offline until reassignment finishes",
+          "Replication factor is automatically raised to match the rack count",
+        ],
+        answerIndex: 1,
+        explanation:
+          "broker.rack only changes future placement decisions. Rack-aware fetching (client.rack plus the rack-aware replica.selector.class) is different — it takes effect on existing partitions immediately, with no reassignment needed.",
+      },
+    ],
     activities: [
       "Shrink the ISR below min.insync.replicas and watch acks=all writes fail",
       "Compare delete and compact cleanup on the same keyed log",
@@ -3390,6 +3586,104 @@ export const modules: Module[] = [
           "A crashed cleaner thread is silent. With the default log.cleaner.threads=1 it stops compaction entirely — every compacted topic (including __consumer_offsets) just grows; with more threads it only cuts throughput. Alert on max-dirty-percent and on live cleaner threads.",
       },
     },
+    knowledgeChecks: [
+      {
+        question: "Group A's lag is flat at 10,000 for a week. Group B's lag just started climbing 500/minute from zero. Which needs attention first?",
+        options: [
+          "Group A, because 10,000 is the bigger number",
+          "Group B — a rising slope pages regardless of where lag started; flat-10,000 still needs checking against your latency SLA and retention, but it isn't the urgent one",
+          "Neither; only offline partitions matter",
+          "Group A, because it's been that way longer",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Slope first, then the absolute value. A runaway climb is the more urgent signal; a stable backlog still has to clear the SLA and stay inside retention, but it isn't actively getting worse.",
+      },
+      {
+        question: "A consumer group's total lag looks flat and healthy. Does that mean every partition in the group is keeping up?",
+        options: [
+          "Yes — a flat total guarantees every partition is fine",
+          "Not necessarily — one partition can be stuck (a poison message, a hot key) while the rest race ahead and mask it in the total",
+          "Only if the group has exactly one member",
+          "Only if auto.offset.reset is earliest",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Always check lag per partition, not just the group total. A single stuck partition can hide behind several healthy ones.",
+      },
+      {
+        question: "UnderReplicatedPartitions is non-zero, but OfflinePartitionsCount is 0. What does that tell you?",
+        options: [
+          "The cluster is down",
+          "Some partitions have fewer in-sync replicas than their full replica set, but every partition still has a leader and is serving reads and writes",
+          "Every topic has lost data",
+          "A consumer rebalance is in progress",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Under-replicated means the ISR is smaller than the full replica set — a replica is down or lagging — but the partition is still available as long as it has a leader. Offline means no leader at all.",
+      },
+      {
+        question: "A produce request's TotalTimeMs is dominated by RemoteTimeMs. What does that point to?",
+        options: [
+          "Too few broker I/O threads",
+          "The leader waiting on a slow follower to catch up (for acks=all), or on data for a long-poll fetch",
+          "Slow disk on the leader itself",
+          "A saturated network interface on the client",
+        ],
+        answerIndex: 1,
+        explanation:
+          "RemoteTimeMs is time spent waiting on other brokers, not the leader's own work. High RequestQueueTimeMs points to too few I/O threads or a saturated broker instead; high LocalTimeMs to slow disk or lock contention on the leader.",
+      },
+      {
+        question: "You see a burst of NOT_LEADER_OR_FOLLOWER errors right after a leader election, then it drops to zero. Is that a problem?",
+        options: [
+          "Yes — always page on this error code",
+          "No — a brief burst around an election is expected; a continuous low rate afterward is the real problem, meaning clients are persistently acting on stale metadata",
+          "It means acks=all is misconfigured",
+          "It means the topic needs more partitions",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A short burst tied to an election is normal client catch-up. A sustained rate afterward means metadata propagation or the controller needs a look.",
+      },
+      {
+        question: "One broker's log directory fills up completely. What happens to a partition it was replicating (but not leading)?",
+        options: [
+          "The whole partition goes offline everywhere",
+          "That broker's replica of the partition goes offline; the partition keeps serving from surviving replicas, though acks=all writes can still fail if the remaining ISR drops below min.insync.replicas",
+          "Every topic on the cluster stops accepting writes",
+          "The disk automatically frees space by deleting old segments early",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A full log directory takes that broker's replicas offline, not the partitions themselves. Reads and acks=1 writes continue from a surviving replica; acks=all still needs the min.insync.replicas floor met.",
+      },
+      {
+        question: "A cluster is monitored only through kafka-exporter. Brokers are intermittently 'up but acting dead' — dropping out of ISRs, missing heartbeats. What can this monitoring setup not see that's a likely cause?",
+        options: [
+          "Disk saturation — kafka-exporter reports that fine",
+          "JVM garbage-collection pauses — kafka-exporter doesn't expose heap or GC metrics; that needs a JMX exporter or the JVM's own telemetry",
+          "Network saturation — also fully visible to it",
+          "Under-replicated partitions — also visible to it",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A GC-pausing broker stalls replication and heartbeats in a way kafka-exporter's Kafka-protocol-level metrics never surface. It's a common monitoring blind spot.",
+      },
+      {
+        question: "A consumer group on the classic eager protocol rebalances every few minutes. How would switching to cooperative assignment change the cost of each one?",
+        options: [
+          "No difference — rebalances cost the same either way",
+          "Eager stops the whole group consuming during every rebalance; cooperative only pauses the partitions that are actually moving",
+          "Cooperative assignment eliminates rebalances entirely",
+          "The protocol only affects producers, not consumers",
+        ],
+        answerIndex: 1,
+        explanation:
+          "The protocol changes how much a rebalance costs, not how often one happens. Eager is stop-the-world; cooperative assignment (and the newer KIP-848 protocol) keeps unaffected partitions flowing.",
+      },
+    ],
     activities: [
       "Read an unlabeled dashboard and name the bottleneck: producer, broker, consumer, disk, network, or downstream",
       "Break a request-latency total into its queue, local, and remote phases",
@@ -3433,6 +3727,104 @@ export const modules: Module[] = [
       "Hot partitions",
       "Data loss, duplicates, and out-of-order records",
       "Connectivity and authentication",
+    ],
+    knowledgeChecks: [
+      {
+        question: "NOT_ENOUGH_REPLICAS errors coincide exactly with a routine rolling restart, and clear within seconds each time it happens. What's the likely fix?",
+        options: [
+          "Lower min.insync.replicas to stop the errors",
+          "Check whether min.insync.replicas equals the replication factor — that leaves zero tolerance for even a brief, expected ISR dip during a restart",
+          "Raise acks to a higher value",
+          "Disable unclean leader election",
+        ],
+        answerIndex: 1,
+        explanation:
+          "min.insync.replicas equal to the replication factor means any single replica blip — even a routine restart — crosses the floor. The common safe pairing is RF 3 with min.insync.replicas 2; lowering the floor to silence the error just accepts less durability.",
+      },
+      {
+        question: "A TimeoutException is raised because records expired in the producer's accumulator after several retries, not because a single request failed. Which config actually governs that?",
+        options: [
+          "request.timeout.ms",
+          "delivery.timeout.ms — the outer budget covering the linger wait, every retry, and every request.timeout.ms window along the way",
+          "max.block.ms",
+          "session.timeout.ms",
+        ],
+        answerIndex: 1,
+        explanation:
+          "\"Timeout\" is several different clocks, and the exact exception tells you which one fired. Raising request.timeout.ms would do nothing for a delivery.timeout.ms expiry.",
+      },
+      {
+        question: "A consumer group's total lag looks healthy, but one broker is running hot and its assigned partition's consumer is permanently behind. What's the likely cause?",
+        options: [
+          "The group needs more consumer instances than there are partitions",
+          "A poorly distributed key (or one dominant tenant) is sending a disproportionate share of traffic to that one partition",
+          "retention.ms is set too low",
+          "The broker's disk is full",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Hot partitions hide behind a healthy group total. The fix is checking per-partition throughput and key cardinality — a better key, key salting, or more partitions — not adding consumers, which can't split one partition further.",
+      },
+      {
+        question: "You raise a hot topic's partition count to spread a skewed key's load. What does that cost?",
+        options: [
+          "Nothing — it's a free fix",
+          "The key-to-partition mapping changes for every key, so existing keys scatter and per-key ordering across the change boundary is not preserved",
+          "It automatically redistributes existing data across the new partitions",
+          "It reduces the topic's replication factor",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Repartitioning changes hash(key) % partitionCount for most keys. Do it during a quiet window and expect a temporary reshuffle — ordering guarantees don't carry across the boundary.",
+      },
+      {
+        question: "A topic's disk usage on one broker keeps growing well past what its retention settings should allow. Besides retention being set too high, what else is worth checking?",
+        options: [
+          "Nothing else affects disk usage besides retention.ms",
+          "Whether the log cleaner is falling behind on a compacted topic, or whether segments simply aren't rolling yet so retention can't act on them",
+          "The consumer group's session timeout",
+          "The producer's acks setting",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Disk growth has several independent causes: the retention window, an ingestion increase, partition imbalance, a lagging log cleaner on compacted topics, and segments that haven't rolled (retention only removes whole closed segments).",
+      },
+      {
+        question: "A producer throws RecordTooLargeException synchronously from send(), before anything reaches the network. Which limit fired?",
+        options: [
+          "The broker's message.max.bytes",
+          "The producer's own max.request.size, enforced locally inside send()",
+          "A topic-level max.message.bytes override",
+          "The consumer's fetch.max.bytes",
+        ],
+        answerIndex: 1,
+        explanation:
+          "max.request.size is enforced client-side, synchronously, before the record is even batched. A broker- or topic-level rejection instead shows up later, as a failed round trip.",
+      },
+      {
+        question: "A group rebalances constantly because processing occasionally overruns max.poll.interval.ms. Someone proposes just raising that timeout. What's the risk?",
+        options: [
+          "None — raising it is the correct fix on its own",
+          "It hides the slow processing, and it also lengthens how long a genuinely dead consumer holds its partitions before the group notices and recovers",
+          "It has no effect either way",
+          "It will start causing NOT_ENOUGH_REPLICAS errors",
+        ],
+        answerIndex: 1,
+        explanation:
+          "Fix the processing time (or lower max.poll.records) first. Raising the interval alone trades faster relief from the rebalance storm for slower detection of an actually-dead consumer.",
+      },
+      {
+        question: "Across nearly every entry in this catalog, what incident response is repeatedly called out as usually the wrong move?",
+        options: [
+          "Restarting the affected broker",
+          "Lowering a durability setting — like min.insync.replicas or acks — just to make the error stop appearing",
+          "Checking per-partition metrics before acting",
+          "Reading the exact exception message",
+        ],
+        answerIndex: 1,
+        explanation:
+          "A durability floor exists to reject something dangerous. Turning it down \"fixes\" the symptom by accepting the risk it was guarding against, instead of repairing the underlying replica, network, or disk problem.",
+      },
     ],
     activities: [],
     status: "available",

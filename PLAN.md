@@ -53,7 +53,7 @@ unless noted.
 | 7 | Connect & Streams ✅ | **7a ✅** Module 8 Connect content + Lab D (file source/sink via the Connect REST API); **7b ✅** deeper Streams content (5th topic + serdes/GlobalKTable/cache/co-partitioning) + Lab E (an order-total aggregation Streams app in `examples/order-pipeline-java/`, run against the Lab B stack) | 4, 5 | M2 |
 | 8 | Version & deployment awareness | **8a ✅** add Kafka 4.1/4.2/4.3 to `KAFKA_VERSIONS`, `KAFKA_VERSION_INFO` lifecycle table + archived markers, ZooKeeper gated by `versionAtLeast`, `getDefaultValue` walk-back, default → 4.3, 8c renames folded in (lab image kept at 4.0.2 per decision); **8b ✅** `applicableVersions` (Kafka 4.x range) on all 12 modules + 14 runbooks, shared `VersionApplicability` render + out-of-range caveat, `versionRangeLabel` | 1a | M3 |
 | 9 | Expand config explorer | **9a ✅** ~20 beginner client configs + new `client` scope (shared producer/consumer connection/security/timeout properties); **9b ✅** `ConfigEntry` gains optional `exampleValue` / `safeBaseline` / `verification` / `rollback` / `managedCaveat` + a derived `kafkaDocUrl`; populated on the 9a configs + ~11 high-traffic existing; explorer gains a risk filter and renders the new fields | 8b | M3 |
-| 10 | Assessments & capstone | **10a 🚧** per-lesson knowledge checks — Modules 1–11 (4 PRs by theme, 6–8 Qs each; 10a-1 ✅ Modules 1 + 4, 10a-2 ✅ Modules 2 + 3 + 5, 10a-3 ✅ Modules 7 + 8); 10b per-module practical verification; **10c ✅** capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) — Module 12 | 4, 5, 7 | M3 |
+| 10 | Assessments & capstone | **10a ✅** per-lesson knowledge checks — Modules 1–11 (4 PRs by theme, 6–8 Qs each: 10a-1 Modules 1+4, 10a-2 Modules 2+3+5, 10a-3 Modules 7+8, 10a-4 Modules 6+9+10+11); 10b per-module practical verification; **10c ✅** capstone brief + 11-step spec + scoring rubric (correctness / reliability / observability / operational safety) — Module 12 | 4, 5, 7 | M3 |
 | 11 | UX, a11y, QA | 11a accessible names on every filter/form control + `axe` checks; 11b Playwright browser-journey + keyboard-only tests; 11c broken-link + mobile-viewport + content-schema validation; 11d reduced-motion for demos + printable views; 11e full quality-gate list in CI | all content phases | M3 |
 
 ### Milestones
@@ -1662,6 +1662,44 @@ Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 | P2 | The poison-record option said "a clean close() … makes that skip permanent" — but `close()` only *attempts* the commit (per the neighboring answer); if it fails or times out, the record is redelivered. | "a successful clean-close commit … makes that skip permanent". |
 
 Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
+
+### PR 10a-4 — reference (Modules 6, 9, 10, 11)
+
+Final 10a PR — completes Phase 10a.
+
+- **`src/lib/data/modules.ts`** — `knowledgeChecks` on:
+  - `producer-configuration` (8 Qs): acks=1 can still lose an acknowledged write on a clean
+    election, acks=all alone isn't a floor (that's `min.insync.replicas`), what idempotence
+    actually prevents, `linger.ms=0` doesn't disable batching, a full `buffer.memory` blocks
+    rather than fails, `delivery.timeout.ms` is the real retry bound, reordering without
+    idempotence, transactions add atomicity idempotence doesn't have.
+  - `broker-topic-configuration` (8 Qs): `min.insync.replicas == replication.factor` is a
+    trap, compaction ≠ full history, retention granularity is the segment, `message.max.bytes`
+    is a hard limit vs. the soft fetch limits, quotas throttle not reject, controller-quorum
+    loss freezes metadata not existing traffic, `advertised.listeners` mismatch is the
+    connects-then-hangs bug, rack awareness only affects *new* placement.
+  - `observability` (8 Qs): lag slope before absolute value, per-partition lag can hide behind
+    a healthy total, under-replicated ≠ offline, `RemoteTimeMs` means waiting on other
+    brokers, a `NOT_LEADER_OR_FOLLOWER` burst around an election is normal, a full disk takes
+    down one broker's replica not the partition, `kafka-exporter` can't see GC/heap, rebalance
+    protocol changes the *cost* of a rebalance not just the frequency.
+  - `troubleshooting-scenarios` (8 Qs, grounded in `troubleshooting.ts` — this module has no
+    `topicDetail`, it embeds `TroubleshootingCatalog`): the `min.insync.replicas`-equals-RF
+    trap again from the incident angle, which timeout clock actually fired, hot partitions
+    hiding behind healthy group lag, repartitioning scatters existing keys, disk growth has
+    causes beyond retention, which size limit produced a synchronous vs. round-trip failure,
+    raising `max.poll.interval.ms` trades rebalance relief for slower dead-consumer detection,
+    and the catalog's recurring watch-out (don't lower a durability floor to silence an error).
+- **`src/lib/data/modules.test.ts`** — `CHECKED_MODULES` extended to all four slugs (11 of 13
+  modules now checked — Module 0 has its own earlier tests, Module 12 is rubric-graded).
+  Suite unchanged at 457.
+
+Verified: `typecheck` / `lint` / `test` (457) / `build` clean; browser —
+`/modules/troubleshooting-scenarios` renders both the knowledge check and the
+`TroubleshootingCatalog` together; pick → reveal works; no console errors.
+
+**Phase 10a is complete** — 10a-1 through 10a-4 merged, every content module (1–11) has a
+per-lesson knowledge check.
 
 ## Phase 10c — the capstone (Module 12)
 

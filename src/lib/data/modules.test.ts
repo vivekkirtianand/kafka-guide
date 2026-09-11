@@ -638,6 +638,10 @@ describe("knowledge checks (any module)", () => {
     "schemas-and-data-contracts",
     "consumer-configuration",
     "connect-and-streams",
+    "producer-configuration",
+    "broker-topic-configuration",
+    "observability",
+    "troubleshooting-scenarios",
   ];
 
   it("gives every Phase 10a module a knowledge check of at least five well-formed questions", () => {
