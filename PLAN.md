@@ -1846,6 +1846,34 @@ Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-che
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+### PR 10b-3 — groups & pipelines (Modules 7 and 8)
+
+Designed up front to avoid the two failure patterns 10b-2 needed four review rounds to shake
+out: a fixed small set of customer keys not hashing to every partition, and manually timing a
+narrow race window. Both exercises here use only mechanisms with wide, non-racy margins or no
+timing dependency at all.
+
+- **`src/lib/data/modules.ts`** — `exercises` on:
+  - `consumer-configuration`: verifies group.id independence for real — run `ConsumerApp` with
+    group `reporting` against `orders`, let it fully catch up, then run it again with group
+    `fulfilment` and confirm it processes every one of the same records too (a different
+    group.id gets its own full copy, not a split) — checked via `kafka-consumer-groups.sh
+    --describe` reaching LAG 0 on both, independently. Then verifies the read-position-vs-
+    committed-offset gap using the plain console consumer with `--consumer-property
+    auto.commit.interval.ms=60000` (a deliberately generous, explicit window, not the 5s
+    default) — describe once right after it catches up (offset lags what's on screen), wait a
+    genuine 60+ seconds with it still running, describe again (offset catches up, without a
+    restart) — no race, just a long, comfortable, known interval.
+  - `connect-and-streams`: has the learner build a second, fully independent source/sink
+    connector pair through Lab D's Connect REST API from scratch — their own name, file, and
+    topic — to prove they understand the PUT/status/GET/DELETE pattern rather than having
+    copy-pasted Lab D's exact commands, and confirms connector isolation by name (deleting
+    theirs doesn't touch Lab D's, if still running).
+- **`src/lib/data/modules.test.ts`** — `VERIFIED_MODULES` extended to both slugs.
+
+Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — both module pages
+render "PRACTICAL EXERCISE" with the full prompt and checklist; no console errors.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
