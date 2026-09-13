@@ -1809,6 +1809,19 @@ render "PRACTICAL EXERCISE" with the full prompt and checklist; no console error
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked (all three
 module pages, no console errors).
 
+**Review findings addressed (round 2)** (5 findings on PR #46 — 3×P1, 2×P2 — round 1's fixes
+held up; these are new):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 5's redesigned exercise still assumed the registry could be stopped while a client stayed warm — but Lab C runs *every* console client (the producer and the long-running step-3 consumer) via `docker exec` INTO the `schema-registry` container itself. Stopping that container kills any client running through it too; there is no separate client host to test "warm client survives an outage" against. | Rebuilt the exercise around that real constraint: confirm the outage kills the running consumer and blocks any `docker exec` into the container, confirm a soft stop/start preserves the registered versions (`[1,2,3]` survives), confirm a fresh consumer decodes fine once healthy again, then have the learner name precisely why this lab's own tooling can't test the warm-client claim and what a real test would need (a client outside the registry's container). |
+| P1 | Module 3's `kafka-consumer-groups.sh --describe --group team-a` was missing `--bootstrap-server` and the `docker exec` wrapper — there is no host-installed Kafka CLI anywhere in this guide. | Spelled out both invocations: `docker exec kafka-lab-a ... --bootstrap-server localhost:9092` on Lab A, `docker exec kafka-lab-kafka-1 ... --bootstrap-server kafka-1:19092` on Lab B. |
+| P1 | Module 3's backlog phase restarted only the three original instances with `SLOW_MS`, leaving the previously-idle fourth instance still running at full speed — free to pick up a partition and drain it before the intended kill, and no longer guaranteed to be the one left idle. | Now stops all four instances before starting three new `SLOW_MS=300` ones for the backlog phase. |
+| P1 | Even with `--describe`-based verification (round 1's fix), the backlog-generation step still assumed the demo producer's 3 fixed customer keys (alice/bob/carol) reach all 3 partitions — murmur2 doesn't guarantee that, so the partition holding no backlog gives nothing to observe if its owner is the one killed. | The learner now checks per-partition LAG *before* killing anything and kills whichever instance owns a partition with an actual nonzero backlog, instead of an arbitrary one of the three. |
+| P2 | Module 2's UI-vs-CLI comparison could show a legitimate transient mismatch if something was still producing or consuming at compare time — offsets, lag, and even leaders can differ between two snapshots taken a moment apart under live traffic. | The learner now quiesces activity and refreshes the UI before comparing, and treats a mismatch caught during live activity as a timing/refresh signal to re-check with everything quiet, not proof the two tools disagree. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
