@@ -2584,6 +2584,21 @@ export const modules: Module[] = [
           "Skipping commits past an unhandled record (data loss); unbounded retry never commits (partition blocked). Bound the retries, route the bad record out with failure metadata, then commit past it.",
       },
     ],
+    exercises: [
+      {
+        prompt:
+          "Verify two of this module's claims for yourself against Lab A or Lab B's orders topic. There is no host-installed Kafka CLI — every command below needs docker exec (Lab A: kafka-lab-a, --bootstrap-server localhost:9092; Lab B: kafka-lab-kafka-1, --bootstrap-server kafka-1:19092). (1) Confirm two independent consumer groups really do fan out, not split: run the order-pipeline-java ConsumerApp with group reporting against orders and let it catch up, then Ctrl-C it; run it again with a different group fulfilment against the same topic and confirm its log processes every one of the same records too — not a subset — even though reporting already read them all; check both with kafka-consumer-groups.sh --describe and confirm each group reaches LAG 0 independently, with its own CURRENT-OFFSET matching its own LOG-END-OFFSET. (2) Verify a committed offset lags the read position until the commit interval elapses: start the plain console consumer against orders with a named group and a generous, explicit interval (docker exec ... kafka-console-consumer.sh --group commit-timing --consumer-property auto.commit.interval.ms=60000 --bootstrap-server ...), no --max-messages, and leave it running; once its screen has caught up and gone quiet, --describe group commit-timing in a second terminal and note CURRENT-OFFSET; wait a full 60+ seconds with the consumer still running (don't touch it), then --describe again; only then Ctrl-C it. (3) Say, in your own words, why the two --describe checks in (2) gave different numbers even though the consumer had already printed every record on screen well before the first check.",
+        successCriteria: [
+          "You confirm fulfilment's log processes every record reporting already consumed — a different group.id gets its own full copy, not whatever's left over",
+          "You confirm via --describe that reporting and fulfilment each reach LAG 0 independently, with their own CURRENT-OFFSET matching their own LOG-END-OFFSET",
+          "You use the full docker exec plus --bootstrap-server form for every CLI command, matching whichever lab you're actually running",
+          "You explicitly set auto.commit.interval.ms to a generous, known value so you have a comfortable window instead of racing the 5-second default",
+          "Your first --describe check in part (2) shows a CURRENT-OFFSET behind what the console consumer has already printed to the screen — the read position and the committed offset are not the same clock",
+          "Your second --describe check, taken after the interval has genuinely elapsed with the consumer still running the whole time, shows CURRENT-OFFSET has caught up — not because you restarted or closed the consumer, but purely because a periodic commit fired while it kept polling",
+          "You explain the gap correctly: the read position moved as soon as each record was printed; the committed offset only moves during a poll() once auto.commit.interval.ms has elapsed since the last commit",
+        ],
+      },
+    ],
     activities: [
       "Make processing exceed max.poll.interval.ms",
       "Add and remove consumer instances",
@@ -2910,6 +2925,19 @@ export const modules: Module[] = [
         answerIndex: 2,
         explanation:
           "The reset tool only touches cluster-side state. It does not clear the local state.dir — the app must call KafkaStreams.cleanUp() before start(), or you delete it by hand — and it does not touch output topics, so a reprocessed run appends its results after the old ones.",
+      },
+    ],
+    exercises: [
+      {
+        prompt:
+          "Prove you understand Lab D's Connect REST API pattern, not just its exact commands, by building a second, completely independent pipeline through it. Reuse the same worker (docker compose --profile extras up -d kafka-connect if you already tore Lab D's down): (1) write your own PUT config for a new file source connector — pick a name other than file-source, a file other than /tmp/connect-source.txt, and a topic other than connect-file-topic; (2) confirm it reaches status RUNNING; (3) write your own sink connector config, again with a name and file distinct from Lab D's, consuming your new topic; (4) append a line to your source file and, after a short wait, confirm it flows through to your sink file — the same tail-then-flush behavior Lab D's own append-tail step showed, on infrastructure you configured yourself; (5) GET /connectors and confirm your two connectors are listed under the exact names you chose; (6) delete both by name and confirm GET /connectors no longer lists them — and, if Lab D's own file-source/file-sink (or anything else) was still running the whole time, confirm deleting yours left them completely untouched.",
+        successCriteria: [
+          "You write both connector configs yourself with a name, file path, and topic that are your own choice — not Lab D's file-source/file-sink config with a single field changed",
+          "You confirm both connectors reach status RUNNING via GET .../status before moving on",
+          "You confirm an appended line to your source file shows up on your sink file after a short wait — the same tail-then-flush behavior as Lab D's append-tail step",
+          "You confirm via GET /connectors that your two connectors are listed under the exact names you gave them",
+          "After deleting your two connectors, GET /connectors no longer lists them, and anything else that was running (such as Lab D's own pair) is confirmed still there and unaffected",
+        ],
       },
     ],
     activities: [],
