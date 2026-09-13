@@ -1796,6 +1796,19 @@ rather than re-narrating it.
 Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — all three module pages
 render "PRACTICAL EXERCISE" with the full prompt and checklist; no console errors.
 
+**Review findings addressed (round 1)** (5 findings on PR #46 — 3×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 2's UI-vs-CLI criterion claimed CURRENT-OFFSET, LOG-END-OFFSET, and the per-partition breakdown are CLI-only — Kafka UI's consumer-group detail view shows the same per-partition numbers (that "stays CLI-only" line in the module's own topicDetail is about the Grafana lag *panel*, not the Kafka UI app, and doesn't generalize to it). | Reworded the prompt's part 4 and the matching criterion to compare the two tools on affordance — a single scriptable command and an exact snapshot vs. browsing several partitions/groups at a glance — not on which one has more data. |
+| P1 | Module 3's exercise said "at least 3 partitions," but a 4th consumer is guaranteed idle only at *exactly* 3; with 4+ it can receive an assignment, contradicting the required result. | Pinned to Lab A/B's `orders` topic by name, which always has exactly 3 partitions. |
+| P1 | Module 3's partition-coverage check relied on the demo producer's fixed customer keys (alice/bob/carol) reaching every partition — murmur2 over only 3 keys and 3 partitions doesn't guarantee that, so partition 1 could go unexercised and the check would be unverifiable. | Replaced with `kafka-consumer-groups.sh --describe --group team-a`, confirming LAG reaches 0 on every partition — a check that doesn't depend on which keys happened to land where. |
+| P2 | Module 3's rebalance-gap step asked the learner to manually fire a produce inside the gap between a Ctrl-C and the reassignment landing — too short a window to hit reliably by hand. | Replaced with `SLOW_MS=300` on the three consumers plus a 60-order backlog, so there are several real seconds of backlog to kill an instance during — no precise timing needed. |
+| P2 | Module 5's "has to reach the registry every time" could be read as a per-record hot-path claim — Confluent's serializer caches a schema-to-id mapping after its first successful lookup *within a process*; the actual cause is that each console-producer invocation is a brand-new process starting from an empty cache. | Reworded to name the real mechanism: cached after first lookup per-process, and this is a fresh process each time. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked (all three
+module pages, no console errors).
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
