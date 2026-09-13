@@ -668,6 +668,8 @@ describe("exercises (any module)", () => {
     "local-cluster-lab",
     "build-a-producer-and-consumer",
     "schemas-and-data-contracts",
+    "consumer-configuration",
+    "connect-and-streams",
   ];
 
   it("gives every Phase 10b module a well-formed practical exercise", () => {
