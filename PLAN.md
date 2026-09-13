@@ -1765,6 +1765,37 @@ work; no console errors.
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+### PR 10b-2 — hands-on (Modules 2, 3, and 5)
+
+Each exercise deliberately goes beyond what its own guided lab/walkthrough already scripts,
+rather than re-narrating it.
+
+- **`src/lib/data/modules.ts`** — `exercises` on:
+  - `local-cluster-lab`: cross-checks the Kafka UI (localhost:8080) against the CLI on a topic
+    and consumer group from Lab B — partition leaders via `--describe` vs. the UI's topic
+    view, a message produced through the UI confirmed with the console consumer, and a
+    consumer group's lag checked in both `kafka-consumer-groups.sh --describe` and the UI —
+    then asks for one thing each tool surfaces that the other doesn't.
+  - `build-a-producer-and-consumer`: the walkthrough's "Consumer groups" lesson *describes*
+    running several `ConsumerApp` instances in one group but only ever gives the command for
+    one. This exercise has the learner actually run three (then a fourth, idle) against a live
+    broker, read real rebalance-listener log lines instead of paraphrasing the walkthrough,
+    kill one and confirm every partition still has a reader, and reason about a record produced
+    mid-rebalance (delayed, not lost).
+  - `schemas-and-data-contracts`: continues right where Lab C's guided steps leave off
+    (`order-events-value` on BACKWARD, versions `[1,2,3]`, its consumer still running) and
+    tests the "not on the hot path, but a dependency" claim empirically: stop the registry
+    alone and observe that *every* produce fails (a fresh console-producer process has no
+    schema cache of its own, even reusing an already-registered schema), a brand-new
+    from-beginning consumer fails on its first record (a cold schema-id lookup), and the
+    already-running consumer from the lab is untouched (it makes no new registry calls with
+    nothing new to decode) — then restart the registry with `start`, not `down -v`, to keep the
+    lab's registered versions.
+- **`src/lib/data/modules.test.ts`** — `VERIFIED_MODULES` extended to all three slugs.
+
+Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — all three module pages
+render "PRACTICAL EXERCISE" with the full prompt and checklist; no console errors.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
