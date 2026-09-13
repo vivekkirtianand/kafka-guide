@@ -1765,6 +1765,87 @@ work; no console errors.
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+### PR 10b-2 — hands-on (Modules 2, 3, and 5)
+
+Each exercise deliberately goes beyond what its own guided lab/walkthrough already scripts,
+rather than re-narrating it.
+
+- **`src/lib/data/modules.ts`** — `exercises` on:
+  - `local-cluster-lab`: cross-checks the Kafka UI (localhost:8080) against the CLI on a topic
+    and consumer group from Lab B — partition leaders via `--describe` vs. the UI's topic
+    view, a message produced through the UI confirmed with the console consumer, and a
+    consumer group's lag checked in both `kafka-consumer-groups.sh --describe` and the UI —
+    then asks for one thing each tool surfaces that the other doesn't.
+  - `build-a-producer-and-consumer`: the walkthrough's "Consumer groups" lesson *describes*
+    running several `ConsumerApp` instances in one group but only ever gives the command for
+    one. This exercise has the learner actually run three (then a fourth, idle) against a live
+    broker, read real rebalance-listener log lines instead of paraphrasing the walkthrough,
+    kill one — picked by checking which partition actually has a backlog, since the demo
+    producer's 3 fixed customer keys don't guarantee every partition gets records — and confirm
+    via `kafka-consumer-groups.sh --describe` that every partition's LAG reaches 0 again.
+  - `schemas-and-data-contracts`: continues right where Lab C's guided steps leave off
+    (`order-events-value` on BACKWARD, 3 registered versions) and tests a limit of the lab's own
+    setup the module's "not on the hot path, but a dependency" claim doesn't mention: Lab C runs
+    every console client — the producer and the long-running step-3 consumer alike — via
+    `docker exec` INTO the `schema-registry` container itself, so stopping that container to
+    simulate an outage kills any client running through it too. The exercise has the learner
+    discover this directly (the step-3 consumer's terminal ends the moment the registry stops,
+    and any further `docker exec` into it fails outright), confirm a soft stop/start preserves
+    the registered versions and that a fresh consumer decodes the 3 records that actually landed
+    on the topic once the registry is healthy again, and then name precisely why this lab's
+    tooling can't test "a warm client survives an outage" — and what a real test would need (a
+    client running somewhere other than the registry's own container).
+- **`src/lib/data/modules.test.ts`** — `VERIFIED_MODULES` extended to all three slugs.
+
+Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — all three module pages
+render "PRACTICAL EXERCISE" with the full prompt and checklist; no console errors.
+
+**Review findings addressed (round 1)** (5 findings on PR #46 — 3×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 2's UI-vs-CLI criterion claimed CURRENT-OFFSET, LOG-END-OFFSET, and the per-partition breakdown are CLI-only — Kafka UI's consumer-group detail view shows the same per-partition numbers (that "stays CLI-only" line in the module's own topicDetail is about the Grafana lag *panel*, not the Kafka UI app, and doesn't generalize to it). | Reworded the prompt's part 4 and the matching criterion to compare the two tools on affordance — a single scriptable command and an exact snapshot vs. browsing several partitions/groups at a glance — not on which one has more data. |
+| P1 | Module 3's exercise said "at least 3 partitions," but a 4th consumer is guaranteed idle only at *exactly* 3; with 4+ it can receive an assignment, contradicting the required result. | Pinned to Lab A/B's `orders` topic by name, which always has exactly 3 partitions. |
+| P1 | Module 3's partition-coverage check relied on the demo producer's fixed customer keys (alice/bob/carol) reaching every partition — murmur2 over only 3 keys and 3 partitions doesn't guarantee that, so partition 1 could go unexercised and the check would be unverifiable. | Replaced with `kafka-consumer-groups.sh --describe --group team-a`, confirming LAG reaches 0 on every partition — a check that doesn't depend on which keys happened to land where. |
+| P2 | Module 3's rebalance-gap step asked the learner to manually fire a produce inside the gap between a Ctrl-C and the reassignment landing — too short a window to hit reliably by hand. | Replaced with `SLOW_MS=300` on the three consumers plus a 60-order backlog, so there are several real seconds of backlog to kill an instance during — no precise timing needed. |
+| P2 | Module 5's "has to reach the registry every time" could be read as a per-record hot-path claim — Confluent's serializer caches a schema-to-id mapping after its first successful lookup *within a process*; the actual cause is that each console-producer invocation is a brand-new process starting from an empty cache. | Reworded to name the real mechanism: cached after first lookup per-process, and this is a fresh process each time. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked (all three
+module pages, no console errors).
+
+**Review findings addressed (round 2)** (5 findings on PR #46 — 3×P1, 2×P2 — round 1's fixes
+held up; these are new):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 5's redesigned exercise still assumed the registry could be stopped while a client stayed warm — but Lab C runs *every* console client (the producer and the long-running step-3 consumer) via `docker exec` INTO the `schema-registry` container itself. Stopping that container kills any client running through it too; there is no separate client host to test "warm client survives an outage" against. | Rebuilt the exercise around that real constraint: confirm the outage kills the running consumer and blocks any `docker exec` into the container, confirm a soft stop/start preserves the registered versions (`[1,2,3]` survives), confirm a fresh consumer decodes fine once healthy again, then have the learner name precisely why this lab's own tooling can't test the warm-client claim and what a real test would need (a client outside the registry's container). |
+| P1 | Module 3's `kafka-consumer-groups.sh --describe --group team-a` was missing `--bootstrap-server` and the `docker exec` wrapper — there is no host-installed Kafka CLI anywhere in this guide. | Spelled out both invocations: `docker exec kafka-lab-a ... --bootstrap-server localhost:9092` on Lab A, `docker exec kafka-lab-kafka-1 ... --bootstrap-server kafka-1:19092` on Lab B. |
+| P1 | Module 3's backlog phase restarted only the three original instances with `SLOW_MS`, leaving the previously-idle fourth instance still running at full speed — free to pick up a partition and drain it before the intended kill, and no longer guaranteed to be the one left idle. | Now stops all four instances before starting three new `SLOW_MS=300` ones for the backlog phase. |
+| P1 | Even with `--describe`-based verification (round 1's fix), the backlog-generation step still assumed the demo producer's 3 fixed customer keys (alice/bob/carol) reach all 3 partitions — murmur2 doesn't guarantee that, so the partition holding no backlog gives nothing to observe if its owner is the one killed. | The learner now checks per-partition LAG *before* killing anything and kills whichever instance owns a partition with an actual nonzero backlog, instead of an arbitrary one of the three. |
+| P2 | Module 2's UI-vs-CLI comparison could show a legitimate transient mismatch if something was still producing or consuming at compare time — offsets, lag, and even leaders can differ between two snapshots taken a moment apart under live traffic. | The learner now quiesces activity and refreshes the UI before comparing, and treats a mismatch caught during live activity as a timing/refresh signal to re-check with everything quiet, not proof the two tools disagree. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
+**Review findings addressed (round 3)** (5 findings on PR #46 — 1×P1, 2×P2, 2×P3):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 5's round-2 redesign still said "confirm it decodes all four orders" — but Lab C only ever gets 3 records onto the topic (o-1, o-2, and the eventually-successful o-4 under BACKWARD); the o-3 type change and the first o-4 attempt under FORWARD both fail compatibility and never land. Requiring a 4th made the exercise impossible to complete. | Corrected to 3 records, with an explicit note that the two failed attempts never reached the topic. |
+| P2 | "Fetching schema ids 1 through 3" asserts specific global schema ids from version numbers — the lab's own text says the first id can be higher if another subject registered schemas first, so versions and ids aren't interchangeable. | Reworded to require decoding correctly without asserting which numeric ids are involved. |
+| P2 | `docker compose start schema-registry` returns once the container is running, not once the registry's HTTP service inside it is actually ready — this Compose service has no healthcheck, so the very next `curl` can fail transiently. | Restored the poll-`/subjects`-until-it-answers step (the same pattern Lab C's own first step uses) before trusting any response after a restart. |
+| P3 | "Nothing was deleted, only paused" describes the wrong Docker lifecycle state — `docker compose stop` sends a termination signal and leaves the container stopped; pause is a distinct, unused operation here. | Reworded to say the container and its processes were stopped, and what actually protected the data was that its volume was never deleted (that's what `down -v` does). |
+| P3 | The main PR 10b-2 summary above (written for round-1's design) still said the exercise proves a warm consumer survives while the registry is stopped — directly contradicting the round-2/3 redesign, which found the opposite is true for this lab's tooling. | Rewrote that bullet to describe the shipped tooling-limitation exercise, so the PR summary and the review-round tables now tell one consistent story. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
+**Review findings addressed (round 4)** (1 finding on PR #46, P1):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The round-3 fix said the registered versions survived because "the container was stopped, not its volume deleted" — but the schema-registry service mounts no data volume of its own. Every subject, version, and compatibility setting lives in Kafka's compacted `_schemas` topic on the brokers; stopping the registry container never touches the brokers. `down -v` is destructive because it deletes the *brokers'* volumes (where `_schemas` lives), not a registry volume. | Corrected the criterion to name `_schemas` on the brokers as the actual persistence mechanism. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b

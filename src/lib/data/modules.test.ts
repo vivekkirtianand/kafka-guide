@@ -662,7 +662,13 @@ describe("exercises (any module)", () => {
   // Phase 10b authors a per-module practical-verification exercise on every content module
   // (Module 0's design exercise was written earlier, in Phase 2c, and has its own tests). The
   // list grows as each 10b PR lands; a module named here must carry a real exercise.
-  const VERIFIED_MODULES = ["mental-model", "keys-ordering-and-delivery"];
+  const VERIFIED_MODULES = [
+    "mental-model",
+    "keys-ordering-and-delivery",
+    "local-cluster-lab",
+    "build-a-producer-and-consumer",
+    "schemas-and-data-contracts",
+  ];
 
   it("gives every Phase 10b module a well-formed practical exercise", () => {
     for (const slug of VERIFIED_MODULES) {

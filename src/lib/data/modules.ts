@@ -982,6 +982,20 @@ export const modules: Module[] = [
           "The controller elects a new leader from the ISR, and the down replica leaves the ISR — rejoining once it catches up on restart. It does not automatically get its leadership back.",
       },
     ],
+    exercises: [
+      {
+        prompt:
+          "Cross-check the Kafka UI (localhost:8080) against the CLI on a topic and a consumer group you created in Lab B, without following a script. Make sure nothing is actively producing or consuming while you compare — a mismatch while traffic is live is just two snapshots taken a moment apart, not a real disagreement: (1) in the UI, open the topic's detail view and read off its partition count, replication factor, and each partition's current leader; cross-check every leader against what kafka-topics.sh --describe reports for the same topic; (2) produce one keyed message through the UI's message browser instead of the console tools, then confirm with the console consumer that the exact same record (key and value) is on the topic; (3) with no consumer running, look up a consumer group's per-partition current-offset, log-end-offset, and lag with kafka-consumer-groups.sh --describe, then find the same group's consumer detail view in the UI (refresh it) and confirm the same per-partition numbers appear there too; (4) for this exact task, name one advantage the CLI has over the UI, and one advantage the UI has over the CLI — not which one has more data, since both surface the same per-partition offsets and lag.",
+        successCriteria: [
+          "You read the correct partition count, replication factor, and per-partition leader from the UI's topic detail view",
+          "Every leader you read from the UI matches what kafka-topics.sh --describe reports for the same partitions",
+          "You produce a message through the UI and confirm the exact same key and value show up when you consume it with the console consumer",
+          "You quiesce activity and refresh the UI before comparing lag, and find the same group's per-partition current-offset, log-end-offset, and lag in both kafka-consumer-groups.sh --describe and the UI's consumer detail view",
+          "You compare the two tools on affordance, not on data availability — for example the CLI gives a single scriptable command and an exact snapshot you can save or diff, while the UI makes browsing several partitions or groups at a glance easier without composing a new command each time",
+          "You treat a mismatch while something was actively producing or consuming as a timing/refresh gap to re-check with things quiesced, not as proof the two tools disagree about the underlying cluster state — with everything quiet, they read the same state and should match",
+        ],
+      },
+    ],
     activities: [
       "Create and inspect topics",
       "Produce records with and without keys",
@@ -1131,6 +1145,22 @@ export const modules: Module[] = [
         answerIndex: 1,
         explanation:
           "Skip advances this group's committed offset past the bad record and keeps the good records flowing. The original stays on the source topic until retention (another group, or an offset reset, can still read it), but there is no dead-letter copy carrying the exception and source coordinates, and nothing prompting anyone to look.",
+      },
+    ],
+    exercises: [
+      {
+        prompt:
+          'The consumer-groups walkthrough lesson describes running several ConsumerApp instances in one group, but only ever shows the command for one. Go do it for real, against Lab A or Lab B\'s orders topic — it always has exactly 3 partitions, which this exercise depends on. There is no host-installed Kafka CLI, so every kafka-consumer-groups.sh call below runs via docker exec: on Lab A, `docker exec kafka-lab-a /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 ...`; on Lab B, `docker exec kafka-lab-kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka-1:19092 ...`. (1) In three separate terminals, start three ConsumerApp instances all in group team-a (./gradlew runConsumer --args="localhost:PORT team-a"), and from the rebalance-listener log lines, write down exactly which partitions each instance ends up owning; (2) start a fourth team-a instance against the same topic and check what its own log shows about its assignment; (3) stop all four instances — the idle fourth too, so it can\'t pick up a partition later and race the demonstration — then start three NEW instances in group team-a with SLOW_MS=300 set, and again note from their fresh rebalance-assigned log lines which partition each one owns; (4) run the producer once with ./gradlew run --args="localhost:PORT 60", then immediately --describe the group and find a partition still showing nonzero LAG (the demo producer only uses 3 customer keys, so don\'t assume every partition got records — check); Ctrl-C the specific instance you noted owns that partition, and read the survivors\' logs for the revoke-then-reassign; (5) once everything goes quiet, --describe the group again and confirm LAG has reached 0 on every partition, including the one that changed hands; (6) say what happened to the records still queued on that partition the moment you killed its owner — lost, delayed, or something else, and why.',
+        successCriteria: [
+          "You show three real rebalance-listener log lines assigning all three of the orders topic's partitions across your three instances — not just a paraphrase of what the walkthrough describes",
+          "The 4th instance's own log shows it was assigned no partitions, and you explain why: the topic has exactly 3 partitions and the 3 existing members already hold them all",
+          "You stop all four instances before the backlog phase, not just the original three — a fast fourth instance left running could pick up a partition and drain it before you're ready to kill anything",
+          "You use the full kafka-consumer-groups.sh command with --bootstrap-server via docker exec into the right container for your lab (kafka-lab-a on Lab A, kafka-lab-kafka-1 on Lab B) — there is no host-installed Kafka CLI",
+          "You pick which instance to kill by checking which partition currently shows nonzero LAG, not by assuming all three have a backlog — the demo producer's fixed customer keys don't guarantee every partition gets records",
+          "After killing that instance, you show the survivors' revoke-then-reassign log lines, then confirm via a second --describe that every partition's LAG reaches 0, including the reassigned one",
+          "You say the records still queued on the killed instance's partition were delayed, not lost — they sit on the topic until the reassignment lands and whichever instance ends up owning that partition works through the backlog",
+          "You do not predict ahead of time which instance will get which partitions — the walkthrough itself says the split isn't fixed",
+        ],
       },
     ],
     activities: [],
@@ -1836,6 +1866,21 @@ export const modules: Module[] = [
         answerIndex: 1,
         explanation:
           "The deserializer runs inside poll(), so the exception comes out of poll() itself. It behaves exactly like Module 3's poison record — the fix is an error-handling deserializer, or deserializing to byte[] and parsing in your own catchable code.",
+      },
+    ],
+    exercises: [
+      {
+        prompt:
+          "Right after finishing Lab C — subject order-events-value on BACKWARD with 3 registered versions — test a limit of the lab's own setup that the module's \"not on the hot path, but a dependency\" claim doesn't mention: every console client Lab C uses (both the producer and the long-running consumer from step 3) runs via docker exec INTO the schema-registry container itself, kafka-lab-schema-registry — there's no separate client host. (1) With the step-3 consumer still running, stop the registry with docker compose --profile extras stop schema-registry (not down -v) and see what happens to that consumer's terminal; (2) try any docker exec into kafka-lab-schema-registry — the console tools, even a plain curl — and read the exact error; (3) restart it with docker compose --profile extras start schema-registry, then poll curl -s http://localhost:8081/subjects until it answers (start returns once the container is up, not once the registry inside it is actually serving requests) before checking that /subjects/order-events-value/versions still reports 3 versions; (4) start a brand-new console consumer on order-events --from-beginning and confirm it decodes all 3 records that actually made it onto the topic — the o-3 type change and the first FORWARD-mode o-4 attempt in the lab both failed compatibility and never landed, so don't expect a 4th; (5) write down, specifically, why this lab's own tooling can't actually test the \"a warm client survives a registry outage\" claim, and what you would need in order to test it for real.",
+        successCriteria: [
+          "You confirm the step-3 consumer's terminal ends (broken pipe or similar) the moment you stop schema-registry, before you've done anything to the consumer itself",
+          "You explain that this happened because that consumer's process lived inside the schema-registry container via docker exec, not because of anything about schema caching — stopping a container ends every process running inside it",
+          "You confirm a docker exec into kafka-lab-schema-registry while it's stopped fails immediately with a container-not-running error, not any registry- or schema-specific message",
+          "After restarting, you poll /subjects until it answers before trusting any response from it — start returns once the container is running, not once the registry process inside it is ready to serve",
+          "You confirm /subjects/order-events-value/versions still reports all 3 registered versions, and say what actually protected them: the registry has no data volume of its own — every subject, version, and compatibility setting lives in Kafka's _schemas topic on the brokers, and stopping the schema-registry container never touched the brokers or that topic. down -v is destructive because it deletes the brokers' volumes, wiping _schemas along with everything else",
+          "You confirm a brand-new from-beginning consumer decodes exactly the 3 records that actually landed on the topic (not 4 — the type-change and the first FORWARD-mode add both failed compatibility and never reached the topic), fetching whatever schemas it needs without you asserting specific numeric ids — the lab itself says a version number and its global schema id aren't the same thing",
+          "You name the actual limitation precisely: the only client tools this lab has live inside the registry's own container, so stopping the registry always takes any client running through it down too — you'd need a client running somewhere else (a separate tools container, or a real client on the host) to test whether a warm client can outlast a registry outage",
+        ],
       },
     ],
     activities: [],
