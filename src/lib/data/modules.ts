@@ -982,6 +982,20 @@ export const modules: Module[] = [
           "The controller elects a new leader from the ISR, and the down replica leaves the ISR — rejoining once it catches up on restart. It does not automatically get its leadership back.",
       },
     ],
+    exercises: [
+      {
+        prompt:
+          "Cross-check the Kafka UI (localhost:8080) against the CLI on a topic and a consumer group you created in Lab B, without following a script: (1) in the UI, open the topic's detail view and read off its partition count, replication factor, and each partition's current leader; cross-check every leader against what kafka-topics.sh --describe reports for the same topic; (2) produce one keyed message through the UI's message browser instead of the console tools, then confirm with the console consumer that the exact same record (key and value) is on the topic; (3) look up a consumer group's lag with kafka-consumer-groups.sh --describe, then find the same group in the UI and confirm the lag numbers agree; (4) name one thing the UI's consumer-group view shows that --describe's column output does not make as easy to read, and one thing --describe shows that the UI does not.",
+        successCriteria: [
+          "You read the correct partition count, replication factor, and per-partition leader from the UI's topic detail view",
+          "Every leader you read from the UI matches what kafka-topics.sh --describe reports for the same partitions",
+          "You produce a message through the UI and confirm the exact same key and value show up when you consume it with the console consumer",
+          "You find the same consumer group's lag in both kafka-consumer-groups.sh --describe and the UI, and the numbers agree",
+          "You name CURRENT-OFFSET, LOG-END-OFFSET, or the per-partition breakdown as something the CLI shows that the UI's summed lag view does not",
+          "You do not treat the UI and the CLI as two different sources of truth that could disagree — they read the same cluster state, only rendered differently",
+        ],
+      },
+    ],
     activities: [
       "Create and inspect topics",
       "Produce records with and without keys",
@@ -1131,6 +1145,19 @@ export const modules: Module[] = [
         answerIndex: 1,
         explanation:
           "Skip advances this group's committed offset past the bad record and keeps the good records flowing. The original stays on the source topic until retention (another group, or an offset reset, can still read it), but there is no dead-letter copy carrying the exception and source coordinates, and nothing prompting anyone to look.",
+      },
+    ],
+    exercises: [
+      {
+        prompt:
+          'The consumer-groups walkthrough lesson describes running several ConsumerApp instances in one group, but only ever shows the command for one. Go do it for real, against a broker with at least 3 partitions on the topic (Lab B\'s default): (1) in three separate terminals, start three ConsumerApp instances all in group team-a (./gradlew runConsumer --args="localhost:PORT team-a"), and from the rebalance-listener log lines, write down exactly which partitions each instance ends up owning; (2) start a fourth team-a instance and check what its own log shows about its assignment; (3) Ctrl-C one of the three original instances (not the idle fourth) and read the survivors\' logs for the revoke-then-reassign, then run the producer once and confirm every partition still has a reader; (4) run the producer once right in the gap between killing an instance and the reassignment landing, and say what happens to those records — lost, delayed, or something else, and why.',
+        successCriteria: [
+          "You show three real rebalance-listener log lines assigning all of the topic's partitions across your three instances — not just a paraphrase of what the walkthrough describes",
+          "The 4th instance's own log shows it was assigned no partitions, and you explain why: each partition has exactly one owner in the group, and none were left to hand out",
+          "After killing one instance, you show the survivors' revoke-then-reassign log lines, and confirm from a fresh produce that every partition still has a reader",
+          "You say a record produced during the rebalance gap is delayed, not lost — it sits on the topic until the reassignment lands and whichever instance ends up with that partition polls it",
+          "You do not predict ahead of time which instance will get which partitions — the walkthrough itself says the split isn't fixed",
+        ],
       },
     ],
     activities: [],
@@ -1836,6 +1863,20 @@ export const modules: Module[] = [
         answerIndex: 1,
         explanation:
           "The deserializer runs inside poll(), so the exception comes out of poll() itself. It behaves exactly like Module 3's poison record — the fix is an error-handling deserializer, or deserializing to byte[] and parsing in your own catchable code.",
+      },
+    ],
+    exercises: [
+      {
+        prompt:
+          "Right after finishing Lab C — subject order-events-value on BACKWARD with versions [1,2,3], and the console consumer from step 3 still running — test what the registry actually gates, instead of taking it on faith: (1) stop the registry alone (docker compose --profile extras stop schema-registry, not down -v) and try to produce another order-events record using the exact same v3 schema text you already used; (2) with the registry still stopped, start a brand-new console consumer on order-events --from-beginning and see what happens on its very first record; (3) bring the registry back with docker compose --profile extras start schema-registry; (4) once it's healthy again, retry both the produce from step 1 and the fresh consumer from step 2; (5) check whether the ORIGINAL consumer from Lab C — running the whole time — ever crashed or logged an error because of the outage.",
+        successCriteria: [
+          "You find that the produce in step 1 fails even though the schema text is identical to one already registered — a fresh console-producer process has no cache of its own and has to reach the registry every time",
+          "You find that the fresh from-beginning consumer in step 2 fails or hangs on its first record — it has never fetched schema id 1 before, and the registry it would fetch from is down",
+          "You bring the registry back with start (or up -d), not down -v, so Lab C's three registered versions survive",
+          "Once the registry is healthy again, both the retried produce and the fresh consumer succeed — the fresh consumer fetches each schema id it needs once and would cache it from there",
+          "You confirm the original Lab C consumer never crashed during the outage, and say why: it made no new registry calls in that window, since nothing new was produced for it to decode",
+          "You do not conclude the registry outage broke \"everything\" — name specifically what it blocked (new registrations, and any cold schema-id lookup) versus what it left alone (a warm client with nothing new to decode)",
+        ],
       },
     ],
     activities: [],
