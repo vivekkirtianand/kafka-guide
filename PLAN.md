@@ -1838,6 +1838,14 @@ Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-che
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+**Review findings addressed (round 4)** (1 finding on PR #46, P1):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | The round-3 fix said the registered versions survived because "the container was stopped, not its volume deleted" — but the schema-registry service mounts no data volume of its own. Every subject, version, and compatibility setting lives in Kafka's compacted `_schemas` topic on the brokers; stopping the registry container never touches the brokers. `down -v` is destructive because it deletes the *brokers'* volumes (where `_schemas` lives), not a registry volume. | Corrected the criterion to name `_schemas` on the brokers as the actual persistence mechanism. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
