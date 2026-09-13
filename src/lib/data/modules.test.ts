@@ -657,3 +657,24 @@ describe("knowledge checks (any module)", () => {
     }
   });
 });
+
+describe("exercises (any module)", () => {
+  // Phase 10b authors a per-module practical-verification exercise on every content module
+  // (Module 0's design exercise was written earlier, in Phase 2c, and has its own tests). The
+  // list grows as each 10b PR lands; a module named here must carry a real exercise.
+  const VERIFIED_MODULES = ["mental-model", "keys-ordering-and-delivery"];
+
+  it("gives every Phase 10b module a well-formed practical exercise", () => {
+    for (const slug of VERIFIED_MODULES) {
+      const m = modules.find((x) => x.slug === slug)!;
+      expect(m.exercises?.length ?? 0, slug).toBeGreaterThanOrEqual(1);
+      for (const ex of m.exercises!) {
+        expect(ex.prompt.trim().length, `${slug}: exercise prompt`).toBeGreaterThan(60);
+        expect(ex.successCriteria.length, `${slug}: "${ex.prompt.slice(0, 40)}…"`).toBeGreaterThanOrEqual(3);
+        for (const c of ex.successCriteria) {
+          expect(c.trim().length, `${slug}: empty success criterion`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+});

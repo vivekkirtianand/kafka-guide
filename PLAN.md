@@ -1721,6 +1721,50 @@ Re-verified: `typecheck` / `lint` / `test` (457) / `build` clean.
 **Phase 10a is complete** — 10a-1 through 10a-4 merged, every content module (1–11) has a
 per-lesson knowledge check.
 
+## Phase 10b — per-module practical verification
+
+A per-module hands-on exercise, reusing the `Exercise` type (`prompt` + `successCriteria`)
+and the `DesignExercise` component Module 0's "should this use Kafka?" task already exercises
+— renamed here from "Design exercise" to "Practical exercise" now that it covers both a
+written design task and a real command-line verification task. Same 4-PR-by-theme split as
+10a: 10b-1 core concepts (Modules 1, 4), 10b-2 hands-on (Modules 2, 3, 5), 10b-3 groups &
+pipelines (Modules 7, 8), 10b-4 reference (Modules 6, 9, 10, 11).
+
+### PR 10b-1 — core concepts (Modules 1 and 4)
+
+- **`src/lib/data/modules.ts`** — `exercises` on:
+  - `mental-model`: a paper-based predict-and-justify scenario (no running cluster — Module 1
+    sits *before* Module 2's lab in course order). Same-key partitioning without naming a
+    specific partition number, a 4-partition/2-member group split, what a third member joining
+    does to that split, that reading doesn't remove a record, and resuming from the committed
+    offset (not the in-memory read position) after a restart.
+  - `keys-ordering-and-delivery`: a hands-on Lab B task (Module 2's lab, by this point already
+    done). Confirms same-key records share a partition, then deliberately raises
+    `min.insync.replicas` to equal the replication factor *before* stopping a broker — stopping
+    only **one** of three brokers keeps the KRaft controller quorum (2 of 3) intact, so the
+    resulting `NOT_ENOUGH_REPLICAS` rejection is reproducible without the confound of losing
+    quorum. Stopping two of three would have risked both effects at once.
+- **`src/components/DesignExercise.tsx`** — header text "Design exercise" → "Practical
+  exercise". No prop/behavior change; not asserted by name in `DesignExercise.test.tsx`.
+- **`src/lib/data/modules.test.ts`** — new `describe("exercises (any module)")` block with a
+  `VERIFIED_MODULES` list (mirrors `CHECKED_MODULES`), starting with `mental-model` and
+  `keys-ordering-and-delivery`. Asserts a prompt length floor, `successCriteria.length >= 3`,
+  and no empty criteria.
+
+Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — both module pages
+render "PRACTICAL EXERCISE" with the full prompt and checklist; checkbox ticking and reset
+work; no console errors.
+
+**Review findings addressed (round 1)** (3 findings on PR #45 — 1×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 4's failure drill was timing- and broker-dependent: producing right after stopping a broker is racy (`--describe` can still briefly report a 3-member ISR), stopping `kafka-1` breaks the container every CLI command in the exercise runs inside of via `docker exec`, and default producer retries could make the rejection look like a hang. | Names `kafka-2` specifically, adds "poll `--describe` until every ISR shows exactly 2 members" before producing, and sets `retries=0` on the check produce so `NOT_ENOUGH_REPLICAS` surfaces immediately. |
+| P2 | Module 1's same-partition claim for the two `acct-101` records didn't say the producer uses Kafka's *default* partitioner — a custom one could route identical keys differently, undermining the hash-based success criterion. | Prompt now states "using Kafka's default partitioner"; the matching criterion names it explicitly too. |
+| P2 | Module 1's question (4) asked whether a read record is "still there for c2" — reading not deleting the record doesn't mean c2 automatically also gets it; c1 and c2 share a group, so the partition belongs to one member at a time. | Reworded the question to ask whether c2 could *ever* read that same record, and added a criterion distinguishing persistence (nothing is deleted) from fan-out (c2 only reads it if reassigned that partition and resuming at or before its offset). |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
