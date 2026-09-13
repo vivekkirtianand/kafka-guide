@@ -680,13 +680,15 @@ export const modules: Module[] = [
     exercises: [
       {
         prompt:
-          'A topic "payments" has 4 partitions and replication factor 3, on a 5-broker cluster. A producer sends three records with no explicit partition set: key "acct-101", then key "acct-102", then key "acct-101" again. A consumer group "order-processors" subscribes to payments with two members, c1 and c2. Work through this on paper, without running anything: (1) what do the two acct-101 records have in common about where they land, and why; (2) how the 4 partitions split between c1 and c2; (3) what happens to that split the moment a third member, c3, joins the group; (4) after c1 reads a record, is it still there for c2, or for c1 to re-read — and what would actually remove it; (5) if the whole consumer group restarts, does it resume from wherever it happened to be reading, or from somewhere else?',
+          'A topic "payments" has 4 partitions and replication factor 3, on a 5-broker cluster. A producer, using Kafka\'s default partitioner, sends three records with no explicit partition set: key "acct-101", then key "acct-102", then key "acct-101" again. A consumer group "order-processors" subscribes to payments with two members, c1 and c2. Work through this on paper, without running anything: (1) what do the two acct-101 records have in common about where they land, and why; (2) how the 4 partitions split between c1 and c2; (3) what happens to that split the moment a third member, c3, joins the group; (4) after c1 reads one of the records on a partition assigned to it, is that record removed from the partition, could c1 re-read it later, and could c2 ever end up reading that same record — and what would actually remove it for good; (5) if the whole consumer group restarts, does it resume from wherever it happened to be reading, or from somewhere else?',
         successCriteria: [
-          "You say the two acct-101 records land on the same partition because the key hashes the same way both times, not because they were produced close together",
+          "You say the two acct-101 records land on the same partition because Kafka's default partitioner hashes the key the same way both times, not because they were produced close together",
           "You do not claim a specific partition number — the mental model gives you \"same key, same partition,\" not which one, without knowing the actual hash",
           "You split the 4 partitions 2-and-2 between c1 and c2",
           "You say adding c3 triggers a rebalance to something like 2-1-1, not a redo of the data itself",
-          "You say the record stays in the partition after c1 reads it — reading only moves a position; only retention or compaction actually removes records",
+          "You say the record is not removed when c1 reads it — reading only moves a position, so c1 could re-read it by seeking back",
+          "You say c2 does not automatically also see the record — c1 and c2 share one group, so that partition belongs to exactly one member at a time; c2 could only read it after being assigned that partition (for example after a rebalance) and resuming at or before its offset",
+          "You say only retention or compaction actually removes a record for good",
           "You say the group resumes from its last committed offset, not from either consumer's in-memory read position at the moment it stopped",
         ],
       },
@@ -1389,14 +1391,17 @@ export const modules: Module[] = [
     exercises: [
       {
         prompt:
-          "On Lab B (from Module 2), work through this yourself — no step-by-step script: (1) create a topic ordering-check with 3 partitions and replication factor 3; (2) using the console producer with parse.key=true, produce two records for each of three distinct keys (six records total); (3) consume with print.key=true and print.partition=true and confirm every key's two records share one partition; (4) using kafka-configs.sh, raise ordering-check's min.insync.replicas to 3 — equal to its replication factor; (5) stop exactly one broker container, then produce one more record to ordering-check with acks=all; (6) explain precisely what happened and why, in terms of the ISR and min.insync.replicas, not just \"it failed\"; (7) restart the broker, use kafka-topics.sh --describe to confirm it has rejoined the ISR, then set min.insync.replicas back to 2.",
+          "On Lab B (from Module 2), work through this yourself — no step-by-step script: (1) create a topic ordering-check with 3 partitions and replication factor 3; (2) using the console producer with parse.key=true, produce two records for each of three distinct keys (six records total); (3) consume with print.key=true and print.partition=true and confirm every key's two records share one partition; (4) using kafka-configs.sh, raise ordering-check's min.insync.replicas to 3 — equal to its replication factor; (5) stop the kafka-2 broker container — not kafka-1, the container every CLI command here runs inside of via docker exec — then poll kafka-topics.sh --describe on ordering-check until every partition's ISR shows exactly 2 members, not immediately after stopping it; (6) only once the ISR has settled, produce one more record to ordering-check with acks=all and retries=0, and explain precisely what happened and why, in terms of the ISR and min.insync.replicas, not just \"it failed\"; (7) restart kafka-2, use kafka-topics.sh --describe to confirm it has rejoined every ISR, then set min.insync.replicas back to 2.",
         successCriteria: [
           "Each key's two records land on the same partition, and you name the hash-of-the-key mechanism, not coincidence, as the reason",
+          "You stop kafka-2, not kafka-1 — kafka-1 is the container every docker exec CLI command in this exercise runs inside of",
+          "You wait for --describe to show a 2-member ISR on every partition before producing, rather than producing right after stopping the broker, when the ISR can still briefly report 3",
           "You raise min.insync.replicas to 3 specifically because it now equals the replication factor, leaving zero tolerance for even one broker's outage",
+          "You set retries=0 on the check produce, so the rejection surfaces immediately as NOT_ENOUGH_REPLICAS instead of looking like a hang while the producer retries",
           "You identify the failed produce as a NOT_ENOUGH_REPLICAS rejection, not a timeout or a connection error",
-          "You explain the rejection as the ISR dropping to 2 while the floor is 3 — not the partition going offline or losing its leader",
+          "You explain the rejection as the ISR sitting at 2 while the floor is 3 — not the partition going offline or losing its leader",
           "You note that reads (and an acks=1 or acks=0 write) would still have worked against the surviving replicas — only the acks=all write against the raised floor was rejected",
-          "You confirm the broker is back in the ISR via --describe before lowering min.insync.replicas back to 2, not the other way round",
+          "You confirm kafka-2 is back in every ISR via --describe before lowering min.insync.replicas back to 2, not the other way round",
         ],
       },
     ],
