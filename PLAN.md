@@ -1874,6 +1874,17 @@ timing dependency at all.
 Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — both module pages
 render "PRACTICAL EXERCISE" with the full prompt and checklist; no console errors.
 
+**Review findings addressed (round 1)** (4 findings on PR #47 — 3×P1, 1×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 7's fan-out check pointed `ConsumerApp` (default `propagate` policy) at `orders`, which already carries plain-text records from Lab A/B's own guided steps ("first", "west:A", ...) that aren't valid `OrderEvent` JSON — a fresh consumer crashes on the very first one before either fan-out group can catch up. | Switched both `reporting-1` and `fulfilment-1` runs to the `skip` policy, with an explanation of why. |
+| P1 | Module 7's `commit-timing` console consumer omitted `--from-beginning` — Kafka 4.0 defaults a brand-new group's `auto.offset.reset` to `latest` without it, so the consumer would start at the end of the topic, see none of the existing records, and never create the read-position/committed-offset gap the exercise depends on. | Added `--from-beginning`, with the Kafka 4.0 default called out explicitly. |
+| P2 | Module 7's fixed group names (`reporting`/`fulfilment`/`commit-timing`) made the exercise non-rerunnable — a repeat attempt resumes from the *first* attempt's committed offsets regardless of `--from-beginning`, since an existing commit overrides the reset policy entirely. | Renamed to `reporting-1`/`fulfilment-1`/`commit-timing-1` with an instruction to bump the number on any redo. |
+| P1 | Module 8's exercise created the source connector before the file it reads. `FileStreamSourceTask` opens the configured file at task startup, so a connector pointed at a file that doesn't exist yet fails the task immediately — appending to it later, as originally written, is too late. | Added an explicit "create the file first, with starting content" step before the connector PUT, mirroring Lab D's own step ordering (`make-source-file` before `create-source`). |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
