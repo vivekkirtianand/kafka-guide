@@ -1885,6 +1885,15 @@ render "PRACTICAL EXERCISE" with the full prompt and checklist; no console error
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+**Review findings addressed (round 2)** (2 findings on PR #47, 1×P1, 1×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 7's round-1 `skip`-policy fix prevented a crash but didn't seed any real data — a stock `orders` topic carries only the handful of plain-text lines Lab A/B's own steps left on it, so `reporting-1` and `fulfilment-1` would both skip everything and print nothing, leaving the fan-out claim unverifiable from their logs. | Added a seeding step (`ProducerApp`, 10 real orders) before either group starts. |
+| P2 | The `./gradlew runConsumer --args="localhost:PORT ..."` commands gave no working directory and a bare `PORT` placeholder — there's no Gradle wrapper at the repo root, and Lab B's Java-client-facing port (29092) differs from the in-container address (`kafka-1:19092`) the CLI `docker exec` commands use. | Added the `cd examples/order-pipeline-java &&` prefix and spelled out both concrete variants — `localhost:9092` for Lab A, `localhost:29092` for Lab B — distinguished explicitly from the CLI's in-container address. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
