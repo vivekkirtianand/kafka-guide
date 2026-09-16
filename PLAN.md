@@ -1894,6 +1894,14 @@ Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-che
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+**Review findings addressed (round 3)** (1 finding on PR #47, P1):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 8's exercise still failed on a second attempt: deleting a connector removes only the connector, not the source's position in `_connect-offsets`, its sink's consumer group, or the topic's records — reusing the same learner-chosen names could resume past the just-rewritten source file and produce nothing. | Requires a fresh numeric suffix on every name (both connectors, both files, the topic) on each attempt, mirroring Module 7's consumer-group naming fix from round 1. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
