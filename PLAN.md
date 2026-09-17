@@ -1902,6 +1902,49 @@ Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-che
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+### PR 10b-4 — reference modules (Modules 6, 9, 10, and 11)
+
+The last of the four 10b PRs. Deliberately steered away from the two things that cost the
+earlier PRs review rounds — ISR/`min.insync.replicas` writes-fail scenarios (Module 4's own
+exercise from 10b-1 already covers that ground) and anything timing-sensitive whose outcome
+depends on the log cleaner or segment roll actually firing within the exercise window. Every
+new exercise instead uses a mechanism that is either purely local/deterministic (a size cap
+enforced client-side or broker-side), or proves its point by NOT waiting for a background
+process (retention.ms elapsing without a segment roll; producing a second batch with no
+consumer running, rather than racing one).
+
+- **`src/lib/data/modules.ts`** — `exercises` on:
+  - `producer-configuration`: on a scratch topic, triggers `RecordTooLargeException` two ways
+    — once via the producer's own `max.request.size` (a `--producer-property`, checked
+    synchronously inside `send()` before any network call) and once via the topic's own
+    `max.message.bytes` (a `kafka-configs.sh` topic override, only ever reached by a record
+    the producer's own check already passed) — and has the learner attribute each rejection to
+    the config they personally set, rather than guessing from the identical exception text.
+  - `broker-topic-configuration`: Part A sets `retention.ms=1000` on a fresh topic, waits well
+    past it with nothing else happening, and confirms the records are STILL there — grounded in
+    segment-roll eligibility, not a broken retention setting. Part B sets an aggressively low
+    `producer_byte_rate` quota on a made-up client-id, times an oversized produce against it
+    next to the same line produced with a different (unthrottled) client-id, and confirms both
+    records actually landed — throttled, not rejected.
+  - `observability`: Lab-B-only (Grafana/Prometheus don't exist on Lab A). Part A stops
+    `kafka-2` and cross-reads the same under-replicated-partitions fact on the Grafana
+    dashboard and via `kafka-topics.sh --describe --under-replicated-partitions`. Part B seeds
+    and fully drains one batch (LAG 0 on every partition), then seeds a second, larger batch
+    with NO consumer running afterward, so the resulting non-zero, per-partition-uneven LAG is
+    unambiguous — no race with a consumer that might still be catching up — and a final
+    `--describe` after a 15s idle wait with nothing running shows that LAG explicitly
+    unchanged, i.e. flat rather than a rising slope.
+  - `troubleshooting-scenarios`: this module has no lab or `topicDetail` of its own, so the
+    exercise reproduces one of its own catalog entries end-to-end on a scratch topic — a
+    single dominant key ("mega-tenant", 27 of 29 records) piling every record onto one
+    partition, confirmed as the actual on-call evidence (one partition's share of the total),
+    followed by the real fix (key salting into `mega-tenant-0/1/2`) applied on a second fresh
+    topic and confirmed to spread the same tenant's traffic across more than one partition.
+- **`src/lib/data/modules.test.ts`** — `VERIFIED_MODULES` extended to all four slugs.
+
+Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — all four module pages
+render "PRACTICAL EXERCISE" with the full prompt and checklist; no console errors.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
