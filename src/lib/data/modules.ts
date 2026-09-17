@@ -2584,6 +2584,25 @@ export const modules: Module[] = [
           "Skipping commits past an unhandled record (data loss); unbounded retry never commits (partition blocked). Bound the retries, route the bad record out with failure metadata, then commit past it.",
       },
     ],
+    exercises: [
+      {
+        prompt:
+          'Verify two of this module\'s claims for yourself against Lab A or Lab B\'s orders topic. Use fresh group names you haven\'t used before — reporting-1, fulfilment-1, commit-timing-1 the first time; bump the number if you ever redo this exercise, since a group that already has a committed offset from a previous attempt ignores --from-beginning and just resumes where it left off. Every order-pipeline-java command below runs from the repo root with cd examples/order-pipeline-java && first — there is no Gradle wrapper at the repo root — and connects on the HOST-facing port: localhost:9092 for Lab A, localhost:29092 for Lab B (not the in-container listener the CLI commands below use). There is no host-installed Kafka CLI, so every kafka-*.sh call needs docker exec into a broker container instead, on its in-network address (Lab A: kafka-lab-a, --bootstrap-server localhost:9092; Lab B: kafka-lab-kafka-1, --bootstrap-server kafka-1:19092 — a different address from the Java client\'s). (0) Seed some real orders first, so there is actually something for the two groups below to fan out — a stock orders topic otherwise carries only the handful of plain-text lines Lab A/B\'s own steps left on it: cd examples/order-pipeline-java && ./gradlew run --args="localhost:9092 10" (Lab A) or --args="localhost:29092 10" (Lab B). (1) Confirm two independent consumer groups really do fan out, not split: cd examples/order-pipeline-java && ./gradlew runConsumer --args="localhost:9092 reporting-1 skip" (Lab A) or --args="localhost:29092 reporting-1 skip" (Lab B) — skip, not the default propagate, because orders also carries those plain-text lab records, which aren\'t valid OrderEvent JSON and would crash a propagate-policy consumer on the first one; let it print every order you just seeded, then Ctrl-C it; run it again with group fulfilment-1 (same skip policy, same host and port) and confirm its log prints every one of the same orders too — not a subset — even though reporting-1 already read them all; check both with kafka-consumer-groups.sh --describe (docker exec, as above) and confirm each group reaches LAG 0 independently, with its own CURRENT-OFFSET matching its own LOG-END-OFFSET. (2) Verify a committed offset lags the read position until the commit interval elapses: start the plain console consumer against orders with a named group, --from-beginning (Kafka 4.0\'s console consumer defaults to auto.offset.reset=latest without it, so a brand-new group would see nothing), and a generous, explicit interval (docker exec ... kafka-console-consumer.sh --group commit-timing-1 --from-beginning --consumer-property auto.commit.interval.ms=60000 --bootstrap-server ...), no --max-messages, and leave it running; once its screen has caught up and gone quiet, --describe group commit-timing-1 in a second terminal and note CURRENT-OFFSET; wait a full 60+ seconds with the consumer still running (don\'t touch it), then --describe again; only then Ctrl-C it. (3) Say, in your own words, why the two --describe checks in (2) gave different numbers even though the consumer had already printed every record on screen well before the first check.',
+        successCriteria: [
+          "You seed real orders with ProducerApp before starting either group — without them, orders holds only a few plain-text lab lines, both groups skip everything, and there's nothing in their logs to compare",
+          "You cd into examples/order-pipeline-java before every gradlew command, and use the correct host-facing port for the lab you're on (9092 for Lab A, 29092 for Lab B) — not the docker-exec container address used by the CLI commands",
+          "You use the skip poison policy, not the default propagate, for both reporting-1 and fulfilment-1, and explain why: orders also carries plain-text records from Lab A/B that aren't valid JSON and would crash a propagate-policy consumer on the first one",
+          "You confirm fulfilment-1's log prints every order reporting-1 already consumed — a different group.id gets its own full copy, not whatever's left over",
+          "You confirm via --describe that reporting-1 and fulfilment-1 each reach LAG 0 independently, with their own CURRENT-OFFSET matching their own LOG-END-OFFSET",
+          "You use the full docker exec plus --bootstrap-server form for every CLI command, matching whichever lab you're actually running",
+          "You start the console consumer with --from-beginning — without it, Kafka 4.0 defaults a brand-new group's auto.offset.reset to latest, so it would see none of the existing records at all",
+          "You explicitly set auto.commit.interval.ms to a generous, known value so you have a comfortable window instead of racing the 5-second default",
+          "Your first --describe check in part (2) shows a CURRENT-OFFSET behind what the console consumer has already printed to the screen — the read position and the committed offset are not the same clock",
+          "Your second --describe check, taken after the interval has genuinely elapsed with the consumer still running the whole time, shows CURRENT-OFFSET has caught up — not because you restarted or closed the consumer, but purely because a periodic commit fired while it kept polling",
+          "You explain the gap correctly: the read position moved as soon as each record was printed; the committed offset only moves during a poll() once auto.commit.interval.ms has elapsed since the last commit",
+        ],
+      },
+    ],
     activities: [
       "Make processing exceed max.poll.interval.ms",
       "Add and remove consumer instances",
@@ -2910,6 +2929,22 @@ export const modules: Module[] = [
         answerIndex: 2,
         explanation:
           "The reset tool only touches cluster-side state. It does not clear the local state.dir — the app must call KafkaStreams.cleanUp() before start(), or you delete it by hand — and it does not touch output topics, so a reprocessed run appends its results after the old ones.",
+      },
+    ],
+    exercises: [
+      {
+        prompt:
+          "Prove you understand Lab D's Connect REST API pattern, not just its exact commands, by building a second, completely independent pipeline through it. Reuse the same worker (docker compose --profile extras up -d kafka-connect if you already tore Lab D's down). Use a fresh numeric suffix for every name below on every attempt — my-source-1, my-sink-1, my-topic-1, /tmp/my-source-1.txt, /tmp/my-sink-1.txt the first time, bumped to -2 if you ever redo this: deleting a connector removes only the connector itself, not the source's position in _connect-offsets, its sink's consumer group, or the topic's records, so reusing the same names on a second attempt can resume past the file you just rewrote and produce nothing even though you followed every step correctly. (1) inside the Connect container, create the file your source connector will read, with some starting content — same as Lab D's own make-source-file step, and just as necessary: FileStreamSourceTask opens this file at connector startup, so if it doesn't exist yet the task fails immediately instead of waiting for you to append to it later; (2) only now write your own PUT config for a new file source connector, using this attempt's names; (3) confirm it reaches status RUNNING; (4) write your own sink connector config, again with this attempt's names, consuming your new topic; (5) append a line to your source file and, after a short wait, confirm it flows through to your sink file — the same tail-then-flush behavior Lab D's own append-tail step showed, on infrastructure you configured yourself; (6) GET /connectors and confirm your two connectors are listed under the exact names you chose; (7) delete both by name and confirm GET /connectors no longer lists them — and, if Lab D's own file-source/file-sink (or anything else) was still running the whole time, confirm deleting yours left them completely untouched.",
+        successCriteria: [
+          "You use a fresh numeric suffix on every name (connectors, files, topic) for this attempt, and explain why: deleting a connector leaves its source offset, sink consumer group, and topic records behind, so reused names on a second attempt can resume past your rewritten file and produce nothing",
+          "You create your source file, with some starting content, before creating the source connector — not after, and not empty",
+          "You explain why the order matters: FileStreamSourceTask opens the configured file when the task starts, so a missing file fails the task instead of just waiting for content to append later",
+          "You write both connector configs yourself with a name, file path, and topic that are your own choice — not Lab D's file-source/file-sink config with a single field changed",
+          "You confirm both connectors reach status RUNNING via GET .../status before moving on",
+          "You confirm an appended line to your source file shows up on your sink file after a short wait — the same tail-then-flush behavior as Lab D's append-tail step",
+          "You confirm via GET /connectors that your two connectors are listed under the exact names you gave them",
+          "After deleting your two connectors, GET /connectors no longer lists them, and anything else that was running (such as Lab D's own pair) is confirmed still there and unaffected",
+        ],
       },
     ],
     activities: [],

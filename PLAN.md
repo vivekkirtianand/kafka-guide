@@ -1846,6 +1846,62 @@ Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-che
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+### PR 10b-3 — groups & pipelines (Modules 7 and 8)
+
+Designed up front to avoid the two failure patterns 10b-2 needed four review rounds to shake
+out: a fixed small set of customer keys not hashing to every partition, and manually timing a
+narrow race window. Both exercises here use only mechanisms with wide, non-racy margins or no
+timing dependency at all.
+
+- **`src/lib/data/modules.ts`** — `exercises` on:
+  - `consumer-configuration`: verifies group.id independence for real — run `ConsumerApp` with
+    group `reporting` against `orders`, let it fully catch up, then run it again with group
+    `fulfilment` and confirm it processes every one of the same records too (a different
+    group.id gets its own full copy, not a split) — checked via `kafka-consumer-groups.sh
+    --describe` reaching LAG 0 on both, independently. Then verifies the read-position-vs-
+    committed-offset gap using the plain console consumer with `--consumer-property
+    auto.commit.interval.ms=60000` (a deliberately generous, explicit window, not the 5s
+    default) — describe once right after it catches up (offset lags what's on screen), wait a
+    genuine 60+ seconds with it still running, describe again (offset catches up, without a
+    restart) — no race, just a long, comfortable, known interval.
+  - `connect-and-streams`: has the learner build a second, fully independent source/sink
+    connector pair through Lab D's Connect REST API from scratch — their own name, file, and
+    topic — to prove they understand the PUT/status/GET/DELETE pattern rather than having
+    copy-pasted Lab D's exact commands, and confirms connector isolation by name (deleting
+    theirs doesn't touch Lab D's, if still running).
+- **`src/lib/data/modules.test.ts`** — `VERIFIED_MODULES` extended to both slugs.
+
+Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — both module pages
+render "PRACTICAL EXERCISE" with the full prompt and checklist; no console errors.
+
+**Review findings addressed (round 1)** (4 findings on PR #47 — 3×P1, 1×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 7's fan-out check pointed `ConsumerApp` (default `propagate` policy) at `orders`, which already carries plain-text records from Lab A/B's own guided steps ("first", "west:A", ...) that aren't valid `OrderEvent` JSON — a fresh consumer crashes on the very first one before either fan-out group can catch up. | Switched both `reporting-1` and `fulfilment-1` runs to the `skip` policy, with an explanation of why. |
+| P1 | Module 7's `commit-timing` console consumer omitted `--from-beginning` — Kafka 4.0 defaults a brand-new group's `auto.offset.reset` to `latest` without it, so the consumer would start at the end of the topic, see none of the existing records, and never create the read-position/committed-offset gap the exercise depends on. | Added `--from-beginning`, with the Kafka 4.0 default called out explicitly. |
+| P2 | Module 7's fixed group names (`reporting`/`fulfilment`/`commit-timing`) made the exercise non-rerunnable — a repeat attempt resumes from the *first* attempt's committed offsets regardless of `--from-beginning`, since an existing commit overrides the reset policy entirely. | Renamed to `reporting-1`/`fulfilment-1`/`commit-timing-1` with an instruction to bump the number on any redo. |
+| P1 | Module 8's exercise created the source connector before the file it reads. `FileStreamSourceTask` opens the configured file at task startup, so a connector pointed at a file that doesn't exist yet fails the task immediately — appending to it later, as originally written, is too late. | Added an explicit "create the file first, with starting content" step before the connector PUT, mirroring Lab D's own step ordering (`make-source-file` before `create-source`). |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
+**Review findings addressed (round 2)** (2 findings on PR #47, 1×P1, 1×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 7's round-1 `skip`-policy fix prevented a crash but didn't seed any real data — a stock `orders` topic carries only the handful of plain-text lines Lab A/B's own steps left on it, so `reporting-1` and `fulfilment-1` would both skip everything and print nothing, leaving the fan-out claim unverifiable from their logs. | Added a seeding step (`ProducerApp`, 10 real orders) before either group starts. |
+| P2 | The `./gradlew runConsumer --args="localhost:PORT ..."` commands gave no working directory and a bare `PORT` placeholder — there's no Gradle wrapper at the repo root, and Lab B's Java-client-facing port (29092) differs from the in-container address (`kafka-1:19092`) the CLI `docker exec` commands use. | Added the `cd examples/order-pipeline-java &&` prefix and spelled out both concrete variants — `localhost:9092` for Lab A, `localhost:29092` for Lab B — distinguished explicitly from the CLI's in-container address. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
+**Review findings addressed (round 3)** (1 finding on PR #47, P1):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | Module 8's exercise still failed on a second attempt: deleting a connector removes only the connector, not the source's position in `_connect-offsets`, its sink's consumer group, or the topic's records — reusing the same learner-chosen names could resume past the just-rewritten source file and produce nothing. | Requires a fresh numeric suffix on every name (both connectors, both files, the topic) on each attempt, mirroring Module 7's consumer-group naming fix from round 1. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
