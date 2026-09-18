@@ -1904,14 +1904,14 @@ Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-che
 
 ### PR 10b-4 — reference modules (Modules 6, 9, 10, and 11)
 
-The last of the four 10b PRs. Deliberately steered away from the two things that cost the
-earlier PRs review rounds — ISR/`min.insync.replicas` writes-fail scenarios (Module 4's own
-exercise from 10b-1 already covers that ground) and anything timing-sensitive whose outcome
-depends on the log cleaner or segment roll actually firing within the exercise window. Every
-new exercise instead uses a mechanism that is either purely local/deterministic (a size cap
-enforced client-side or broker-side), or proves its point by NOT waiting for a background
-process (retention.ms elapsing without a segment roll; producing a second batch with no
-consumer running, rather than racing one).
+The last of the four 10b PRs. Deliberately steered away from ISR/`min.insync.replicas`
+writes-fail scenarios (Module 4's own exercise from 10b-1 already covers that ground) in favor
+of exercises that are either purely local/deterministic (a size cap enforced client-side or
+broker-side; a second batch produced with no consumer running, rather than racing one), or —
+where a real background broker process is unavoidable, as in the retention check below —
+wait out that process for real instead of trying to sidestep it. The first cut of the
+retention exercise tried to dodge the wait and got the mechanics backwards; see the round-1
+findings below.
 
 - **`src/lib/data/modules.ts`** — `exercises` on:
   - `producer-configuration`: on a scratch topic, triggers `RecordTooLargeException` two ways
@@ -1920,12 +1920,15 @@ consumer running, rather than racing one).
     `max.message.bytes` (a `kafka-configs.sh` topic override, only ever reached by a record
     the producer's own check already passed) — and has the learner attribute each rejection to
     the config they personally set, rather than guessing from the identical exception text.
-  - `broker-topic-configuration`: Part A sets `retention.ms=1000` on a fresh topic, waits well
-    past it with nothing else happening, and confirms the records are STILL there — grounded in
-    segment-roll eligibility, not a broken retention setting. Part B sets an aggressively low
-    `producer_byte_rate` quota on a made-up client-id, times an oversized produce against it
-    next to the same line produced with a different (unthrottled) client-id, and confirms both
-    records actually landed — throttled, not rejected.
+  - `broker-topic-configuration`: Part A sets `retention.ms=1000` on a fresh topic and waits a
+    genuine ~6 minutes — past one full cycle of the broker's own read-only
+    `log.retention.check.interval.ms` (5 minutes by default) — then confirms the records ARE
+    gone by then: an expired `retention.ms` forces the active segment to roll on its own, and
+    the next periodic scan deletes the now-closed, fully-expired segment. Part B uses a
+    separate, never-touched topic to set an aggressively low `producer_byte_rate` quota on a
+    made-up client-id, times an oversized produce against it next to the same line produced
+    with a different (unthrottled) client-id, and confirms both records actually landed —
+    throttled, not rejected.
   - `observability`: Lab-B-only (Grafana/Prometheus don't exist on Lab A). Part A stops
     `kafka-2` and cross-reads the same under-replicated-partitions fact on the Grafana
     dashboard and via `kafka-topics.sh --describe --under-replicated-partitions`. Part B seeds
@@ -1956,6 +1959,16 @@ render "PRACTICAL EXERCISE" with the full prompt and checklist; no console error
 | P1 | The exercise's closing line ("flat lag here just means nothing is currently reading it, not that anything is wrong") overstated the module's own guidance — Module 10's own content is explicit that a flat backlog still has to clear the latency SLA and retention window, and an unexpectedly silent consumer group is itself an incident. | Reworded to say the flat reading is expected *in this drill* because the learner deliberately stopped consuming, while still requiring the same SLA/retention/"unexpectedly quiet" caveats from the module's own content. |
 | P2 | The `docker compose stop/start kafka-2` commands in `observability` had no working-directory guard, and used a fixed 15-second wait to declare the cluster and dashboard recovered — racing broker restart time, ISR catch-up, and Prometheus's/Grafana's own independent scrape/refresh intervals. | Added the established `cd "$(git rev-parse --show-toplevel)/local-cluster-lab"` prefix (same pattern as Lab C/D/E), and replaced the fixed waits with polling `--describe --under-replicated-partitions` until it actually confirms the change, checking Grafana only after the CLI already has. |
 | P2 | `troubleshooting-scenarios`'s key-salting fix was presented as a pure win, with no mention that splitting one key into three costs Kafka's same-key-same-partition ordering guarantee across that tenant's own records. | Added a step and success criterion naming the tradeoff: salted traffic across `mega-tenant-0/1/2` no longer has one true order or a directly readable running total for the tenant — anything downstream needing either has to recombine the buckets itself. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
+**Review findings addressed (round 2)** (3 findings on PR #48 — 1×P1, 1×P2, 1×P3):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | `producer-configuration`'s round-1 `-i` fix said "the two produce commands" need `docker exec -i`, but the exercise actually has THREE (steps 2, 3, and 4 each pipe the same 500-character line) — a learner following the stated count could omit `-i` from step 3 and, since a silently-dropped stdin still exits without an error, wrongly conclude that step passed. | Corrected the count to three throughout the prompt and success criterion, and spelled out `docker exec -i ...` explicitly on all three producer invocations instead of describing step 3's command only in prose. |
+| P2 | `troubleshooting-scenarios`'s salting tradeoff conflated two different downstream needs: a commutative TOTAL for the tenant is genuinely recoverable by stripping the salt back off, but the tenant's one true cross-partition ORDER is not — Kafka never recorded a single interleaved order across three separate partitions in the first place, so there is nothing for stripping the salt to reconstruct. | Split the explanation into the two cases explicitly: totals recombine fine (order-independent), but recovering original order needs an explicit sequence/timestamp field plus real reordering logic downstream, or accepting the loss of that guarantee. |
+| P3 | The PR's own build-record summary at the top of this section still described the exercise's REJECTED first design — "proves its point by NOT waiting for a background process (retention.ms elapsing without a segment roll)" and "confirms the records are STILL there" — which the round-1 fix above replaced with the opposite, corrected behavior (wait ~6 minutes, confirm the records ARE gone). The summary contradicted both the shipped code and its own findings table right below it. | Rewrote the phase intro and the `broker-topic-configuration` bullet to describe the actual, final design. |
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
