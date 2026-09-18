@@ -1972,6 +1972,14 @@ Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-che
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+**Review findings addressed (round 3)** (1 finding on PR #48, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Round 2's ordering-tradeoff fix for `troubleshooting-scenarios` offered "an explicit sequence number (or timestamp)" as the fix for recovering the tenant's cross-partition order. An ordinary timestamp is not sufficient on its own: values can tie, clocks can skew across producer instances, and more than one producer writing the same tenant can stamp times inconsistently. | Requires a source-assigned, per-tenant MONOTONIC sequence token instead, and only allows a timestamp as a substitute when the application itself separately guarantees it is unique and order-preserving per tenant — with a success criterion requiring the learner to name why a bare timestamp is not good enough (ties, clock skew, multiple producers). |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
