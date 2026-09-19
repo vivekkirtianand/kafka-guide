@@ -1902,6 +1902,84 @@ Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-che
 
 Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
 
+### PR 10b-4 — reference modules (Modules 6, 9, 10, and 11)
+
+The last of the four 10b PRs. Deliberately steered away from ISR/`min.insync.replicas`
+writes-fail scenarios (Module 4's own exercise from 10b-1 already covers that ground) in favor
+of exercises that are either purely local/deterministic (a size cap enforced client-side or
+broker-side; a second batch produced with no consumer running, rather than racing one), or —
+where a real background broker process is unavoidable, as in the retention check below —
+wait out that process for real instead of trying to sidestep it. The first cut of the
+retention exercise tried to dodge the wait and got the mechanics backwards; see the round-1
+findings below.
+
+- **`src/lib/data/modules.ts`** — `exercises` on:
+  - `producer-configuration`: on a scratch topic, triggers `RecordTooLargeException` two ways
+    — once via the producer's own `max.request.size` (a `--producer-property`, checked
+    synchronously inside `send()` before any network call) and once via the topic's own
+    `max.message.bytes` (a `kafka-configs.sh` topic override, only ever reached by a record
+    the producer's own check already passed) — and has the learner attribute each rejection to
+    the config they personally set, rather than guessing from the identical exception text.
+  - `broker-topic-configuration`: Part A sets `retention.ms=1000` on a fresh topic and waits a
+    genuine ~6 minutes — past one full cycle of the broker's own read-only
+    `log.retention.check.interval.ms` (5 minutes by default) — then confirms the records ARE
+    gone by then: an expired `retention.ms` forces the active segment to roll on its own, and
+    the next periodic scan deletes the now-closed, fully-expired segment. Part B uses a
+    separate, never-touched topic to set an aggressively low `producer_byte_rate` quota on a
+    made-up client-id, times an oversized produce against it next to the same line produced
+    with a different (unthrottled) client-id, and confirms both records actually landed —
+    throttled, not rejected.
+  - `observability`: Lab-B-only (Grafana/Prometheus don't exist on Lab A). Part A stops
+    `kafka-2` and cross-reads the same under-replicated-partitions fact on the Grafana
+    dashboard and via `kafka-topics.sh --describe --under-replicated-partitions`. Part B seeds
+    and fully drains one batch (LAG 0 on every partition), then seeds a second, larger batch
+    with NO consumer running afterward, so the resulting non-zero, per-partition-uneven LAG is
+    unambiguous — no race with a consumer that might still be catching up — and a final
+    `--describe` after a 15s idle wait with nothing running shows that LAG explicitly
+    unchanged, i.e. flat rather than a rising slope.
+  - `troubleshooting-scenarios`: this module has no lab or `topicDetail` of its own, so the
+    exercise reproduces one of its own catalog entries end-to-end on a scratch topic — a
+    single dominant key ("mega-tenant", 27 of 29 records) piling every record onto one
+    partition, confirmed as the actual on-call evidence (one partition's share of the total),
+    followed by the real fix (key salting into `mega-tenant-0/1/2`) applied on a second fresh
+    topic and confirmed to spread the same tenant's traffic across more than one partition.
+- **`src/lib/data/modules.test.ts`** — `VERIFIED_MODULES` extended to all four slugs.
+
+Verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser — all four module pages
+render "PRACTICAL EXERCISE" with the full prompt and checklist; no console errors.
+
+**Review findings addressed (round 1)** (7 findings on PR #48 — 5×P1, 2×P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | `broker-topic-configuration`'s retention experiment assumed the active segment simply cannot roll without hitting `segment.bytes`/`segment.ms`. Kafka's own docs say an expired `retention.ms` forces a segment roll on its own, and the periodic scan that acts on it (`log.retention.check.interval.ms`, 300000ms default, **read-only**) could run at any point in a 10-second window — the exercise's outcome and explanation were both unreliable. | Rewrote Part A around the real mechanism: wait a genuine ~6 minutes (comfortably past one full 5-minute scan cycle) and correctly predict the records ARE gone by then, crediting `retention.ms`'s own forced roll plus the next scan's deletion — not "nothing happens." |
+| P1 | Part B's quota check reused Part A's topic, which (before the round-1 fix) still held 3 leftover records — a `--from-beginning` consume would see 5, not the promised 2, and there was no deterministic way to isolate the 2 quota-test records. | Gave Part B its own fresh topic (`quota-lab-1`), untouched by Part A, so its final count is unambiguous regardless of Part A's own timing. |
+| P1 | The generic "docker exec form" template given in `producer-configuration`, `broker-topic-configuration`, and `troubleshooting-scenarios` omitted `-i` on every command, including the ones that pipe a line into `kafka-console-producer.sh`'s stdin — without `-i`, stdin never reaches the container and the piped record is silently lost, invalidating all three record-size, quota, and hot-partition tests. | Added an explicit `docker exec -i` requirement on every piped producer command in all three exercises, distinguished from the plain `docker exec` (no `-i`) used for `--create`/`--describe`/`kafka-configs.sh`. |
+| P1 | `observability`'s Part B reused the fixed group name `lag-demo` across redos while bumping only the topic suffix. `kafka-consumer-groups.sh --describe --group lag-demo` lists every topic-partition the group has ever committed on, so a redo would show a prior attempt's stale, non-zero rows for the old topic alongside the new topic's fresh ones — breaking the "LAG 0 on every partition" check. | Renamed to `lag-demo-1`, bumped together with the topic suffix on every attempt. |
+| P1 | The exercise's closing line ("flat lag here just means nothing is currently reading it, not that anything is wrong") overstated the module's own guidance — Module 10's own content is explicit that a flat backlog still has to clear the latency SLA and retention window, and an unexpectedly silent consumer group is itself an incident. | Reworded to say the flat reading is expected *in this drill* because the learner deliberately stopped consuming, while still requiring the same SLA/retention/"unexpectedly quiet" caveats from the module's own content. |
+| P2 | The `docker compose stop/start kafka-2` commands in `observability` had no working-directory guard, and used a fixed 15-second wait to declare the cluster and dashboard recovered — racing broker restart time, ISR catch-up, and Prometheus's/Grafana's own independent scrape/refresh intervals. | Added the established `cd "$(git rev-parse --show-toplevel)/local-cluster-lab"` prefix (same pattern as Lab C/D/E), and replaced the fixed waits with polling `--describe --under-replicated-partitions` until it actually confirms the change, checking Grafana only after the CLI already has. |
+| P2 | `troubleshooting-scenarios`'s key-salting fix was presented as a pure win, with no mention that splitting one key into three costs Kafka's same-key-same-partition ordering guarantee across that tenant's own records. | Added a step and success criterion naming the tradeoff: salted traffic across `mega-tenant-0/1/2` no longer has one true order or a directly readable running total for the tenant — anything downstream needing either has to recombine the buckets itself. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
+**Review findings addressed (round 2)** (3 findings on PR #48 — 1×P1, 1×P2, 1×P3):
+
+| # | Finding | Fix |
+|--|--|--|
+| P1 | `producer-configuration`'s round-1 `-i` fix said "the two produce commands" need `docker exec -i`, but the exercise actually has THREE (steps 2, 3, and 4 each pipe the same 500-character line) — a learner following the stated count could omit `-i` from step 3 and, since a silently-dropped stdin still exits without an error, wrongly conclude that step passed. | Corrected the count to three throughout the prompt and success criterion, and spelled out `docker exec -i ...` explicitly on all three producer invocations instead of describing step 3's command only in prose. |
+| P2 | `troubleshooting-scenarios`'s salting tradeoff conflated two different downstream needs: a commutative TOTAL for the tenant is genuinely recoverable by stripping the salt back off, but the tenant's one true cross-partition ORDER is not — Kafka never recorded a single interleaved order across three separate partitions in the first place, so there is nothing for stripping the salt to reconstruct. | Split the explanation into the two cases explicitly: totals recombine fine (order-independent), but recovering original order needs an explicit sequence/timestamp field plus real reordering logic downstream, or accepting the loss of that guarantee. |
+| P3 | The PR's own build-record summary at the top of this section still described the exercise's REJECTED first design — "proves its point by NOT waiting for a background process (retention.ms elapsing without a segment roll)" and "confirms the records are STILL there" — which the round-1 fix above replaced with the opposite, corrected behavior (wait ~6 minutes, confirm the records ARE gone). The summary contradicted both the shipped code and its own findings table right below it. | Rewrote the phase intro and the `broker-topic-configuration` bullet to describe the actual, final design. |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
+**Review findings addressed (round 3)** (1 finding on PR #48, P2):
+
+| # | Finding | Fix |
+|--|--|--|
+| P2 | Round 2's ordering-tradeoff fix for `troubleshooting-scenarios` offered "an explicit sequence number (or timestamp)" as the fix for recovering the tenant's cross-partition order. An ordinary timestamp is not sufficient on its own: values can tie, clocks can skew across producer instances, and more than one producer writing the same tenant can stamp times inconsistently. | Requires a source-assigned, per-tenant MONOTONIC sequence token instead, and only allows a timestamp as a substitute when the application itself separately guarantees it is unique and order-preserving per tenant — with a success criterion requiring the learner to name why a bare timestamp is not good enough (ties, clock skew, multiple producers). |
+
+Re-verified: `typecheck` / `lint` / `test` (458) / `build` clean; browser re-checked.
+
 ## Phase 10c — the capstone (Module 12)
 
 The end-of-course project, done unassisted. 10a (per-lesson knowledge checks) and 10b
